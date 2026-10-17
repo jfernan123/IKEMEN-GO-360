@@ -11,10 +11,14 @@ as compatibility grows.
 
 ## Current status
 
-Milestone 6e is complete. KFM can fight full matches with commands, attacks, guarding, throws, falls, life and rounds,
+Milestone 6e is complete and milestone 7a has started. KFM can fight full matches with commands, attacks, guarding, throws, falls, life and rounds,
 a CPU opponent, hit effects, Explods, palette effects, pauses, afterimages, environmental shake, and sound. Kung Fu
 Blocking now parries attacks through ReversalDef and HitOverride, and attacks apply MUGEN corner push. Both the
 Windows and Xbox 360 builds pass the current test and build checks.
+
+The launch content is no longer compiled into the engine. Edit `data/mugen360.ini` to choose P1, P2 and the stage;
+the PC build also accepts `--p1`, `--p2` and `--stage` path overrides. This is the first part of making the executable
+usable for games other than the included KFM test setup.
 
 ## Build and run
 
@@ -64,6 +68,7 @@ send keyboard or mouse input to the desktop.
 - `src/platform/pc/` implements Windows video, input, and audio with SDL3.
 - `src/platform/x360/` implements the same interface with xsdk.
 - `data/` contains the current KFM character, stage, common states, effects, and sounds.
+- `data/mugen360.ini` chooses the two character definitions and stage loaded at startup.
 - `tests/` contains unit tests and scripted fight regressions.
 - `third_party/` contains lodepng.
 
@@ -134,6 +139,19 @@ paths use forward slashes.
      override expiry and corner-push defaults. Hidden fight regressions exercise a real parry, visible corner push,
      juggle-point spending, and the state 195 taunt. Enter/Start is once again available as MUGEN's
      `s` button; Tab or LB+Start changes the debug screen.
+7. **General game compatibility**
+   - 7a configurable content (in progress): P1, P2 and the stage are selected by `data/mugen360.ini`, with optional
+     PC command-line overrides. Next, non-320 character coordinates will be corrected and checked against the
+     official 1280x720 KFM variant.
+   - 7b projectiles: Projectile controllers, animation, movement, collision, hits and projectile triggers.
+   - 7c helpers: Helper, DestroySelf, parent/root binding and parent variables.
+   - 7d broader state compatibility: remaining common controllers and triggers, selected from real character usage.
+   - 7e legacy characters: SFF v1 and PCX support for WinMUGEN-era content.
+   - 7f game flow: roster/select flow and a fuller per-game configuration.
+
+Screenpack-driven `fight.def`, polished menus and the remaining stage presentation features are planned after the
+general character-compatibility work.
+
 ## Asset notice
 
 Kung Fu Man, his stage, `common1.cns`, and the shared fight resources are Elecbyte/Ikemen release assets included

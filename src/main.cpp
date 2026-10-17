@@ -32,6 +32,7 @@
 #include "core/debug_text.h"
 #include "core/effects.h"
 #include "core/file.h"
+#include "core/game_config.h"
 #include "core/hud.h"
 #include "core/log.h"
 #include "core/match.h"
@@ -46,8 +47,6 @@ using namespace m360;
 
 namespace {
 
-const char *const CHAR_DEF = "data/chars/kfm/kfm.def";
-const char *const STAGE_DEF = "data/stages/kfm.def";
 const char *const FIGHTFX_SFF = "data/fightfx.sff";
 const char *const FIGHTFX_AIR = "data/fightfx.air";
 const char *const COMMON_SND = "data/common.snd";
@@ -229,9 +228,9 @@ class StageDemo {
 public:
 	// quickStart: no intros or announcement, the fight starts at once (for scripted tests).
 	// cpu: player 2 is the computer even with a controller (or a test script) for it.
-	bool load(std::string &error, bool trace, bool quickStart, bool cpu)
+	bool load(const GameConfig &config, std::string &error, bool trace, bool quickStart, bool cpu)
 	{
-		if (!stage_.load(STAGE_DEF, error))
+		if (!stage_.load(config.stage, error))
 			return false;
 		if (!effects_.load(FIGHTFX_SFF, FIGHTFX_AIR, error))
 			return false;
@@ -243,8 +242,9 @@ public:
 			players_[0].traceLabel = "p1";
 			players_[1].traceLabel = "p2";
 		}
+		const std::string characterDefs[2] = { config.player1, config.player2 };
 		for (int i = 0; i < 2; i++) {
-			if (!players_[i].load(CHAR_DEF, i + 1, error))
+			if (!players_[i].load(characterDefs[i], i + 1, error))
 				return false;
 			players_[i].playerNo = i;
 			players_[i].setOpponent(&players_[1 - i]);
@@ -389,7 +389,7 @@ public:
 			drawStateInfo(players_[0], "P1", 30, 124);
 			drawStateInfo(players_[1], "P2", 560, 124);
 			drawCommands();
-			drawText("PUNCH U I O  KICK J K L  (PAD X Y RB / A B RT)   Q/LB: INFO  R/LT: NEW MATCH  START: ANIMATIONS", 30, 690, 2,
+			drawText("PUNCH U I O  KICK J K L  (PAD X Y RB / A B RT)   Q/LB: INFO  R/LT: NEW MATCH  TAB/LB+START: NEXT", 30, 690, 2,
 				TEXT);
 		}
 	}
@@ -619,7 +619,7 @@ public:
 			drawTextf(40, 125, 2, DIM, "BOXES: %zu ATTACK (RED), %zu HURT (BLUE)%s", f->clsn1.size(), f->clsn2.size(),
 				showClsn_ ? "" : " - HIDDEN");
 		}
-		drawText("LEFT/RIGHT: ACTION  A: PAUSE  B: STEP  X: TURN  Y: BOXES  UP/DOWN: PALETTE  START: SPRITES", 40, 680,
+		drawText("LEFT/RIGHT: ACTION  A: PAUSE  B: STEP  X: TURN  Y: BOXES  UP/DOWN: PALETTE  TAB/LB+START: NEXT", 40, 680,
 			2, DIM);
 	}
 
@@ -687,7 +687,7 @@ public:
 			s.height, s.axisX, s.axisY, palette, renderer_.palette() < 0 ? " (OWN)" : "");
 		if (!fits)
 			drawText("(CENTRED: ITS AXIS PUTS IT OFF SCREEN)", 40, 110, 2, DIM);
-		drawText("LEFT/RIGHT: SPRITE   LB/RB: 10 AT A TIME   UP/DOWN: PALETTE   START: STAGE", 40, 680, 2, DIM);
+		drawText("LEFT/RIGHT: SPRITE   LB/RB: 10 AT A TIME   UP/DOWN: PALETTE   TAB/LB+START: NEXT", 40, 680, 2, DIM);
 	}
 
 private:
@@ -702,6 +702,9 @@ enum class Screen { Stage, Animations, Sprites };
 
 int main(int argc, char **argv)
 {
+	GameConfig config;
+	std::string configError;
+	const bool configLoaded = config.load("data/mugen360.ini", configError);
 	// Test-run options (see InputScript).
 	std::string inputPath, input2Path;
 	std::map<uint32_t, std::string> shots;
@@ -728,11 +731,20 @@ int main(int argc, char **argv)
 			cpu = true;
 		else if (arg == "--power" && i + 1 < argc)
 			testPower = text::atoi(argv[++i]);
+		else if (arg == "--p1" && i + 1 < argc)
+			config.player1 = argv[++i];
+		else if (arg == "--p2" && i + 1 < argc)
+			config.player2 = argv[++i];
+		else if (arg == "--stage" && i + 1 < argc)
+			config.stage = argv[++i];
 	}
 	const bool testRun = !inputPath.empty() || !shots.empty() || quitFrame != UINT32_MAX;
 	if (!platform::init(testRun))
 		return 1;
-	logf("mugen360: milestone 6e, KFM combat compatibility");
+	logf("mugen360: milestone 7a, configurable game content");
+	if (!configLoaded)
+		logf("mugen360: %s", configError.c_str());
+	logf("game: p1=%s p2=%s stage=%s", config.player1.c_str(), config.player2.c_str(), config.stage.c_str());
 	InputScript script, script2;
 	if (!inputPath.empty() && !script.load(inputPath))
 		logf("mugen360: can't read input script %s", inputPath.c_str());
@@ -742,14 +754,14 @@ int main(int argc, char **argv)
 	{
 		std::string error;
 		StageDemo stage;
-		const bool stageLoaded = stage.load(error, trace, quickStart, cpu);
+		const bool stageLoaded = stage.load(config, error, trace, quickStart, cpu);
 		if (stageLoaded && testPower >= 0)
 			stage.setTestPower(testPower);
 		if (!stageLoaded)
 			logf("mugen360: %s", error.c_str());
 		// The viewers get a Kung Fu Man of their own.
 		Character kfm;
-		const bool kfmLoaded = kfm.load(CHAR_DEF, 1, error);
+		const bool kfmLoaded = kfm.load(config.player1, 1, error);
 		if (!kfmLoaded)
 			logf("mugen360: %s", error.c_str());
 		SpriteRenderer renderer(kfm.sff());

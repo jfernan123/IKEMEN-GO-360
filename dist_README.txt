@@ -1,5 +1,5 @@
-MUGEN360 - milestone 6e: KFM combat compatibility (homebrew test build)
-======================================================================
+MUGEN360 - milestone 7a: configurable game content (homebrew test build)
+=======================================================================
 
 Kung Fu Man against Kung Fu Man on his stage, run by his own MUGEN state
 files (kfm.cns, kfm.cmd, common1.cns). A real match now: intros, "Round 1",
@@ -21,6 +21,8 @@ The numbers at the top show each player's state, like Ikemen's debug view;
 red boxes are attacks, blue boxes are where a player can be hit.
 LB+Start cycles: stage -> animation player -> sprite viewer.
 Needs a softmodded/RGH console (Bad Update + XeUnshackle + Aurora works).
+The characters and stage are selected in data/mugen360.ini. Edit its p1,
+p2 and stage paths to load other content as compatibility expands.
 
 INSTALL
 1. Copy the whole "mugen360" folder to the hard drive, e.g.  Hdd1:\Homebrew\mugen360\

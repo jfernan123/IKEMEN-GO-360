@@ -6,6 +6,7 @@
 #include <string>
 
 #include "core/hitdef.h"
+#include "core/game_config.h"
 #include "core/states.h"
 
 using namespace m360;
@@ -80,5 +81,18 @@ int run6eTests()
 	expect(overrideControllers == 4, "all four KFM HitOverrides loaded");
 
 	std::printf("6e combat: %d passed, %d failed\n", passed, failed);
+	return failed;
+}
+
+int run7Tests()
+{
+	passed = failed = 0;
+	GameConfig config;
+	std::string error;
+	expect(config.load("data/mugen360.ini", error), "game configuration loads");
+	expect(config.player1 == "data/chars/kfm/kfm.def", "game configuration selects P1");
+	expect(config.player2 == "data/chars/kfm/kfm.def", "game configuration selects P2");
+	expect(config.stage == "data/stages/kfm.def", "game configuration selects the stage");
+	std::printf("7a content configuration: %d passed, %d failed\n", passed, failed);
 	return failed;
 }
