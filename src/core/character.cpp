@@ -58,7 +58,7 @@ bool Character::load(const std::string &defPath, int paletteNo, std::string &err
 			name = info->text("name");
 		int32_t lw = 320, lh = 240;
 		if (info->ints("localcoord", { &lw, &lh }) && lw > 0)
-			localScale = 320.0f / lw;
+			localScale = coords::scaleForWidth(lw);
 		// "1.0" and "1.1" are MUGEN 1.x; WinMUGEN characters give a date ("04.14.2001") or nothing.
 		mugen1_ = text::startsWith(text::trim(info->text("mugenversion")), "1.");
 	}
@@ -193,8 +193,8 @@ float Character::constF(const std::string &n, float fallback) const
 // Ikemen's resetRound for one character: posReset, clearState, prepareNextRound, selfState 5900.
 void Character::startRound(float px, float py, int face, bool newMatch)
 {
-	startX_ = px;
-	startY_ = py;
+	startX_ = px / localScale;
+	startY_ = py / localScale;
 	startFacing_ = face >= 0 ? 1 : -1;
 	posReset();
 	ctrl = false;
@@ -297,7 +297,7 @@ void Character::changeAnim(int32_t no, const AnimationTable *table)
 
 bool Character::shouldFaceP2() const
 {
-	return p2_ && (p2_->x - x) * facing < 0;
+	return p2_ && (p2_->worldX() - worldX()) * facing < 0;
 }
 
 // Turns to face the opponent, with the turning animation (5 standing, 6 crouching).
@@ -520,7 +520,7 @@ bool Character::runController(const StateController &sc)
 	case CtrlType::PosSet:
 		// x is from the camera's centre, y from the ground.
 		if (paramF(sc, "x", 0, f))
-			x = (world_ ? world_->camX : 0) + f;
+			x = (world_ ? world_->camX / localScale : 0) + f;
 		if (paramF(sc, "y", 0, f))
 			y = f;
 		return false;
@@ -778,7 +778,7 @@ void Character::runEnvShake(const StateController &sc)
 	paramF(sc, "dir", 0, direction);
 	paramF(sc, "diradd", 0, directionAdd);
 	paramF(sc, "decay", 0, decay);
-	world_->effects->startShake(time, frequency, amplitude / localScale, phase, multiplier, direction, directionAdd, decay);
+	world_->effects->startShake(time, frequency, amplitude * localScale, phase, multiplier, direction, directionAdd, decay);
 }
 
 void Character::runMakeDust(const StateController &sc)
@@ -801,8 +801,8 @@ void Character::runMakeDust(const StateController &sc)
 		spawn.animNo = 120;
 		spawn.shared = true;
 		spawn.owner = playerNo;
-		spawn.x = x + px / localScale * facing;
-		spawn.y = y + py / localScale;
+		spawn.x = (x + px * facing) * localScale;
+		spawn.y = (y + py) * localScale;
 		spawn.facing = facing;
 		spawn.layer = 1;
 		spawn.priority = INT32_MAX;
@@ -880,8 +880,12 @@ void Character::runPause(const StateController &sc, bool superPause)
 	float px = 0, py = 0;
 	paramF(sc, "pos", 0, px);
 	paramF(sc, "pos", 1, py);
-	spawn.x = x + px / localScale * facing;
-	spawn.y = y + py / localScale;
+	spawn.x = (x + px * facing) * localScale;
+	spawn.y = (y + py) * localScale;
+	if (!spawn.shared) {
+		spawn.scaleX *= localScale;
+		spawn.scaleY *= localScale;
+	}
 	spawn.facing = facing;
 	spawn.layer = 1;
 	world_->effects->spawnExplod(spawn);
@@ -916,10 +920,10 @@ void Character::runExplod(const StateController &sc)
 	paramF(sc, "velocity", 1, spawn.velocityY);
 	paramF(sc, "accel", 0, spawn.accelX);
 	paramF(sc, "accel", 1, spawn.accelY);
-	spawn.velocityX /= localScale;
-	spawn.velocityY /= localScale;
-	spawn.accelX /= localScale;
-	spawn.accelY /= localScale;
+	spawn.velocityX *= localScale;
+	spawn.velocityY *= localScale;
+	spawn.accelX *= localScale;
+	spawn.accelY *= localScale;
 	paramF(sc, "scale", 0, spawn.scaleX);
 	paramF(sc, "scale", 1, spawn.scaleY);
 	paramI(sc, "removetime", 0, spawn.removeTime);
@@ -930,15 +934,15 @@ void Character::runExplod(const StateController &sc)
 	paramF(sc, "pos", 0, px);
 	paramF(sc, "pos", 1, py);
 	paramF(sc, "facing", 0, relativeFacing);
-	px /= localScale;
-	py /= localScale;
+	px *= localScale;
+	py *= localScale;
 	const std::string postype = text::toLower(text::trim(sc.param("postype") ? *sc.param("postype") : "p1"));
 	const Character *anchor = this;
 	if (postype == "p2" && p2_)
 		anchor = p2_;
 	if (postype == "p1" || postype == "p2") {
-		spawn.x = anchor->x + px * anchor->facing;
-		spawn.y = anchor->y + py;
+		spawn.x = anchor->worldX() + px * anchor->facing;
+		spawn.y = anchor->worldY() + py;
 		spawn.moveFacing = anchor->facing;
 		spawn.facing = anchor->facing * (relativeFacing < 0 ? -1 : 1);
 	} else if (postype == "none") {
@@ -959,6 +963,10 @@ void Character::runExplod(const StateController &sc)
 		spawn.moveFacing = postype == "back" ? facing : 1;
 		const int baseFacing = postype == "back" ? facing : 1;
 		spawn.facing = baseFacing * (relativeFacing < 0 ? -1 : 1);
+	}
+	if (!spawn.shared) {
+		spawn.scaleX *= localScale;
+		spawn.scaleY *= localScale;
 	}
 
 	if (!world_->effects->spawnExplod(spawn)) {
@@ -1189,10 +1197,10 @@ void Character::posUpdate()
 	// it in MUGEN; the stored velocity keeps decaying even after the target leaves the corner.
 	if (cornerPushVel_ != 0) {
 		const bool targetAtCorner = world_ && p2_ && p2_->screenBound_ &&
-			(facing > 0 ? p2_->x >= world_->camX + world_->screenEdge - 0.5f
-						: p2_->x <= world_->camX - world_->screenEdge + 0.5f);
+			(facing > 0 ? p2_->worldX() >= world_->camX + world_->screenEdge - 0.5f
+						: p2_->worldX() <= world_->camX - world_->screenEdge + 0.5f);
 		if (targetAtCorner && !(special_ & Special::NoCornerPush))
-			x += cornerPushVel_ / localScale;
+			x += cornerPushVel_;
 		cornerPushVel_ *= cornerPushMul_;
 		if (std::fabs(cornerPushVel_) < 1.0f / localScale)
 			cornerPushVel_ = 0;
@@ -1306,11 +1314,11 @@ void Character::tick()
 void Character::body(float &left, float &right, float &top) const
 {
 	const bool air = stateType == 'A';
-	const float front = ((air ? airFront_ : groundFront_) + widthFront_) / localScale;
-	const float back = ((air ? airBack_ : groundBack_) + widthBack_) / localScale;
-	left = facing > 0 ? x - back : x - front;
-	right = facing > 0 ? x + front : x + back;
-	top = y - height_ / localScale;
+	const float front = ((air ? airFront_ : groundFront_) + widthFront_) * localScale;
+	const float back = ((air ? airBack_ : groundBack_) + widthBack_) * localScale;
+	left = facing > 0 ? worldX() - back : worldX() - front;
+	right = facing > 0 ? worldX() + front : worldX() + back;
+	top = worldY() - height_ * localScale;
 }
 
 void Character::draw(const View &view, float groundY, int shadowIntensity, float shadowYScale)
@@ -1320,14 +1328,14 @@ void Character::draw(const View &view, float groundY, int shadowIntensity, float
 	auto drawAnim = [&](float px, float py, SpriteDraw how = {}) {
 		if (animShared_) {
 			if (world_ && world_->effects)
-				world_->effects->drawSharedAnimation(anim, px, py, view.scale / localScale, facing, how);
+				world_->effects->drawSharedAnimation(anim, px, py, view.scale, facing, how);
 		} else {
-			renderer_->drawAnimation(anim, px, py, view.scale / localScale, facing, how);
+			renderer_->drawAnimation(anim, px, py, view.scale * localScale, facing, how);
 		}
 	};
 	// Shaking from a hit: a pixel back every other frame.
 	const float shake = ghv_.hitshaketime > 0 && (stateTime & 1) ? -(float)facing : 0;
-	const float sx = view.screenX(x + shake - view.camX);
+	const float sx = view.screenX((x + shake) * localScale - view.camX);
 	if (shadowIntensity > 0 && !(special_ & Special::NoShadow)) {
 		// The shadow lies on the ground under the character, the sprite flattened by the stage's shadow yscale: a
 		// positive one falls toward the viewer (drawn upside down), a negative one into the screen.
@@ -1355,9 +1363,9 @@ void Character::draw(const View &view, float groundY, int shadowIntensity, float
 				(&how.addR)[k] = (int16_t)std::clamp(add, -255, 255);
 				(&how.mulR)[k] = (uint16_t)std::clamp((int)mul, 0, 1024);
 			}
-			const float oldX = view.screenX(old.x - view.camX);
-			const float oldY = view.screenY(groundY + old.y - view.camY);
-			renderer_->drawAnimation(old.anim, oldX, oldY, view.scale / localScale, old.facing, how);
+			const float oldX = view.screenX(old.x * localScale - view.camX);
+			const float oldY = view.screenY(groundY + old.y * localScale - view.camY);
+			renderer_->drawAnimation(old.anim, oldX, oldY, view.scale * localScale, old.facing, how);
 			visible++;
 		}
 	}
@@ -1371,7 +1379,7 @@ void Character::draw(const View &view, float groundY, int shadowIntensity, float
 			(&colour.mulR)[k] = (uint16_t)std::clamp(palfx_.mul[k], 0, 1024);
 		}
 	}
-	drawAnim(sx, view.screenY(groundY + y - view.camY), colour);
+	drawAnim(sx, view.screenY(groundY + worldY() - view.camY), colour);
 }
 
 void Character::drawBoxes(const View &view, float groundY) const
@@ -1388,10 +1396,10 @@ void Character::drawBoxes(const View &view, float groundY) const
 				l = -b[2];
 				r = -b[0];
 			}
-			const float x0 = view.screenX(x + std::min(l, r) / localScale - view.camX);
-			const float x1 = view.screenX(x + std::max(l, r) / localScale - view.camX);
-			const float y0 = view.screenY(groundY + y + std::min(b[1], b[3]) / localScale - view.camY);
-			const float y1 = view.screenY(groundY + y + std::max(b[1], b[3]) / localScale - view.camY);
+			const float x0 = view.screenX((x + std::min(l, r)) * localScale - view.camX);
+			const float x1 = view.screenX((x + std::max(l, r)) * localScale - view.camX);
+			const float y0 = view.screenY(groundY + (y + std::min(b[1], b[3])) * localScale - view.camY);
+			const float y1 = view.screenY(groundY + (y + std::max(b[1], b[3])) * localScale - view.camY);
 			const float w = std::max(1.0f, x1 - x0), h = std::max(1.0f, y1 - y0);
 			platform::fillRect(x0, y0, w, h, 0x30000000 | rgb);
 			platform::fillRect(x0, y0, w, 1, 0xE0000000 | rgb);
@@ -1766,10 +1774,10 @@ bool Character::clsnTouch(const Character &g, int myKind, int theirKind) const
 			l = -box[2];
 			r = -box[0];
 		}
-		out[0] = c.x + std::min(l, r) / c.localScale;
-		out[2] = c.x + std::max(l, r) / c.localScale;
-		out[1] = c.y + std::min(box[1], box[3]) / c.localScale;
-		out[3] = c.y + std::max(box[1], box[3]) / c.localScale;
+		out[0] = (c.x + std::min(l, r)) * c.localScale;
+		out[2] = (c.x + std::max(l, r)) * c.localScale;
+		out[1] = (c.y + std::min(box[1], box[3])) * c.localScale;
+		out[3] = (c.y + std::max(box[1], box[3])) * c.localScale;
 	};
 	for (const Clsn &boxA : *a) {
 		float ra[4];
@@ -2073,9 +2081,10 @@ int Character::hitResultCheck(Character &g)
 			v.priority = hd.priority;
 			// mindist / maxdist: snap the getter into range in front of the attacker.
 			float snapX = notSetF();
-			if (isSet(hd.mindist[0]) && (byf < 0 ? g.x > x - hd.mindist[0] : g.x < x + hd.mindist[0]))
+			const float getterX = g.worldX() / localScale;
+			if (isSet(hd.mindist[0]) && (byf < 0 ? getterX > x - hd.mindist[0] : getterX < x + hd.mindist[0]))
 				snapX = x + hd.mindist[0] * byf;
-			if (isSet(hd.maxdist[0]) && (byf < 0 ? g.x < x - hd.maxdist[0] : g.x > x + hd.maxdist[0]))
+			if (isSet(hd.maxdist[0]) && (byf < 0 ? getterX < x - hd.maxdist[0] : getterX > x + hd.maxdist[0]))
 				snapX = x + hd.maxdist[0] * byf;
 			if (isSet(snapX))
 				v.xoff = snapX * ratio - g.x;
@@ -2103,7 +2112,7 @@ int Character::hitResultCheck(Character &g)
 		powerGain_ += std::abs(result) == 1 ? hd.hitGetPower : hd.guardGetPower;
 		g.powerGain_ += std::abs(result) == 1 ? hd.hitGivePower : hd.guardGivePower;
 		if (world_ && world_->effects && hd.envShakeTime > 0)
-			world_->effects->startShake(hd.envShakeTime, hd.envShakeFreq, hd.envShakeAmpl / localScale,
+			world_->effects->startShake(hd.envShakeTime, hd.envShakeFreq, hd.envShakeAmpl * localScale,
 				hd.envShakePhase, hd.envShakeMul, hd.envShakeDir);
 	}
 	// Each is now on the other's list: the getter is this character's target, with juggle points against it.
@@ -2196,11 +2205,11 @@ void Character::spawnHitSpark(Character &g, int result)
 	if (sparkAnimNo < 0 || prefix != 'F')
 		return;
 	const bool air = g.stateType == 'A';
-	const float front = (air ? g.airFront_ : g.groundFront_) / g.localScale;
-	const float back = (air ? g.airBack_ : g.groundBack_) / g.localScale;
+	const float front = (air ? g.airFront_ : g.groundFront_) * g.localScale;
+	const float back = (air ? g.airBack_ : g.groundBack_) * g.localScale;
 	const float edge = facing != g.facing ? front : back;
-	const float sparkX = g.x + edge * g.facing - hd.sparkxy[0] * facing / localScale;
-	const float sparkY = y + hd.sparkxy[1] / localScale;
+	const float sparkX = g.worldX() + edge * g.facing - hd.sparkxy[0] * facing * localScale;
+	const float sparkY = worldY() + hd.sparkxy[1] * localScale;
 	world_->effects->spawnSpark(sparkAnimNo, sparkX, sparkY, facing);
 }
 
@@ -2226,7 +2235,7 @@ void Character::hitDetection()
 		return;
 	// Any attack (movetype A) close enough lets the opponent start guarding: guard.dist in front, a little behind.
 	if (moveType == 'A' && !g->inGuardDist_) {
-		const float dist = (g->x - x) * facing;
+		const float dist = (g->worldX() - worldX()) * facing / localScale;
 		if (dist < hitdef_.guardDist[0] && dist > -hitdef_.guardDist[1])
 			g->inGuardDist_ = true;
 	}
@@ -2343,11 +2352,11 @@ void Character::updateBinding()
 		return;
 	const Character &bt = *bindTo_;
 	if (bt.target() == this) {
-		vx = facing * bt.facing * bt.vx;
-		vy = bt.vy;
+		vx = facing * bt.facing * bt.vx * bt.localScale / localScale;
+		vy = bt.vy * bt.localScale / localScale;
 	}
-	x = bt.x + bt.facing * bindPos_[0];
-	y = bt.y + bindPos_[1];
+	x = bt.worldX() / localScale + bt.facing * bindPos_[0];
+	y = bt.worldY() / localScale + bindPos_[1];
 	ghv_.xoff = ghv_.yoff = 0;
 }
 
@@ -2446,8 +2455,8 @@ bool Character::runTargetController(const StateController &sc)
 
 Value Character::trigger(Trig t, Value arg)
 {
-	const float camX = world_ ? world_->camX : 0, camY = world_ ? world_->camY : 0;
-	const float halfW = world_ ? world_->halfWidth : 160;
+	const float camX = world_ ? world_->camX / localScale : 0, camY = world_ ? world_->camY / localScale : 0;
+	const float halfW = (world_ ? world_->halfWidth : 160) / localScale;
 	const float xmin = camX - halfW, xmax = camX + halfW;
 	auto frontEdgeDist = [&] { return facing > 0 ? xmax - x : x - xmin; };
 	auto backEdgeDist = [&] { return facing > 0 ? x - xmin : xmax - x; };
@@ -2510,18 +2519,20 @@ Value Character::trigger(Trig t, Value arg)
 	case Trig::P2Dist:
 		if (!p2_)
 			return Value::I(0);
-		return Value::F(arg.i == 0 ? (p2_->x - x) * facing : arg.i == 1 ? p2_->y - y : 0);
+		return Value::F(arg.i == 0 ? (p2_->worldX() / localScale - x) * facing
+								 : arg.i == 1 ? p2_->worldY() / localScale - y : 0);
 	case Trig::P2BodyDist: {
 		if (!p2_)
 			return Value::I(0);
 		if (arg.i != 0)
-			return Value::F(arg.i == 1 ? p2_->y - y : 0);
+			return Value::F(arg.i == 1 ? p2_->worldY() / localScale - y : 0);
 		// The gap between the two bodies: my front, and whichever side of theirs faces me.
-		const float dist = (p2_->x - x) * facing;
+		const float dist = (p2_->worldX() / localScale - x) * facing;
 		const bool facingEachOther = p2_->facing != facing;
 		const float myFront = (stateType == 'A' ? airFront_ : groundFront_) + widthFront_;
-		const float theirs = (p2_->stateType == 'A') ? (facingEachOther ? p2_->airFront_ : p2_->airBack_)
-													 : (facingEachOther ? p2_->groundFront_ : p2_->groundBack_);
+		const float theirsLocal = (p2_->stateType == 'A') ? (facingEachOther ? p2_->airFront_ : p2_->airBack_)
+													  : (facingEachOther ? p2_->groundFront_ : p2_->groundBack_);
+		const float theirs = theirsLocal * p2_->localScale / localScale;
 		return Value::F(dist - myFront - theirs);
 	}
 	case Trig::ScreenPos: return Value::F(arg.i == 0 ? x - xmin : arg.i == 1 ? y - camY : 0);

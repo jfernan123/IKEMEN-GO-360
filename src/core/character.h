@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "core/air.h"
+#include "core/coords.h"
 #include "core/camera.h"
 #include "core/expr.h"
 #include "core/hitdef.h"
@@ -114,8 +115,12 @@ public:
 	int32_t animNo = -1;
 	Animation anim;
 	int32_t life = 1000, power = 0, sprPriority = 0;
-	// The character's units per stage unit: localcoord widths 320 against the stage's.
+	// Stage units per character unit: 1 for localcoord 320, 0.25 for localcoord 1280.
 	float localScale = 1;
+	float worldX() const { return coords::toWorld(x, localScale); }
+	float worldY() const { return coords::toWorld(y, localScale); }
+	void setWorldX(float value) { x = coords::toLocal(value, localScale); }
+	void addWorldX(float value) { x += coords::toLocal(value, localScale); }
 	// When set, every state change is logged with this label ("p1"), for comparing runs frame by frame.
 	std::string traceLabel;
 

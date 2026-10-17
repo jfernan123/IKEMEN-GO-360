@@ -350,10 +350,10 @@ public:
 			if (run[i]) players_[i].beginHitDetection();
 		for (int i = 0; i < 2; i++)
 			if (run[i]) players_[i].hitDetection();
-		const float leftest = std::min(players_[0].x, players_[1].x);
-		const float rightest = std::max(players_[0].x, players_[1].x);
+		const float leftest = std::min(players_[0].worldX(), players_[1].worldX());
+		const float rightest = std::max(players_[0].worldX(), players_[1].worldX());
 		if (!globallyPaused)
-			camera_.update(leftest, rightest, std::min(players_[0].y, players_[1].y), world_.halfWidth, edge);
+			camera_.update(leftest, rightest, std::min(players_[0].worldY(), players_[1].worldY()), world_.halfWidth, edge);
 		for (int i = 0; i < 2; i++)
 			if (run[i]) players_[i].tick();
 		effects_.tick();
@@ -470,7 +470,7 @@ private:
 	// as keeps the other player on screen, so the screen's edge is what stops a player walking away.
 	void limits(int i, float edge, float &lo, float &hi) const
 	{
-		const float other = players_[1 - i].x;
+		const float other = players_[1 - i].worldX();
 		const float camMin = std::max((float)stage_.camera.boundleft, other - edge);
 		const float camMax = std::min((float)stage_.camera.boundright, other + edge);
 		lo = std::max(stage_.leftbound, camMin - edge);
@@ -481,7 +481,7 @@ private:
 	{
 		float lo, hi;
 		limits(i, edge, lo, hi);
-		players_[i].x = std::clamp(players_[i].x, lo, hi);
+		players_[i].setWorldX(std::clamp(players_[i].worldX(), lo, hi));
 	}
 
 	// Players' bodies can't overlap: where they do, each moves back half the overlap. One stopped by a wall or the
@@ -493,23 +493,23 @@ private:
 		float al, ar, at, bl, br, bt;
 		a.body(al, ar, at);
 		b.body(bl, br, bt);
-		if (a.y <= bt || b.y <= at)
+		if (a.worldY() <= bt || b.worldY() <= at)
 			return;
 		// Who is on the left: by position, or by facing when exactly level.
-		const bool aLeft = a.x != b.x ? a.x < b.x : a.facing > 0;
+		const bool aLeft = a.worldX() != b.worldX() ? a.worldX() < b.worldX() : a.facing > 0;
 		const float overlap = aLeft ? ar - bl : br - al;
 		if (overlap <= 0)
 			return;
 		Character &left = aLeft ? a : b, &right = aLeft ? b : a;
 		const int li = aLeft ? 0 : 1, ri = 1 - li;
-		left.x -= overlap / 2;
-		right.x += overlap / 2;
+		left.addWorldX(-overlap / 2);
+		right.addWorldX(overlap / 2);
 		// Whatever a wall or the screen's edge took back from one goes to the other.
-		const float lx = left.x, rx = right.x;
+		const float lx = left.worldX(), rx = right.worldX();
 		keepInBounds(li, edge);
 		keepInBounds(ri, edge);
-		right.x += left.x - lx;
-		left.x -= rx - right.x;
+		right.addWorldX(left.worldX() - lx);
+		left.addWorldX(-(rx - right.worldX()));
 		keepInBounds(li, edge);
 		keepInBounds(ri, edge);
 	}
@@ -520,10 +520,10 @@ private:
 		const Stage::Shadow &s = stage_.shadow;
 		float k = 1;
 		if (s.fadeBegin != s.fadeEnd) {
-			if (c.y <= (float)s.fadeEnd)
+			if (c.worldY() <= (float)s.fadeEnd)
 				k = 0;
-			else if (c.y < (float)s.fadeBegin)
-				k = (c.y - s.fadeEnd) / (float)(s.fadeBegin - s.fadeEnd);
+			else if (c.worldY() < (float)s.fadeBegin)
+				k = (c.worldY() - s.fadeEnd) / (float)(s.fadeBegin - s.fadeEnd);
 		}
 		return (int)(s.intensity * k);
 	}

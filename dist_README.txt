@@ -23,6 +23,8 @@ LB+Start cycles: stage -> animation player -> sprite viewer.
 Needs a softmodded/RGH console (Bad Update + XeUnshackle + Aurora works).
 The characters and stage are selected in data/mugen360.ini. Edit its p1,
 p2 and stage paths to load other content as compatibility expands.
+Characters with non-320 localcoord values are scaled into the stage space;
+the 1280x720 Kung Fu Man reference is covered by the compatibility tests.
 
 INSTALL
 1. Copy the whole "mugen360" folder to the hard drive, e.g.  Hdd1:\Homebrew\mugen360\

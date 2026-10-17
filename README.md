@@ -140,9 +140,10 @@ paths use forward slashes.
      juggle-point spending, and the state 195 taunt. Enter/Start is once again available as MUGEN's
      `s` button; Tab or LB+Start changes the debug screen.
 7. **General game compatibility**
-   - 7a configurable content (in progress): P1, P2 and the stage are selected by `data/mugen360.ini`, with optional
-     PC command-line overrides. Next, non-320 character coordinates will be corrected and checked against the
-     official 1280x720 KFM variant.
+   - 7a configurable content and local coordinates (done): P1, P2 and the stage are selected by
+     `data/mugen360.ini`, with optional PC command-line overrides. Character positions, velocities, collision boxes,
+     widths, effects and rendering convert through Ikemen's `localscl`; the official 1280x720 KFM variant loads from
+     the reference release, draws at the same world size, and passes the normal-attack and real-hit regressions.
    - 7b projectiles: Projectile controllers, animation, movement, collision, hits and projectile triggers.
    - 7c helpers: Helper, DestroySelf, parent/root binding and parent variables.
    - 7d broader state compatibility: remaining common controllers and triggers, selected from real character usage.

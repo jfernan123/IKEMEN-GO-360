@@ -7,6 +7,7 @@
 
 #include "core/hitdef.h"
 #include "core/game_config.h"
+#include "core/coords.h"
 #include "core/states.h"
 
 using namespace m360;
@@ -93,6 +94,10 @@ int run7Tests()
 	expect(config.player1 == "data/chars/kfm/kfm.def", "game configuration selects P1");
 	expect(config.player2 == "data/chars/kfm/kfm.def", "game configuration selects P2");
 	expect(config.stage == "data/stages/kfm.def", "game configuration selects the stage");
+	expect(std::fabs(coords::scaleForWidth(1280) - .25f) < .001f, "1280 localcoord scale is one quarter");
+	expect(std::fabs(coords::toWorld(280, .25f) - 70) < .001f, "local position converts to stage position");
+	expect(std::fabs(coords::toLocal(70, .25f) - 280) < .001f, "stage position converts to local position");
+	expect(std::fabs(coords::between(9.6f, .25f, 1) - 2.4f) < .001f, "velocity converts between characters");
 	std::printf("7a content configuration: %d passed, %d failed\n", passed, failed);
 	return failed;
 }
