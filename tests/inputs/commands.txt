@@ -1,0 +1,33 @@
+# Player 1 performs a few of Kung Fu Man's commands; run with:
+#   build\pc\mugen360.exe --input tests\inputs\commands.txt --quickstart --quit 260 --shot 250 tests\out\commands.bmp
+# and check m360.log for "p1 command:" lines.
+30 -
+# Quarter circle forward + x (fireball, "QCF_x")
+3 D
+3 D R
+3 R
+2 R x
+30 -
+# Forward, forward (dash, "FF")
+3 R
+3 -
+3 R
+30 -
+# ~F, D, DF, x (Kung Fu Upper, "upper_x")
+3 R
+3 -
+3 D
+3 D R
+2 D R x
+30 -
+# Quarter circle forward + a (Kung Fu Knee, "QCF_a")
+3 D
+3 D R
+3 R
+2 R a
+30 -
+# Back, back (back dash, "BB")
+3 L
+3 -
+3 L
+10 -

@@ -1,0 +1,17 @@
+# Milestone 6d integration: starts with full test power and performs Triple Kung Fu Palm. This exercises SuperPause,
+# its shared F100 flash and sound, character PlaySnd, AfterImage/AfterImageTime, and the move's later hit effects.
+#   build\pc\mugen360.exe --input tests\inputs\effects.txt --quickstart --power 3000 --quit 260 --trace
+# Expected trace: state 3000, "superpause 30 ticks", and "afterimage length 20". State time must remain frozen during
+# the pause, then the move must resume and return to state 0.
+20 -
+# Two quarter circles forward + x.
+2 D
+2 D R
+2 R
+4 -
+2 D
+2 D R
+2 R
+5 -
+2 x
+230 -

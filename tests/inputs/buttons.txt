@@ -1,0 +1,15 @@
+# Each of the six attack buttons once; m360.log should list "p1 command:" x, y, z, a, b, c in order.
+#   build\pc\mugen360.exe --input tests\inputs\buttons.txt --quickstart --quit 80 --shot 75 tests\out\buttons.bmp
+10 -
+2 x
+8 -
+2 y
+8 -
+2 z
+8 -
+2 a
+8 -
+2 b
+8 -
+2 c
+20 -

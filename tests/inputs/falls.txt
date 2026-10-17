@@ -1,0 +1,26 @@
+# Knockdowns: a sweep (trip, 5070), then the Kung Fu Upper (launch, 5030/5050), punched again while falling (a
+# juggle). Landing also spawns shared F60/F61 dust Explods. Run with --trace and check m360.log:
+#   build\pc\mugen360.exe --input tests\inputs\falls.txt --quickstart --quit 700 --trace
+20 -
+# Walk in
+70 R
+5 -
+# Crouching strong kick: the sweep
+10 D
+2 D b
+50 D
+5 -
+# Wait for player 2 to get up, walk in again
+120 -
+50 R
+5 -
+# Kung Fu Upper (F, D, DF, x) up close
+3 R
+3 -
+3 D
+3 D R
+2 D R x
+12 -
+# Punch on the way down
+2 x
+120 -

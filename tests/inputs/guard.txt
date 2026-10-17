@@ -1,0 +1,25 @@
+# Player 1 attacks player 2, who backs into the corner and guards (run with tests\inputs\guard_p2.txt as --input2):
+#   build\pc\mugen360.exe --input tests\inputs\guard.txt --input2 tests\inputs\guard_p2.txt --quickstart --quit 460 --trace
+# Expected in m360.log: the punch guarded standing (p2 150 -> 151), the low kick hitting the standing guard (5000),
+# then a low kick and a punch guarded crouching (152 -> 153).
+20 -
+# Walk up to the cornered player 2
+150 R
+5 -
+# Standing light punch: guarded standing
+2 x
+45 -
+# Crouching light kick: low, beats a standing guard
+10 R
+10 D
+2 D a
+40 D
+# Player 2 is crouch-guarding now: low kick, then punch
+30 R
+5 -
+10 D
+2 D a
+40 D
+5 -
+2 x
+60 -

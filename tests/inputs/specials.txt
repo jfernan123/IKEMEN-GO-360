@@ -1,0 +1,36 @@
+# Kung Fu Man's dashes, specials and throw. Run with --trace and check m360.log:
+#   build\pc\mugen360.exe --input tests\inputs\specials.txt --quickstart --quit 900 --trace
+20 -
+# Dash forward (F, F): state 100
+3 R
+3 -
+3 R
+40 -
+# Back dash (B, B): state 105
+3 L
+3 -
+3 L
+50 -
+# Fireball (D, DF, F, x): state 1000
+3 D
+3 D R
+3 R
+2 R x
+80 -
+# Kung Fu Knee (D, DF, F, a): state 1050
+3 D
+3 D R
+3 R
+2 R a
+80 -
+# Kung Fu Upper (F, D, DF, x): state 1100
+3 R
+3 -
+3 D
+3 D R
+2 D R x
+80 -
+# Walk up to the other player, then forward + y: the throw (state 800)
+120 R
+2 R y
+80 -

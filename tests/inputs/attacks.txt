@@ -1,0 +1,41 @@
+# Every normal attack of Kung Fu Man, with time to finish between them. Run with --trace and check m360.log:
+#   build\pc\mugen360.exe --input tests\inputs\attacks.txt --quickstart --quit 1000 --trace
+# Expected states: 200 210 230 240 (standing), 400 410 430 440 (crouching), 600 610 630 640 (jumping).
+20 -
+# Standing: x y a b
+2 x
+50 -
+2 y
+50 -
+2 a
+50 -
+2 b
+60 -
+# Crouching: hold down, press, keep holding until the attack ends
+10 D
+2 D x
+50 D
+2 D y
+50 D
+2 D a
+50 D
+2 D b
+60 D
+30 -
+# Jumping: jump, press on the way up, land
+2 U
+8 -
+2 x
+60 -
+2 U
+8 -
+2 y
+60 -
+2 U
+8 -
+2 a
+60 -
+2 U
+8 -
+2 b
+60 -

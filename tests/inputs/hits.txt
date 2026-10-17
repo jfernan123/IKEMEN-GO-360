@@ -1,0 +1,24 @@
+# Player 1 walks up to player 2 and hits: standing, crouching, then a kick. Run with --trace and check m360.log for
+# "hits" lines and player 2 going 5000 -> 5001 -> 0 (standing) and 5010 -> 5011 -> 0 (crouching):
+#   build\pc\mugen360.exe --input tests\inputs\hits.txt --quickstart --quit 600 --trace
+20 -
+# Walk in
+70 R
+5 -
+# Light punch (x), then strong punch (y)
+2 x
+50 -
+2 y
+60 -
+# Walk back in, crouching light kick (down + a)
+40 R
+5 -
+10 D
+2 D a
+40 D
+20 -
+# Walk in, standing strong kick (b)
+40 R
+5 -
+2 b
+80 -

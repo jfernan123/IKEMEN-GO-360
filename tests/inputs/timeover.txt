@@ -1,0 +1,7 @@
+# Time over: player 1 lands one punch, then both wait out the clock; player 1 wins on life.
+#   build\pc\mugen360.exe --input tests\inputs\timeover.txt --quickstart --quit 6400 --trace
+# Expected in m360.log: "match: round 1: time over, wins 1-0", p1 -> 180 (win), p2 -> 170 (lose).
+20 -
+70 R
+5 -
+2 x

@@ -1,0 +1,15 @@
+# Generated PC and Xbox 360 builds/packages.
+/build/
+/dist/
+
+# Headless test output and runtime logs.
+/tests/out/
+/m360.log
+
+# Editor and OS files.
+/.vs/
+/.vscode/
+*.user
+*.suo
+Thumbs.db
+.DS_Store

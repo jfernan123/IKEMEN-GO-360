@@ -1,0 +1,4 @@
+# Player 2 for tests\inputs\guard.txt: holds back (right, facing left) into the corner, guarding standing, then
+# down-back to guard crouching.
+250 R
+300 D R

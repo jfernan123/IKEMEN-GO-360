@@ -1,0 +1,20 @@
+# Player 1 through Kung Fu Man's basic states, run by his state files:
+#   build\pc\mugen360.exe --input tests\inputs\states.txt --quickstart --quit 330 --shot 50 tests\out\s_stand.bmp
+#     --shot 90 tests\out\s_walk.bmp --shot 150 tests\out\s_crouch.bmp --shot 205 tests\out\s_jump.bmp
+#     --shot 268 tests\out\s_punch.bmp
+# frames 0-59: stand
+60 -
+# 60-119: walk forward (state 20)
+60 R
+# 120-129: stop
+10 -
+# 130-169: crouch (states 10, 11)
+40 D
+# 170-194: stand up (12), wait
+25 -
+# 195-196: jump straight up (40, 50, then landing 52)
+2 U
+63 -
+# 260-261: light punch, x (state 200)
+2 x
+70 -
