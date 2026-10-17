@@ -1,0 +1,6 @@
+# Push P2 to the right screen edge, then punch. The hit applies MUGEN corner push to P1.
+# Run with --quickstart --quit 400 --trace and expect a cornerpush trace.
+250 R
+5 -
+2 x
+143 -

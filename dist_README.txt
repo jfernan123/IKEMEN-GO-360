@@ -1,5 +1,5 @@
-MUGEN360 - milestone 6d: effects and sound (homebrew test build)
-=============================================================
+MUGEN360 - milestone 6e: KFM combat compatibility (homebrew test build)
+======================================================================
 
 Kung Fu Man against Kung Fu Man on his stage, run by his own MUGEN state
 files (kfm.cns, kfm.cmd, common1.cns). A real match now: intros, "Round 1",
@@ -14,9 +14,12 @@ Powered moves have coloured afterimages and palette flashes. Screen shakes,
 pauses, super freezes and the shared super flash work. Character voices,
 attack sounds, shared hit/guard sounds and landing sounds play through the
 PC or Xbox 360 audio backend.
+Kung Fu Blocking (forward + light punch) now parries attacks. Hits at the
+edge of the screen apply MUGEN corner push, and air-combo juggle limits are
+enforced.
 The numbers at the top show each player's state, like Ikemen's debug view;
 red boxes are attacks, blue boxes are where a player can be hit.
-Start cycles: stage -> animation player -> sprite viewer.
+LB+Start cycles: stage -> animation player -> sprite viewer.
 Needs a softmodded/RGH console (Bad Update + XeUnshackle + Aurora works).
 
 INSTALL
@@ -32,7 +35,8 @@ CONTROLS (stage)
   A  B  RT           kicks (light, medium, strong)
   LB                 hide / show the info text
   LT                 start a new match
-  Start              next screen (animations, then sprites)
+  Start              taunt / character Start button
+  LB + Start         next screen (animations, then sprites)
   Back               quit
 
 CONTROLS (animation player)

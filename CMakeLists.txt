@@ -54,8 +54,8 @@ else()
 		COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:SDL3::SDL3> $<TARGET_FILE_DIR:mugen360>)
 
 	# Unit tests for the engine's core, no platform: build\pc\mugen360_tests.exe, run from this folder.
-	add_executable(mugen360_tests tests/expr_test.cpp tests/states_test.cpp tests/effects_sound_test.cpp src/core/expr.cpp
-		src/core/air.cpp src/core/effects.cpp src/core/file.cpp src/core/log.cpp src/core/sff.cpp src/core/sound.cpp
+	add_executable(mugen360_tests tests/expr_test.cpp tests/states_test.cpp tests/effects_sound_test.cpp tests/combat_test.cpp
+		src/core/expr.cpp src/core/air.cpp src/core/effects.cpp src/core/file.cpp src/core/hitdef.cpp src/core/log.cpp src/core/sff.cpp src/core/sound.cpp
 		src/core/sprite_renderer.cpp src/core/states.cpp src/core/text.cpp third_party/lodepng/lodepng.cpp)
 	target_include_directories(mugen360_tests PRIVATE src third_party/lodepng)
 	if(MSVC)

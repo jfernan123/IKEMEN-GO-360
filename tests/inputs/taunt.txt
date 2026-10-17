@@ -1,0 +1,5 @@
+# Start remains MUGEN's s button on the fight screen and enters KFM's taunt state 195.
+# Run with --quickstart --quit 100 --trace.
+20 -
+2 s
+78 -

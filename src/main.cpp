@@ -1,5 +1,5 @@
 ﻿// Milestones 1-3: Kung Fu Man's stage with two Kung Fu Men on it, his animations and his sprites, from the real
-// MUGEN files. Start cycles stage -> animations -> sprites.
+// MUGEN files. Tab (LB+Start on a pad) cycles stage -> animations -> sprites.
 //
 // Stage (starts here)
 //   Left / right   walk player 1 (controller 2 walks player 2)
@@ -17,7 +17,7 @@
 //   X              turn around
 //   Y              collision boxes on / off
 //
-// Start switches screen; Back (Esc) quits.
+// Tab / LB+Start switches screen; Back (Esc) quits. Start remains available to the character as MUGEN's s button.
 
 #include <algorithm>
 #include <cmath>
@@ -89,7 +89,7 @@ private:
 
 struct Buttons {
 	Repeat left, right, lb, rb, up, down, b;
-	Press a, x, y, start, back;
+	Press a, x, y, menu, back;
 };
 
 // Test runs (PC): "--input script" plays player 1's controller from a file instead of the keyboard ("--input2 script"
@@ -110,50 +110,71 @@ public:
 				continue;
 			const size_t space = line.find(' ');
 			const int frames = text::atoi(line.substr(0, space));
-			platform::Pad pad;
-			pad.connected = true;
+			uint16_t held = 0;
 			for (char k : space == std::string::npos ? std::string() : line.substr(space)) {
 				switch (k) {
-				case 'U': pad.up = true; break;
-				case 'D': pad.down = true; break;
-				case 'L': pad.left = true; break;
-				case 'R': pad.right = true; break;
-				case 'x': pad.x = true; break;
-				case 'y': pad.y = true; break;
-				case 'z': pad.rb = true; break;
-				case 'a': pad.a = true; break;
-				case 'b': pad.b = true; break;
-				case 'c': pad.rt = true; break;
-				case 's': pad.start = true; break;
+				case 'U': held |= Up; break;
+				case 'D': held |= Down; break;
+				case 'L': held |= Left; break;
+				case 'R': held |= Right; break;
+				case 'x': held |= X; break;
+				case 'y': held |= Y; break;
+				case 'z': held |= Z; break;
+				case 'a': held |= A; break;
+				case 'b': held |= B; break;
+				case 'c': held |= C; break;
+				case 's': held |= Start; break;
 				default: break;
 				}
 			}
 			for (int i = 0; i < frames; i++)
-				frames_.push_back(pad);
+				frames_.push_back(held);
 		}
 		return true;
 	}
 	// The pad for a frame; nothing held once the script has run out.
 	platform::Pad at(uint32_t frame) const
 	{
-		platform::Pad idle;
-		idle.connected = true;
-		return frame < frames_.size() ? frames_[frame] : idle;
+		const uint16_t held = frame < frames_.size() ? frames_[frame] : 0;
+		platform::Pad pad;
+		pad.connected = true;
+		pad.up = (held & Up) != 0;
+		pad.down = (held & Down) != 0;
+		pad.left = (held & Left) != 0;
+		pad.right = (held & Right) != 0;
+		pad.x = (held & X) != 0;
+		pad.y = (held & Y) != 0;
+		pad.rb = (held & Z) != 0;
+		pad.a = (held & A) != 0;
+		pad.b = (held & B) != 0;
+		pad.rt = (held & C) != 0;
+		pad.start = (held & Start) != 0;
+		return pad;
 	}
 
 private:
-	std::vector<platform::Pad> frames_;
+	enum : uint16_t {
+		Up = 1 << 0, Down = 1 << 1, Left = 1 << 2, Right = 1 << 3, X = 1 << 4, Y = 1 << 5,
+		Z = 1 << 6, A = 1 << 7, B = 1 << 8, C = 1 << 9, Start = 1 << 10
+	};
+	// A compact mask avoids GCC combining the Pad's individual bytes with instructions Xenia does not implement.
+	std::vector<uint16_t> frames_;
 };
 
 // A controller as MUGEN's buttons: punches x y z on X, Y and RB, kicks a b c on A, B and RT, start on Start.
-InputState toInput(const platform::Pad &pad)
+void toInput(const platform::Pad &pad, InputState &in)
 {
-	InputState in;
-	in.up = pad.up, in.down = pad.down, in.left = pad.left, in.right = pad.right;
-	in.x = pad.x, in.y = pad.y, in.z = pad.rb;
-	in.a = pad.a, in.b = pad.b, in.c = pad.rt;
+	in.up = pad.up;
+	in.down = pad.down;
+	in.left = pad.left;
+	in.right = pad.right;
+	in.x = pad.x;
+	in.y = pad.y;
+	in.z = pad.rb;
+	in.a = pad.a;
+	in.b = pad.b;
+	in.c = pad.rt;
 	in.s = pad.start;
-	return in;
 }
 
 // Changes a renderer's palette with up / down: -1 (each sprite's own) then the SFF's palettes in turn.
@@ -302,11 +323,16 @@ public:
 		ai_.update((float)AI_LEVEL, cpu && match_.roundState() == 2);
 		const bool run[2] = { !effects_.pausedFor(0), !effects_.pausedFor(1) };
 		if (run[0]) {
-			players_[0].turnAndInput(toInput(pad1));
+			InputState input1;
+			toInput(pad1, input1);
+			players_[0].turnAndInput(input1);
 			recordCommands(players_[0]);
 		}
-		if (run[1])
-			players_[1].turnAndInput(cpu ? ai_.state() : toInput(pad2));
+		if (run[1]) {
+			InputState input2;
+			toInput(pad2, input2);
+			players_[1].turnAndInput(cpu ? ai_.state() : input2);
+		}
 		for (int i = 0; i < 2; i++)
 			if (run[i]) players_[i].actionPrepare();
 		for (int i = 0; i < 2; i++)
@@ -706,7 +732,7 @@ int main(int argc, char **argv)
 	const bool testRun = !inputPath.empty() || !shots.empty() || quitFrame != UINT32_MAX;
 	if (!platform::init(testRun))
 		return 1;
-	logf("mugen360: milestone 6d, effects and sound");
+	logf("mugen360: milestone 6e, KFM combat compatibility");
 	InputScript script, script2;
 	if (!inputPath.empty() && !script.load(inputPath))
 		logf("mugen360: can't read input script %s", inputPath.c_str());
@@ -738,23 +764,28 @@ int main(int argc, char **argv)
 				break;
 			if (const auto shot = shots.find(frame); shot != shots.end())
 				platform::requestScreenshot(shot->second.c_str());
-			if (buttons.start.update(pad.start))
+			if (buttons.menu.update(pad.menu))
 				screen = screen == Screen::Stage ? Screen::Animations
 					: screen == Screen::Animations ? Screen::Sprites
 					: Screen::Stage;
+			platform::Pad gameplayPad = pad;
+			if (pad.menu) {
+				gameplayPad.start = false;
+				gameplayPad.lb = false;
+			}
 			const bool loaded = screen == Screen::Stage ? stageLoaded : kfmLoaded;
 			if (!loaded) {
 				drawText("COULDN'T LOAD:", 40, 40, 4, ERROR_TEXT);
 				drawText(error.c_str(), 40, 90, 2, TEXT);
-				drawText("START: NEXT SCREEN   BACK: QUIT", 40, 680, 2, DIM);
+				drawText("TAB / LB+START: NEXT SCREEN   BACK: QUIT", 40, 680, 2, DIM);
 			} else if (screen == Screen::Stage) {
-				stage.update(buttons, pad, inputPath.empty() ? platform::pad(1) : script2.at(frame));
+				stage.update(buttons, gameplayPad, inputPath.empty() ? platform::pad(1) : script2.at(frame));
 				stage.draw();
 			} else if (screen == Screen::Animations) {
-				animViewer.update(buttons, pad);
+				animViewer.update(buttons, gameplayPad);
 				animViewer.draw();
 			} else {
-				spriteViewer.update(buttons, pad);
+				spriteViewer.update(buttons, gameplayPad);
 				spriteViewer.draw();
 			}
 			platform::endFrame();

@@ -42,7 +42,8 @@ struct FightWorld {
 namespace Special {
 constexpr uint32_t NoWalk = 1, NoAutoTurn = 2, NoStandGuard = 4, NoCrouchGuard = 8, NoAirGuard = 16, Invisible = 32,
 				   NoShadow = 64, NoJuggleCheck = 128, Unguardable = 256, NoKo = 512, Intro = 1024,
-				   RoundNotOver = 2048, NoBarDisplay = 4096, NoFallHitFlag = 8192, TimerFreeze = 16384;
+				   RoundNotOver = 2048, NoBarDisplay = 4096, NoFallHitFlag = 8192, TimerFreeze = 16384,
+				   NoCornerPush = 32768;
 }
 
 // A MUGEN character, run by its own state files. Loads its .def, SFF, AIR, CMD and CNS (states and constants) and
@@ -169,6 +170,8 @@ private:
 	void runPalFX(const StateController &sc);
 	void runAfterImage(const StateController &sc);
 	void runPause(const StateController &sc, bool superPause);
+	void runReversalDef(const StateController &sc);
+	void runHitOverride(const StateController &sc);
 	void autoTurn();
 	bool shouldFaceP2() const;
 	void posUpdate();
@@ -179,7 +182,9 @@ private:
 	bool attrCheck(const HitDef &hd, char attackerStateType) const;
 	bool hittableBy(const Character &attacker) const;
 	bool clsnHits(const Character &getter) const;
+	bool reversalMatches(const Character &attacker) const;
 	int hitResultCheck(Character &getter);
+	bool resolveReversal(Character &attacker);
 	void spawnHitSpark(Character &getter, int result);
 	Reaction gethitAnimtype() const;
 	// Damage after the attacker's attack (attackMul, 1 = 100) and this character's defence, held under its life.
@@ -275,6 +280,7 @@ private:
 		int32_t attrState = 0, attrAttack = 0;
 	};
 	HitBySlot hitBy_[2];
+	HitOverride hitOverride_[8];
 	uint32_t special_ = 0;          // AssertSpecial flags, cleared each frame
 	int32_t juggle_ = 0;            // this attack's juggle cost (statedef juggle)
 	float customDefense_ = 1, fallDefenseMul_ = 1;
@@ -283,6 +289,8 @@ private:
 	// juggle points it has left against it).
 	bool targetP2_ = false, targetedBy_ = false;
 	int32_t juggleLeft_ = 15;
+	// The attacker's backward displacement while its target is pinned to a screen corner.
+	float cornerPushVel_ = 0, cornerPushMul_ = 0.7f;
 	// Bound to another character (TargetBind): where, relative to it, for how long.
 	const Character *bindTo_ = nullptr;
 	int32_t bindTime_ = 0;

@@ -230,12 +230,16 @@ void Character::startRound(float px, float py, int face, bool newMatch)
 	afterImage_ = AfterImageState{};
 	for (HitBySlot &s : hitBy_)
 		s = HitBySlot{};
+	for (HitOverride &s : hitOverride_)
+		s = HitOverride{};
 	special_ = 0;
 	juggle_ = 0;
 	customDefense_ = fallDefenseMul_ = 1;
 	defenseMulDelay_ = false;
 	targetP2_ = targetedBy_ = false;
 	juggleLeft_ = 0;
+	cornerPushVel_ = 0;
+	cornerPushMul_ = 0.7f;
 	resetBind();
 	stateNo = prevStateNo = 0;
 	stateTime = 0;
@@ -646,6 +650,8 @@ bool Character::runController(const StateController &sc)
 		playerPush_ = i != 0;
 		return false;
 	case CtrlType::HitDef: runHitDef(sc); return false;
+	case CtrlType::ReversalDef: runReversalDef(sc); return false;
+	case CtrlType::HitOverride: runHitOverride(sc); return false;
 	case CtrlType::Explod: runExplod(sc); return false;
 	case CtrlType::EnvShake: runEnvShake(sc); return false;
 	case CtrlType::MakeDust: runMakeDust(sc); return false;
@@ -1025,6 +1031,10 @@ void Character::actionPrepare()
 			if (s.time > 0 && --s.time == 0)
 				s = HitBySlot{};
 		}
+		for (HitOverride &s : hitOverride_) {
+			if (s.time > 0 && --s.time == 0)
+				s = HitOverride{};
+		}
 	}
 	if (unhittableTime_ > 0)
 		unhittableTime_--;
@@ -1175,6 +1185,18 @@ void Character::setFacing(int f)
 
 void Character::posUpdate()
 {
+	// Corner push moves the attacker away while the target is pinned to the screen edge. PosFreeze does not suppress
+	// it in MUGEN; the stored velocity keeps decaying even after the target leaves the corner.
+	if (cornerPushVel_ != 0) {
+		const bool targetAtCorner = world_ && p2_ && p2_->screenBound_ &&
+			(facing > 0 ? p2_->x >= world_->camX + world_->screenEdge - 0.5f
+						: p2_->x <= world_->camX - world_->screenEdge + 0.5f);
+		if (targetAtCorner && !(special_ & Special::NoCornerPush))
+			x += cornerPushVel_ / localScale;
+		cornerPushVel_ *= cornerPushMul_;
+		if (std::fabs(cornerPushVel_) < 1.0f / localScale)
+			cornerPushVel_ = 0;
+	}
 	if (!posFreeze_) {
 		x += vx * facing;
 		y += vy;
@@ -1640,6 +1662,16 @@ void Character::runHitDef(const StateController &sc)
 	setI("airguard.ctrltime", hd.airguardCtrltime);
 	setF2("ground.velocity", hd.groundVel);
 	setF2("guard.velocity", hd.guardVel);
+	setF("ground.cornerpush.veloff", hd.groundCornerpushVeloff);
+	setF("air.cornerpush.veloff", hd.airCornerpushVeloff);
+	setF("down.cornerpush.veloff", hd.downCornerpushVeloff);
+	setF("guard.cornerpush.veloff", hd.guardCornerpushVeloff);
+	setF("airguard.cornerpush.veloff", hd.airguardCornerpushVeloff);
+	setF("ground.cornerpush.velmul", hd.groundCornerpushVelmul);
+	setF("air.cornerpush.velmul", hd.airCornerpushVelmul);
+	setF("down.cornerpush.velmul", hd.downCornerpushVelmul);
+	setF("guard.cornerpush.velmul", hd.guardCornerpushVelmul);
+	setF("airguard.cornerpush.velmul", hd.airguardCornerpushVelmul);
 	setF("xaccel", hd.xaccel);
 	setF("yaccel", hd.yaccel);
 	setI2("unhittabletime", hd.unhittabletime);
@@ -1647,6 +1679,57 @@ void Character::runHitDef(const StateController &sc)
 	hd.active = true;
 	hd.finalize(mugen1_);
 	hitdef_ = hd;
+}
+
+// ReversalDef is a HitDef whose attack boxes catch matching enemy attack boxes. KFM uses only the original MUGEN
+// parameters here; the result changes P1's state without putting the attacker into a get-hit state.
+void Character::runReversalDef(const StateController &sc)
+{
+	HitDef hd;
+	hd.sparkno = (int32_t)constF("data.sparkno", 2);
+	if (const std::string *attr = sc.param("reversal.attr"))
+		parseAttr(*attr, hd.reversalAttrState, hd.reversalAttrAttack, false);
+	int32_t i = 0;
+	float f = 0;
+	for (size_t k = 0; k < 2; k++) {
+		if (paramI(sc, "pausetime", k, i)) hd.pausetime[k] = i;
+		if (paramF(sc, "sparkxy", k, f)) hd.sparkxy[k] = f;
+	}
+	resource(sc.param("sparkno"), &hd.sparkno, 1, hd.sparkPrefix);
+	resource(sc.param("hitsound"), hd.hitsound, 2, hd.hitsoundPrefix);
+	if (paramI(sc, "p1stateno", 0, i)) hd.p1stateno = i;
+	if (paramI(sc, "p1sprpriority", 0, i)) hd.p1sprpriority = i;
+	if (paramI(sc, "p2sprpriority", 0, i)) hd.p2sprpriority = i;
+	hd.hitonce = 1;
+	hd.active = hd.reversalAttrAttack != 0;
+	hd.finalize(mugen1_);
+	hitdef_ = hd;
+	if (!traceLabel.empty())
+		logf("%s frame %u: state %d reversal %s", traceLabel.c_str(), world_ ? world_->gameTime : 0, stateNo,
+			hd.active ? "armed" : "cleared");
+}
+
+// HitOverride chooses one of eight slots. An empty attr leaves a live timer that matches nothing, which is how KFM
+// explicitly clears its blocking window.
+void Character::runHitOverride(const StateController &sc)
+{
+	int32_t slot = 0, time = 1, stateno = -1;
+	paramI(sc, "slot", 0, slot);
+	paramI(sc, "time", 0, time);
+	paramI(sc, "stateno", 0, stateno);
+	if (slot < 0 || slot >= 8)
+		slot = 0;
+	if (time < -1 || time == 0)
+		time = 1;
+	HitOverride &out = hitOverride_[slot];
+	out = HitOverride{};
+	out.time = time;
+	out.stateno = stateno;
+	if (const std::string *attr = sc.param("attr"))
+		parseAttr(*attr, out.attrState, out.attrAttack, false);
+	if (!traceLabel.empty())
+		logf("%s frame %u: state %d hitoverride slot %d %s", traceLabel.c_str(), world_ ? world_->gameTime : 0,
+			stateNo, slot, out.attrAttack ? "armed" : "cleared");
 }
 
 const std::vector<Clsn> *Character::boxes(int kind) const
@@ -1661,6 +1744,13 @@ const std::vector<Clsn> *Character::boxes(int kind) const
 bool Character::clsnHits(const Character &g) const
 {
 	return clsnTouch(g, 1, 2);
+}
+
+bool Character::reversalMatches(const Character &attacker) const
+{
+	if (!hitdef_.active || !hitdef_.isReversal() || !attacker.hitdef_.active || attacker.hitdef_.isReversal())
+		return false;
+	return hitdef_.reverses(attacker.stateType, attacker.hitdef_.attrAttack);
 }
 
 // Whether boxes of this character's touch the other's, in stage space (Ikemen's clsnCheckSingle and clsnOverlap;
@@ -1827,15 +1917,31 @@ int Character::hitResultCheck(Character &g)
 		if (g.life > g.computeDamage(hd.guardDamage, hd.guardKill, attackMul))
 			result = 2;
 	}
-	if (result > 0 && (g.stateType == 'A' ? hd.airType : hd.groundType) == HitType::None)
+	if (hd.isReversal())
+		result = -result;
+	else if (result > 0 && (g.stateType == 'A' ? hd.airType : hd.groundType) == HitType::None)
 		result = -result;
 	// Once a hit this frame will KO, later ones can't spare it.
 	if (g.ghv_.damage >= g.life)
 		g.ghv_.kill = true;
 
+	// HitOverride takes priority over p2stateno and the common get-hit states.
+	int overrideState = -1;
+	for (const HitOverride &slot : g.hitOverride_) {
+		if (slot.matches(stateType, hd.attrAttack)) {
+			overrideState = slot.stateno;
+			break;
+		}
+	}
 	// p2stateno: the getter goes into a state of the attacker's files (p2getp1state, the default) or its own.
 	bool p2s = false;
-	if ((!g.stchtmp_ || !g.gotHit_) && std::abs(result) == 1 && hd.p2stateno >= 0 && !hd.keepstate) {
+	if ((!g.stchtmp_ || !g.gotHit_) && overrideState >= 0) {
+		g.minus_ = 1;
+		g.stateChange1(overrideState, &g);
+		g.minus_ = 0;
+		g.ctrl = false;
+		p2s = true;
+	} else if ((!g.stchtmp_ || !g.gotHit_) && std::abs(result) == 1 && hd.p2stateno >= 0 && !hd.keepstate) {
 		g.minus_ = 1;
 		g.stateChange1(hd.p2stateno, hd.p2getp1state ? stateOwner_ : &g);
 		g.minus_ = 0;
@@ -2026,12 +2132,56 @@ int Character::hitResultCheck(Character &g)
 		}
 		// Hitting someone falling, before or after this hit, costs this attack's juggle points.
 		if (g.prevFallflag_ || g.ghv_.fallflag) {
-			if (!(special_ & Special::NoJuggleCheck))
+			if (!(special_ & Special::NoJuggleCheck)) {
 				g.juggleLeft_ -= juggle_;
+				if (!traceLabel.empty())
+					logf("%s frame %u: juggle cost %d, %d left", traceLabel.c_str(), world_ ? world_->gameTime : 0,
+						juggle_, g.juggleLeft_);
+			}
 			juggle_ = 0;
 		}
 	}
+	if (result > 0) {
+		if (result == 2) {
+			cornerPushVel_ = (g.stateType == 'A' ? hd.airguardCornerpushVeloff : hd.guardCornerpushVeloff) * facing;
+			cornerPushMul_ = g.stateType == 'A' ? hd.airguardCornerpushVelmul : hd.guardCornerpushVelmul;
+		} else if (g.stateType == 'A') {
+			cornerPushVel_ = hd.airCornerpushVeloff * facing;
+			cornerPushMul_ = hd.airCornerpushVelmul;
+		} else if (g.stateType == 'L') {
+			cornerPushVel_ = hd.downCornerpushVeloff * facing;
+			cornerPushMul_ = hd.downCornerpushVelmul;
+		} else {
+			cornerPushVel_ = hd.groundCornerpushVeloff * facing;
+			cornerPushMul_ = hd.groundCornerpushVelmul;
+		}
+		if (!traceLabel.empty() && cornerPushVel_ != 0)
+			logf("%s frame %u: cornerpush %.2f x %.2f", traceLabel.c_str(), world_ ? world_->gameTime : 0,
+				cornerPushVel_, cornerPushMul_);
+	}
 	return result;
+}
+
+bool Character::resolveReversal(Character &attacker)
+{
+	if (!reversalMatches(attacker) || !clsnTouch(attacker, 1, 1))
+		return false;
+	const int result = hitResultCheck(attacker);
+	if (result == 0)
+		return false;
+	spawnHitSpark(attacker, result);
+	const SoundBank *soundBank = hitdef_.hitsoundPrefix == 'F' && world_ ? world_->commonSound : &sound_;
+	if (soundBank && hitdef_.hitsound[0] >= 0)
+		soundBank->play(hitdef_.hitsound[0], hitdef_.hitsound[1]);
+	hitPauseTime_ = std::max(1, hitdef_.pausetime[0] + (mugen1_ ? 1 : 0));
+	moveContactType_ = 'H';
+	moveContactTime_ = -1;
+	hitdefContact_ = true;
+	attacker.hitdef_.hitOpponent = true;
+	if (!traceLabel.empty())
+		logf("%s frame %u: state %d reverses p%d state %d", traceLabel.c_str(), world_ ? world_->gameTime : 0,
+			stateNo, attacker.playerNo + 1, attacker.stateNo);
+	return true;
 }
 
 // Hit and guard sparks use Ikemen's regular HitDef placement: x is offset from the target's facing edge, while y is
@@ -2083,9 +2233,18 @@ void Character::hitDetection()
 	// Only a live HitDef hits, and a fall can only be juggled while juggle points last (MUGEN: once it's a target).
 	if (!hitdef_.active || hitdef_.hitonce < 0 || hitdef_.hitOpponent)
 		return;
+	// ReversalDef gets first claim on an incoming attack and checks attack boxes against attack boxes.
+	if (g->resolveReversal(*this))
+		return;
 	const bool canJuggle = (special_ & Special::NoJuggleCheck) ||
 		juggle_ <= (g->targetedBy_ ? g->juggleLeft_ : airJuggle_) || !targetP2_;
-	if (!canJuggle || !g->hittableBy(*this) || !clsnHits(*g))
+	if (!canJuggle) {
+		if (!traceLabel.empty() && clsnHits(*g))
+			logf("%s frame %u: state %d juggle rejected, cost %d, %d left", traceLabel.c_str(),
+				world_ ? world_->gameTime : 0, stateNo, juggle_, g->juggleLeft_);
+		return;
+	}
+	if (!g->hittableBy(*this) || !clsnHits(*g))
 		return;
 	const int result = hitResultCheck(*g);
 	if (result == 0)
@@ -2151,7 +2310,7 @@ void Character::runAssertSpecial(const StateController &sc)
 		{ "nojugglecheck", Special::NoJuggleCheck }, { "unguardable", Special::Unguardable },
 		{ "noko", Special::NoKo }, { "intro", Special::Intro }, { "roundnotover", Special::RoundNotOver },
 		{ "nobardisplay", Special::NoBarDisplay }, { "nofallhitflag", Special::NoFallHitFlag },
-		{ "timerfreeze", Special::TimerFreeze } };
+		{ "timerfreeze", Special::TimerFreeze }, { "nocornerpush", Special::NoCornerPush } };
 	for (const char *param : { "flag", "flag2", "flag3" }) {
 		const std::string *v = sc.param(param);
 		if (!v)

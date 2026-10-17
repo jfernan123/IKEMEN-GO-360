@@ -11,8 +11,9 @@ as compatibility grows.
 
 ## Current status
 
-Milestone 6d is complete. KFM can fight full matches with commands, attacks, guarding, throws, falls, life and rounds,
-a CPU opponent, hit effects, Explods, palette effects, pauses, afterimages, environmental shake, and sound. Both the
+Milestone 6e is complete. KFM can fight full matches with commands, attacks, guarding, throws, falls, life and rounds,
+a CPU opponent, hit effects, Explods, palette effects, pauses, afterimages, environmental shake, and sound. Kung Fu
+Blocking now parries attacks through ReversalDef and HitOverride, and attacks apply MUGEN corner push. Both the
 Windows and Xbox 360 builds pass the current test and build checks.
 
 ## Build and run
@@ -35,11 +36,12 @@ build needs WSL Debian with xsdk at `~/xsdk` and its GCC toolchain at `~/xsdk-gc
 | J / K / L or Z / X | Kicks a / b / c |
 | Q | Toggle debug information and hitboxes |
 | R | Start a new match |
-| Enter | Change debug screen |
+| Enter | Taunt / character Start button |
+| Tab | Change debug screen |
 | Esc | Quit |
 
-On a controller, use X/Y/RB for punches, A/B/RT for kicks, LB for debug information, LT for a new match, Start to
-change screens, and Back to quit.
+On a controller, use X/Y/RB for punches, A/B/RT for kicks, LB for debug information, LT for a new match, Start for
+the character's Start button or taunt, LB+Start to change screens, and Back to quit.
 
 ## Tests
 
@@ -50,9 +52,10 @@ build\pc\mugen360_tests.exe
 tests\run_all.bat
 ```
 
-The suite includes unit coverage for expressions, state loading, effects, sound decoding and mixing, plus hidden
-scripted matches covering commands, attacks, guarding, throws, falls, rounds, time over, SuperPause, and AfterImage.
-Scripted runs never send keyboard or mouse input to the desktop.
+The suite includes unit coverage for expressions, state loading, effects, sound decoding and mixing, reversals,
+HitOverride and corner-push defaults. Hidden scripted matches cover commands, attacks, guarding, throws, falls,
+juggling, rounds, time over, SuperPause, AfterImage, Kung Fu Blocking, corner push and taunting. Scripted runs never
+send keyboard or mouse input to the desktop.
 
 ## Project layout
 
@@ -100,8 +103,7 @@ paths use forward slashes.
      (targets, TargetBind/State/LifeAdd/Facing/Vel*, custom states: the thrown player runs the attacker's states and
      ChangeAnim2 plays the attacker's actions); juggle points; AssertSpecial (walk, turn, guard, visibility flags);
      DefenceMulSet; players push only where hurt boxes touch. `tests/inputs/guard.txt` (with `--input2
-     tests/inputs/guard_p2.txt` for player 2), `falls.txt` and `specials.txt` (the throw). Not yet: ReversalDef,
-     HitOverride, cornerpush.
+     tests/inputs/guard_p2.txt` for player 2), `falls.txt` and `specials.txt` (the throw).
    - 6c life and rounds (done): the round in Ikemen's order and timings (`core/match`): state 5900, intros
      (AssertSpecial Intro holds the round), "Round N" / "Fight", the 99-second clock, KO (5030, KO slowdown), double
      KO and time over (decided on life), win / lose / draw poses (180 / 170 / 175), best of three, then a new match;
@@ -126,6 +128,12 @@ paths use forward slashes.
      The focused 6d unit tests cover SND/WAV decoding, resampling, mixing, fightfx loading, Explod lifetime,
      EnvShake and pause timing. `tests/inputs/effects.txt` covers KFM's SuperPause and AfterImage in a hidden run;
      `tests/run_all.bat` runs the unit tests and every scripted fight regression.
+   - 6e KFM combat compatibility (done): ReversalDef and HitOverride make Kung Fu Blocking intercept matching attacks;
+     MUGEN's ground, air, down and guard corner-push offsets and friction run when a target is pinned to a screen edge;
+     AssertSpecial `nocornerpush` is supported. Focused unit tests cover controller loading, attribute matching,
+     override expiry and corner-push defaults. Hidden fight regressions exercise a real parry, visible corner push,
+     juggle-point spending, and the state 195 taunt. Enter/Start is once again available as MUGEN's
+     `s` button; Tab or LB+Start changes the debug screen.
 ## Asset notice
 
 Kung Fu Man, his stage, `common1.cns`, and the shared fight resources are Elecbyte/Ikemen release assets included

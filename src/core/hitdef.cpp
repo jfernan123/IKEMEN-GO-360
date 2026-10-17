@@ -4,7 +4,7 @@ namespace m360 {
 
 void HitDef::finalize(bool mugen10)
 {
-	if (attrAttack == 0)
+	if (attrAttack == 0 && reversalAttrAttack == 0)
 		active = false;
 	// Throws hit once by default.
 	if (hitonce < 0)
@@ -31,6 +31,20 @@ void HitDef::finalize(bool mugen10)
 	orFloat(airguardVel[1], airVel[1] * 0.5f);
 	orFloat(downVel[0], airVel[0]);
 	orFloat(downVel[1], airVel[1]);
+
+	// MUGEN characters use its legacy corner-push defaults. Ikemen characters instead inherit ground.velocity and
+	// target friction, but this port currently loads MUGEN characters.
+	if (!isSet(groundCornerpushVeloff))
+		groundCornerpushVeloff = (attrState & 4) ? 0 : guardVel[0] * 1.3f;
+	orFloat(airCornerpushVeloff, groundCornerpushVeloff);
+	orFloat(downCornerpushVeloff, groundCornerpushVeloff);
+	orFloat(guardCornerpushVeloff, groundCornerpushVeloff);
+	orFloat(airguardCornerpushVeloff, groundCornerpushVeloff);
+	orFloat(groundCornerpushVelmul, 0.7f);
+	orFloat(airCornerpushVelmul, groundCornerpushVelmul);
+	orFloat(downCornerpushVelmul, groundCornerpushVelmul);
+	orFloat(guardCornerpushVelmul, groundCornerpushVelmul);
+	orFloat(airguardCornerpushVelmul, groundCornerpushVelmul);
 
 	if (airAnimtype == Reaction::Unknown)
 		airAnimtype = animtype;

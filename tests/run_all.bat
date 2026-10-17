@@ -17,6 +17,9 @@ call :run hits 600 --quickstart || exit /b 1
 call :guard || exit /b 1
 call :run falls 700 --quickstart || exit /b 1
 call :run effects 260 --quickstart --power 3000 || exit /b 1
+call :reversal || exit /b 1
+call :run cornerpush 400 --quickstart || exit /b 1
+call :run taunt 100 --quickstart || exit /b 1
 call :run buttons 80 --quickstart || exit /b 1
 call :run commands 260 --quickstart || exit /b 1
 call :run states 330 --quickstart || exit /b 1
@@ -26,6 +29,10 @@ call :run timeover 6400 --quickstart || exit /b 1
 findstr /c:"state 0 -> 3000" tests\out\latest_effects.log >nul || (echo FAIL: super state 3000 did not run & exit /b 1)
 findstr /c:"superpause 30 ticks" tests\out\latest_effects.log >nul || (echo FAIL: SuperPause did not run & exit /b 1)
 findstr /c:"afterimage length 20" tests\out\latest_effects.log >nul || (echo FAIL: super AfterImage did not run & exit /b 1)
+findstr /c:"state 1300 -> 1310" tests\out\latest_reversal.log >nul || (echo FAIL: Kung Fu Blocking did not enter its success state & exit /b 1)
+findstr /c:"reverses p2 state 200" tests\out\latest_reversal.log >nul || (echo FAIL: ReversalDef did not catch P2's punch & exit /b 1)
+findstr /c:"cornerpush" tests\out\latest_cornerpush.log >nul || (echo FAIL: corner push was not applied & exit /b 1)
+findstr /c:"-> 195" tests\out\latest_taunt.log >nul || (echo FAIL: Start did not reach KFM's taunt state & exit /b 1)
 for %%S in (200 210 230 240 400 410 430 440 600 610 630 640) do findstr /c:"-> %%S" tests\out\latest_attacks.log >nul || (echo FAIL: attack state %%S did not run & exit /b 1)
 for %%S in (100 105 1000 1400 1100 800 810 820 821) do findstr /c:"-> %%S" tests\out\latest_specials.log >nul || (echo FAIL: special state %%S did not run & exit /b 1)
 findstr /c:"hits: damage" tests\out\latest_hits.log >nul || (echo FAIL: hit test made no contact & exit /b 1)
@@ -33,6 +40,7 @@ findstr /c:"-> 150" tests\out\latest_guard.log >nul || (echo FAIL: standing guar
 findstr /c:"-> 152" tests\out\latest_guard.log >nul || (echo FAIL: crouching guard did not run & exit /b 1)
 for %%S in (5070 5030 5050 5100 5110 5120) do findstr /c:"-> %%S" tests\out\latest_falls.log >nul || (echo FAIL: fall state %%S did not run & exit /b 1)
 findstr /c:"explod F61" tests\out\latest_falls.log >nul || (echo FAIL: landing Explod did not run & exit /b 1)
+findstr /c:"juggle cost" tests\out\latest_falls.log >nul || (echo FAIL: air juggle points were not consumed & exit /b 1)
 findstr /c:"p1 command: c" tests\out\latest_buttons.log >nul || (echo FAIL: six-button input test changed & exit /b 1)
 findstr /c:"p1 command: QCF_x" tests\out\latest_commands.log >nul || (echo FAIL: command input test changed & exit /b 1)
 findstr /c:"-> 40" tests\out\latest_states.log >nul || (echo FAIL: jump state test changed & exit /b 1)
@@ -52,4 +60,10 @@ exit /b 0
 echo     guard
 "%EXE%" --input tests\inputs\guard.txt --input2 tests\inputs\guard_p2.txt --quickstart --quit 460 --trace >nul || exit /b 1
 copy /y m360.log tests\out\latest_guard.log >nul
+exit /b 0
+
+:reversal
+echo     reversal
+"%EXE%" --input tests\inputs\reversal.txt --input2 tests\inputs\reversal_p2.txt --quickstart --quit 180 --trace >nul || exit /b 1
+copy /y m360.log tests\out\latest_reversal.log >nul
 exit /b 0

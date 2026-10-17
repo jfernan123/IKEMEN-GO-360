@@ -259,6 +259,7 @@ Pad pad(int player)
 		p.lt = k[SDL_SCANCODE_R];
 		p.start = k[SDL_SCANCODE_RETURN];
 		p.back = k[SDL_SCANCODE_BACKSPACE];
+		p.menu = k[SDL_SCANCODE_TAB];
 	}
 	if (player >= 0 && player < 2 && gamepads[player]) {
 		SDL_Gamepad *g = gamepads[player];
@@ -280,6 +281,8 @@ Pad pad(int player)
 		p.rt |= SDL_GetGamepadAxis(g, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > 10000;
 		p.start |= SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_START);
 		p.back |= SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_BACK);
+		p.menu |= SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_START) &&
+			SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER);
 	}
 	// Logs each change in the directions, to catch a drifting stick or a stuck key.
 	static int last[2] = { -1, -1 };

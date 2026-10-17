@@ -17,6 +17,7 @@ using namespace m360;
 
 int runStatesReport();
 int run6dTests();
+int run6eTests();
 
 // The tests have no platform: the log goes to the console.
 void m360::platform::logLine(const char *line)
@@ -285,6 +286,7 @@ int main()
 
 	failures += runStatesReport();
 	failures += run6dTests();
+	failures += run6eTests();
 
 	std::printf("\n%d passed, %d failed\n", passes, failures);
 	return failures ? 1 : 0;

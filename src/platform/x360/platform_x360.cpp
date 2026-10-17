@@ -418,6 +418,7 @@ Pad pad(int player)
 	p.rt = g.right_trigger > 85;
 	p.start = g.buttons & INPUT_GAMEPAD_START;
 	p.back = g.buttons & INPUT_GAMEPAD_BACK;
+	p.menu = p.start && p.lb;
 	return p;
 }
 

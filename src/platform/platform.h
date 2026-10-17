@@ -20,6 +20,8 @@ struct Pad {
 	// Triggers, pressed past a third of the way.
 	bool lt = false, rt = false;
 	bool start = false, back = false;
+	// Debug screen switch: Tab on PC, LB+Start on a controller. Start by itself remains MUGEN's s button.
+	bool menu = false;
 };
 
 // How a textured draw combines with the screen. Textures hold premultiplied colour, so one blend covers MUGEN's

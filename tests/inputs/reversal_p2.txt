@@ -1,0 +1,5 @@
+# P2 approaches, then attacks as P1 starts Kung Fu Blocking.
+50 L
+10 -
+2 x
+118 -

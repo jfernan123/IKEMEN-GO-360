@@ -20,6 +20,20 @@ namespace HitFlag {
 constexpr int32_t High = 1, Low = 2, Air = 4, Fall = 8, Down = 16, P = 32, Minus = 64, Plus = 128;
 }
 
+inline int32_t stateAttrBit(char stateType)
+{
+	return stateType == 'S' ? 1 : stateType == 'C' ? 2 : stateType == 'A' ? 4 : stateType == 'L' ? 8 : 0;
+}
+
+struct HitOverride {
+	int32_t time = 0, stateno = -1;
+	int32_t attrState = 0, attrAttack = 0;
+	bool matches(char attackerStateType, int32_t attackerAttr) const
+	{
+		return time != 0 && (attrState & stateAttrBit(attackerStateType)) != 0 && (attrAttack & attackerAttr) != 0;
+	}
+};
+
 // ground.type, air.type: values as GetHitVar returns them.
 enum class HitType : int8_t { Unknown = -1, None = 0, High = 1, Low = 2, Trip = 3 };
 // animtype: Light .. Diagup, as GetHitVar(animtype).
@@ -29,6 +43,8 @@ struct HitDef {
 	// attr: state types (S 1, C 2, A 4) and attack bits, as ExprContext::hitDefAttr. Unset or spent: active false.
 	bool active = false;
 	int32_t attrState = 0, attrAttack = 0;
+	// ReversalDef matches an opponent's active attack instead of hitting their hurt boxes.
+	int32_t reversalAttrState = 0, reversalAttrAttack = 0;
 	int32_t hitflag = HitFlag::High | HitFlag::Low | HitFlag::Air | HitFlag::Fall;
 	int32_t guardflag = 0;
 	Reaction animtype = Reaction::Light, airAnimtype = Reaction::Unknown, fallAnimtype = Reaction::Unknown;
@@ -42,6 +58,10 @@ struct HitDef {
 	int32_t guardSlidetime = NOT_SET, guardHittime = NOT_SET, guardCtrltime = NOT_SET, airguardCtrltime = NOT_SET;
 	float groundVel[2] = { 0, 0 }, airVel[2] = { 0, 0 };
 	float guardVel[2] = { notSetF(), 0 }, airguardVel[2] = { notSetF(), notSetF() }, downVel[2] = { notSetF(), notSetF() };
+	float groundCornerpushVeloff = notSetF(), airCornerpushVeloff = notSetF(), downCornerpushVeloff = notSetF();
+	float guardCornerpushVeloff = notSetF(), airguardCornerpushVeloff = notSetF();
+	float groundCornerpushVelmul = notSetF(), airCornerpushVelmul = notSetF(), downCornerpushVelmul = notSetF();
+	float guardCornerpushVelmul = notSetF(), airguardCornerpushVelmul = notSetF();
 	float xaccel = 0, yaccel = 0.35f;
 	int32_t p1stateno = -1, p2stateno = -1;
 	bool p2getp1state = false;
@@ -88,6 +108,12 @@ struct HitDef {
 	bool isThrow() const { return (attrAttack & (1 << 1 | 1 << 4 | 1 << 7)) != 0; }
 	// HA, HT, HP: a hyper (super) attack.
 	bool isHyper() const { return (attrAttack & (1 << 6 | 1 << 7 | 1 << 8)) != 0; }
+	bool isReversal() const { return reversalAttrAttack != 0; }
+	bool reverses(char attackerStateType, int32_t attackerAttr) const
+	{
+		return active && isReversal() && (reversalAttrState & stateAttrBit(attackerStateType)) != 0 &&
+			(reversalAttrAttack & attackerAttr) != 0;
+	}
 };
 
 struct GetHitVars {

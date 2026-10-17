@@ -1,0 +1,5 @@
+# KFM's standing Kung Fu Blocking catches P2's standing punch with ReversalDef.
+# Run with --input2 tests/inputs/reversal_p2.txt --quickstart --quit 180 --trace.
+60 -
+4 R x
+116 -
