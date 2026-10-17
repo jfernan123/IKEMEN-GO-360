@@ -214,6 +214,9 @@ void Character::startRound(float px, float py, int face, bool newMatch)
 	stchtmp_ = false;
 	minus_ = 0;
 	hitdef_ = HitDef{};
+	projectiles_.clear();
+	projectileContactTime_ = projectileContactId_ = -1;
+	projectileContactType_ = 0;
 	hitdef_.guardDist[0] = attackDist_[0];
 	hitdef_.guardDist[1] = attackDist_[1];
 	ghv_ = GetHitVars{};
@@ -652,6 +655,7 @@ bool Character::runController(const StateController &sc)
 	case CtrlType::HitDef: runHitDef(sc); return false;
 	case CtrlType::ReversalDef: runReversalDef(sc); return false;
 	case CtrlType::HitOverride: runHitOverride(sc); return false;
+	case CtrlType::Projectile: runProjectile(sc); return false;
 	case CtrlType::Explod: runExplod(sc); return false;
 	case CtrlType::EnvShake: runEnvShake(sc); return false;
 	case CtrlType::MakeDust: runMakeDust(sc); return false;
@@ -1223,6 +1227,9 @@ void Character::posUpdate()
 
 void Character::tick()
 {
+	updateProjectiles();
+	if (projectileContactTime_ >= 0)
+		projectileContactTime_++;
 	makeDustSpacing_++;
 	if (palfx_.time > 0) {
 		palfx_.time--;
@@ -1323,8 +1330,31 @@ void Character::body(float &left, float &right, float &top) const
 
 void Character::draw(const View &view, float groundY, int shadowIntensity, float shadowYScale)
 {
-	if ((!renderer_ && !animShared_) || (special_ & Special::Invisible))
+	auto drawProjectiles = [&](bool foreground) {
+	for (const Projectile &projectile : projectiles_) {
+		if (!projectile.active)
+			continue;
+		if ((projectile.sprPriority > 0) != foreground)
+			continue;
+		const float sx = view.screenX(projectile.x * projectile.localScale - view.camX);
+		const float sy = view.screenY(groundY + projectile.y * projectile.localScale - view.camY);
+		SpriteDraw how;
+		how.scaleX = projectile.scaleX;
+		how.scaleY = projectile.scaleY;
+		if (projectile.shared) {
+			if (world_ && world_->effects)
+				world_->effects->drawSharedAnimation(projectile.anim, sx, sy, view.scale, projectile.facing, how);
+		} else if (renderer_) {
+			renderer_->drawAnimation(projectile.anim, sx, sy, view.scale * projectile.localScale,
+				projectile.facing, how);
+		}
+	}
+	};
+	drawProjectiles(false);
+	if ((!renderer_ && !animShared_) || (special_ & Special::Invisible)) {
+		drawProjectiles(true);
 		return;
+	}
 	auto drawAnim = [&](float px, float py, SpriteDraw how = {}) {
 		if (animShared_) {
 			if (world_ && world_->effects)
@@ -1380,6 +1410,7 @@ void Character::draw(const View &view, float groundY, int shadowIntensity, float
 		}
 	}
 	drawAnim(sx, view.screenY(groundY + worldY() - view.camY), colour);
+	drawProjectiles(true);
 }
 
 void Character::drawBoxes(const View &view, float groundY) const
@@ -1740,6 +1771,129 @@ void Character::runHitOverride(const StateController &sc)
 			stateNo, slot, out.attrAttack ? "armed" : "cleared");
 }
 
+bool Character::setProjectileAnimation(Projectile &projectile, int32_t number, char prefix)
+{
+	Animation next;
+	if (prefix == 'F') {
+		if (!world_ || !world_->effects || !world_->effects->getSharedAnimation(number, next))
+			return false;
+		projectile.shared = true;
+	} else {
+		if (!anims_.get(number, next))
+			return false;
+		projectile.shared = false;
+	}
+	projectile.anim = std::move(next);
+	projectile.animNo = number;
+	projectile.animPrefix = prefix;
+	return true;
+}
+
+// MUGEN's Projectile controller. Each instance owns its animation, motion and HitDef; it remains independent after
+// the creating state ends. Parameters use the creating character's local coordinates, as in Ikemen's Projectile.
+void Character::runProjectile(const StateController &sc)
+{
+	const Param *animParam = sc.find("projanim");
+	int32_t projectileAnimNo = -1;
+	if (!animParam || !paramI(sc, "projanim", 0, projectileAnimNo))
+		return;
+	Projectile projectile;
+	projectile.localScale = localScale;
+	projectile.facing = facing;
+	if (!setProjectileAnimation(projectile, projectileAnimNo, animParam->prefix)) {
+		logf("char: %s: no action %c%d for Projectile (state %d)", name.c_str(), animParam->prefix, projectileAnimNo, stateNo);
+		return;
+	}
+	paramI(sc, "projid", 0, projectile.id);
+	int32_t value = 0;
+	if (paramI(sc, "projremove", 0, value)) projectile.removeOnHit = value != 0;
+	paramI(sc, "projremovetime", 0, projectile.removeTime);
+	paramI(sc, "projmisstime", 0, projectile.missTime);
+	paramI(sc, "projhits", 0, projectile.hits);
+	paramI(sc, "projpriority", 0, projectile.priority);
+	paramI(sc, "projsprpriority", 0, projectile.sprPriority);
+	paramF(sc, "velocity", 0, projectile.vx);
+	paramF(sc, "velocity", 1, projectile.vy);
+	paramF(sc, "accel", 0, projectile.ax);
+	paramF(sc, "accel", 1, projectile.ay);
+	paramF(sc, "velmul", 0, projectile.velmulX);
+	paramF(sc, "velmul", 1, projectile.velmulY);
+	paramF(sc, "projscale", 0, projectile.scaleX);
+	paramF(sc, "projscale", 1, projectile.scaleY);
+	paramF(sc, "projedgebound", 0, projectile.edgeBound);
+	paramF(sc, "projheightbound", 0, projectile.heightLow);
+	paramF(sc, "projheightbound", 1, projectile.heightHigh);
+	auto animationParam = [&](const char *name, int32_t &number, char &prefix) {
+		if (const Param *parameter = sc.find(name)) {
+			paramI(sc, name, 0, number);
+			prefix = parameter->prefix;
+		}
+	};
+	animationParam("projhitanim", projectile.hitAnim, projectile.hitAnimPrefix);
+	animationParam("projremanim", projectile.removeAnim, projectile.removeAnimPrefix);
+	animationParam("projcancelanim", projectile.cancelAnim, projectile.cancelAnimPrefix);
+
+	float px = 0, py = 0;
+	paramF(sc, "offset", 0, px);
+	paramF(sc, "offset", 1, py);
+	const std::string postype = text::toLower(text::trim(sc.param("postype") ? *sc.param("postype") : "p1"));
+	const Character *anchor = postype == "p2" && p2_ ? p2_ : this;
+	if (postype == "p1" || postype == "p2") {
+		projectile.x = anchor->worldX() / localScale + px * anchor->facing;
+		projectile.y = anchor->worldY() / localScale + py;
+		projectile.facing = anchor->facing;
+	} else if (postype == "none") {
+		projectile.x = px;
+		projectile.y = py;
+	} else {
+		const float halfWidth = world_ ? world_->halfWidth / localScale : 160 / localScale;
+		projectile.x = (postype == "left" ? -halfWidth : halfWidth) + px;
+		projectile.y = py;
+	}
+
+	const HitDef previous = hitdef_;
+	runHitDef(sc);
+	projectile.hitdef = hitdef_;
+	hitdef_ = previous;
+	projectile.hitdef.hitOpponent = false;
+	projectiles_.push_back(std::move(projectile));
+	if (!traceLabel.empty())
+		logf("%s frame %u: state %d projectile %d anim %s%d", traceLabel.c_str(), world_ ? world_->gameTime : 0,
+			stateNo, projectiles_.back().id, animParam->prefix == 'F' ? "F" : "", projectileAnimNo);
+}
+
+void Character::updateProjectiles()
+{
+	for (Projectile &projectile : projectiles_) {
+		if (!projectile.active)
+			continue;
+		if (projectile.contact) {
+			projectile.contact = false;
+			projectile.missLeft = std::max(0, projectile.missTime);
+			if (projectile.hits > 0)
+				projectile.hits--;
+			if (projectile.hits <= 0 && projectile.removeOnHit) {
+				projectile.removing = true;
+				if (projectile.hitAnim < 0 || !setProjectileAnimation(projectile, projectile.hitAnim, projectile.hitAnimPrefix))
+					projectile.active = false;
+			}
+		}
+		projectile.advance();
+		if (!projectile.active)
+			continue;
+		if (!projectile.removing && (projectile.removeTime == 0 ||
+			(world_ && projectile.outside(world_->camX, world_->halfWidth)))) {
+			projectile.removing = true;
+			if (projectile.removeAnim < 0 || !setProjectileAnimation(projectile, projectile.removeAnim, projectile.removeAnimPrefix))
+				projectile.active = false;
+		}
+		if (projectile.removing && projectile.anim.animTime() == 0)
+			projectile.active = false;
+	}
+	projectiles_.erase(std::remove_if(projectiles_.begin(), projectiles_.end(),
+		[](const Projectile &projectile) { return !projectile.active; }), projectiles_.end());
+}
+
 const std::vector<Clsn> *Character::boxes(int kind) const
 {
 	const AnimFrame *f = anim.curFrame();
@@ -1752,6 +1906,143 @@ const std::vector<Clsn> *Character::boxes(int kind) const
 bool Character::clsnHits(const Character &g) const
 {
 	return clsnTouch(g, 1, 2);
+}
+
+bool Character::projectileClsnHits(const Projectile &projectile, const Character &getter) const
+{
+	const AnimFrame *attackFrame = projectile.anim.curFrame();
+	const std::vector<Clsn> *hurt = getter.boxes(2);
+	if (!attackFrame || attackFrame->clsn1.empty() || !hurt)
+		return false;
+	auto place = [](float px, float py, float scaleX, float scaleY, int face, const Clsn &box, float out[4]) {
+		float l = box[0] * scaleX, r = box[2] * scaleX;
+		if (face < 0) {
+			l = -box[2] * scaleX;
+			r = -box[0] * scaleX;
+		}
+		out[0] = px + std::min(l, r);
+		out[2] = px + std::max(l, r);
+		out[1] = py + std::min(box[1], box[3]) * scaleY;
+		out[3] = py + std::max(box[1], box[3]) * scaleY;
+	};
+	for (const Clsn &attack : attackFrame->clsn1) {
+		float a[4];
+		place(projectile.x * projectile.localScale, projectile.y * projectile.localScale,
+			projectile.localScale * projectile.scaleX, projectile.localScale * projectile.scaleY,
+			projectile.facing, attack, a);
+		for (const Clsn &box : *hurt) {
+			float b[4];
+			place(getter.worldX(), getter.worldY(), getter.localScale, getter.localScale, getter.facing, box, b);
+			if (std::min(a[2], b[2]) - std::max(a[0], b[0]) >= 0 &&
+				std::min(a[3], b[3]) - std::max(a[1], b[1]) >= 0)
+				return true;
+		}
+	}
+	return false;
+}
+
+bool Character::projectileClsnTouch(const Projectile &a, int aKind, const Projectile &b, int bKind) const
+{
+	const AnimFrame *af = a.anim.curFrame(), *bf = b.anim.curFrame();
+	if (!af || !bf)
+		return false;
+	const std::vector<Clsn> &aboxes = aKind == 1 ? af->clsn1 : af->clsn2;
+	const std::vector<Clsn> &bboxes = bKind == 1 ? bf->clsn1 : bf->clsn2;
+	for (const Clsn &abox : aboxes) {
+		float al = abox[0] * a.localScale * a.scaleX, ar = abox[2] * a.localScale * a.scaleX;
+		if (a.facing < 0) { al = -abox[2] * a.localScale * a.scaleX; ar = -abox[0] * a.localScale * a.scaleX; }
+		const float ax0 = a.x * a.localScale + std::min(al, ar), ax1 = a.x * a.localScale + std::max(al, ar);
+		const float ay0 = (a.y + std::min(abox[1], abox[3]) * a.scaleY) * a.localScale;
+		const float ay1 = (a.y + std::max(abox[1], abox[3]) * a.scaleY) * a.localScale;
+		for (const Clsn &bbox : bboxes) {
+			float bl = bbox[0] * b.localScale * b.scaleX, br = bbox[2] * b.localScale * b.scaleX;
+			if (b.facing < 0) { bl = -bbox[2] * b.localScale * b.scaleX; br = -bbox[0] * b.localScale * b.scaleX; }
+			const float bx0 = b.x * b.localScale + std::min(bl, br), bx1 = b.x * b.localScale + std::max(bl, br);
+			const float by0 = (b.y + std::min(bbox[1], bbox[3]) * b.scaleY) * b.localScale;
+			const float by1 = (b.y + std::max(bbox[1], bbox[3]) * b.scaleY) * b.localScale;
+			if (std::min(ax1, bx1) - std::max(ax0, bx0) >= 0 && std::min(ay1, by1) - std::max(ay0, by0) >= 0)
+				return true;
+		}
+	}
+	return false;
+}
+
+void Character::cancelProjectile(Projectile &projectile)
+{
+	if (--projectile.hits > 0)
+		return;
+	projectile.removing = true;
+	if (projectile.cancelAnim < 0 ||
+		!setProjectileAnimation(projectile, projectile.cancelAnim, projectile.cancelAnimPrefix))
+		projectile.active = false;
+}
+
+void Character::tradeProjectiles(Character &opponent)
+{
+	if (playerNo >= opponent.playerNo)
+		return;
+	for (Projectile &a : projectiles_) {
+		if (!a.active || a.removing || a.hits <= 0)
+			continue;
+		for (Projectile &b : opponent.projectiles_) {
+			if (!b.active || b.removing || b.hits <= 0 || !projectileClsnTouch(a, 2, b, 2))
+				continue;
+			if (a.priority > b.priority) {
+				a.priority--;
+				opponent.cancelProjectile(b);
+			} else if (b.priority > a.priority) {
+				b.priority--;
+				cancelProjectile(a);
+			} else {
+				cancelProjectile(a);
+				opponent.cancelProjectile(b);
+			}
+			if (!traceLabel.empty())
+				logf("%s frame %u: projectile %d clashes with p%d projectile %d", traceLabel.c_str(),
+					world_ ? world_->gameTime : 0, a.id, opponent.playerNo + 1, b.id);
+			if (!a.active || a.removing)
+				break;
+		}
+	}
+}
+
+void Character::hitDetectProjectiles(Character &getter)
+{
+	for (Projectile &projectile : projectiles_) {
+		if (!projectile.active || projectile.removing || projectile.missLeft > 0 || projectile.hits <= 0 ||
+			!projectile.hitdef.active || !projectileClsnHits(projectile, getter))
+			continue;
+		const HitDef previous = hitdef_;
+		hitdef_ = projectile.hitdef;
+		hitdef_.hitOpponent = false;
+		if (!getter.hittableBy(*this)) {
+			projectile.hitdef = hitdef_;
+			hitdef_ = previous;
+			continue;
+		}
+		const int result = hitResultCheck(getter);
+		if (result != 0) {
+			spawnProjectileHitSpark(projectile, getter, result);
+			const int32_t *hitSound = std::abs(result) == 1 ? hitdef_.hitsound : hitdef_.guardsound;
+			const char soundPrefix = std::abs(result) == 1 ? hitdef_.hitsoundPrefix : hitdef_.guardsoundPrefix;
+			const SoundBank *soundBank = soundPrefix == 'F' && world_ ? world_->commonSound : &sound_;
+			if (soundBank && hitSound[0] >= 0)
+				soundBank->play(hitSound[0], hitSound[1]);
+			projectile.contact = true;
+			projectile.hitPause = std::max(0, std::abs(result) == 1 ? hitdef_.pausetime[0] : hitdef_.guardPausetime[0]);
+			projectileContactType_ = std::abs(result) == 1 ? 'H' : 'G';
+			projectileContactTime_ = 0;
+			projectileContactId_ = projectile.id;
+			moveContactType_ = projectileContactType_;
+			moveContactTime_ = -1;
+			if (!traceLabel.empty())
+				logf("%s frame %u: projectile %d %s for %d damage", traceLabel.c_str(), world_ ? world_->gameTime : 0,
+					projectile.id, std::abs(result) == 1 ? "hits" : "guarded", getter.ghv_.damage);
+		}
+		projectile.hitdef = hitdef_;
+		projectile.hitdef.hitOpponent = false;
+		hitdef_ = previous;
+	}
 }
 
 bool Character::reversalMatches(const Character &attacker) const
@@ -2213,6 +2504,25 @@ void Character::spawnHitSpark(Character &g, int result)
 	world_->effects->spawnSpark(sparkAnimNo, sparkX, sparkY, facing);
 }
 
+// Projectile sparks use the projectile as the attack origin while retaining HitDef's target-edge placement.
+void Character::spawnProjectileHitSpark(const Projectile &projectile, Character &g, int result)
+{
+	if (!world_ || !world_->effects)
+		return;
+	const HitDef &hd = hitdef_;
+	const int32_t sparkAnimNo = std::abs(result) == 1 ? hd.sparkno : hd.guardSparkno;
+	const char prefix = std::abs(result) == 1 ? hd.sparkPrefix : hd.guardSparkPrefix;
+	if (sparkAnimNo < 0 || prefix != 'F')
+		return;
+	const bool air = g.stateType == 'A';
+	const float front = (air ? g.airFront_ : g.groundFront_) * g.localScale;
+	const float back = (air ? g.airBack_ : g.groundBack_) * g.localScale;
+	const float edge = projectile.facing != g.facing ? front : back;
+	const float sparkX = g.worldX() + edge * g.facing - hd.sparkxy[0] * projectile.facing * projectile.localScale;
+	const float sparkY = projectile.y * projectile.localScale + hd.sparkxy[1] * projectile.localScale;
+	world_->effects->spawnSpark(sparkAnimNo, sparkX, sparkY, projectile.facing);
+}
+
 void Character::beginHitDetection()
 {
 	gotHit_ = false;
@@ -2231,7 +2541,11 @@ void Character::beginHitDetection()
 void Character::hitDetection()
 {
 	Character *g = p2_;
-	if (!g || moveType == 'I')
+	if (!g)
+		return;
+	tradeProjectiles(*g);
+	hitDetectProjectiles(*g);
+	if (moveType == 'I')
 		return;
 	// Any attack (movetype A) close enough lets the opponent start guarding: guard.dist in front, a little behind.
 	if (moveType == 'A' && !g->inGuardDist_) {
@@ -2498,11 +2812,16 @@ Value Character::trigger(Trig t, Value arg)
 	case Trig::AiLevel: return Value::I(aiLevel);
 	case Trig::NumExplod: return Value::I(world_ && world_->effects ? world_->effects->countExplods(playerNo) : 0);
 	case Trig::IsHelper:
-	case Trig::NumProj:
 	case Trig::NumHelper:
 	case Trig::NumTarget:
 	case Trig::NumPartner: return Value::I(0);
 	case Trig::NumEnemy: return Value::I(p2_ ? 1 : 0);
+	case Trig::NumProj: {
+		int32_t count = 0;
+		for (const Projectile &projectile : projectiles_)
+			count += projectile.active;
+		return Value::I(count);
+	}
 	case Trig::PalNo: return Value::I(palette_ >= 0 ? palette_ + 1 : 1);
 	case Trig::GameTime: return Value::I(world_ ? (int32_t)world_->gameTime : 0);
 	case Trig::TeamSide: return Value::I(playerNo + 1);
@@ -2545,8 +2864,11 @@ Value Character::trigger(Trig t, Value arg)
 	// A value written for 1280x720, in this character's units.
 	case Trig::Const720p: return Value::F(arg.toF() * (320.0f / localScale) / 1280.0f);
 	case Trig::ProjHitTime:
+		return Value::I(projectileContactId_ == arg.toI() && projectileContactType_ == 'H' ? projectileContactTime_ : -1);
+	case Trig::ProjGuardedTime:
+		return Value::I(projectileContactId_ == arg.toI() && projectileContactType_ == 'G' ? projectileContactTime_ : -1);
 	case Trig::ProjContactTime:
-	case Trig::ProjGuardedTime: return Value::I(-1);
+		return Value::I(projectileContactId_ == arg.toI() && projectileContactType_ != 0 ? projectileContactTime_ : -1);
 	default: return Value::I(0);
 	}
 }

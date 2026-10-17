@@ -1,4 +1,4 @@
-MUGEN360 - milestone 7a: configurable game content (homebrew test build)
+MUGEN360 - milestone 7b: projectiles (homebrew test build)
 =======================================================================
 
 Kung Fu Man against Kung Fu Man on his stage, run by his own MUGEN state
@@ -25,6 +25,8 @@ The characters and stage are selected in data/mugen360.ini. Edit its p1,
 p2 and stage paths to load other content as compatibility expands.
 Characters with non-320 localcoord values are scaled into the stage space;
 the 1280x720 Kung Fu Man reference is covered by the compatibility tests.
+Characters can create persistent projectiles with their own animation, motion,
+hits, guards, contact triggers, removal effects and projectile priority trades.
 
 INSTALL
 1. Copy the whole "mugen360" folder to the hard drive, e.g.  Hdd1:\Homebrew\mugen360\

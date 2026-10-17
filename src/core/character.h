@@ -12,6 +12,7 @@
 #include "core/expr.h"
 #include "core/hitdef.h"
 #include "core/input.h"
+#include "core/projectile.h"
 #include "core/sff.h"
 #include "core/sound.h"
 #include "core/sprite_renderer.h"
@@ -177,6 +178,14 @@ private:
 	void runPause(const StateController &sc, bool superPause);
 	void runReversalDef(const StateController &sc);
 	void runHitOverride(const StateController &sc);
+	void runProjectile(const StateController &sc);
+	void updateProjectiles();
+	void hitDetectProjectiles(Character &getter);
+	bool projectileClsnHits(const Projectile &projectile, const Character &getter) const;
+	bool projectileClsnTouch(const Projectile &a, int aKind, const Projectile &b, int bKind) const;
+	void tradeProjectiles(Character &opponent);
+	void cancelProjectile(Projectile &projectile);
+	bool setProjectileAnimation(Projectile &projectile, int32_t number, char prefix);
 	void autoTurn();
 	bool shouldFaceP2() const;
 	void posUpdate();
@@ -191,6 +200,7 @@ private:
 	int hitResultCheck(Character &getter);
 	bool resolveReversal(Character &attacker);
 	void spawnHitSpark(Character &getter, int result);
+	void spawnProjectileHitSpark(const Projectile &projectile, Character &getter, int result);
 	Reaction gethitAnimtype() const;
 	// Damage after the attacker's attack (attackMul, 1 = 100) and this character's defence, held under its life.
 	// absolute: no attack or defence multipliers.
@@ -286,6 +296,9 @@ private:
 	};
 	HitBySlot hitBy_[2];
 	HitOverride hitOverride_[8];
+	std::vector<Projectile> projectiles_;
+	int32_t projectileContactTime_ = -1, projectileContactId_ = -1;
+	char projectileContactType_ = 0;
 	uint32_t special_ = 0;          // AssertSpecial flags, cleared each frame
 	int32_t juggle_ = 0;            // this attack's juggle cost (statedef juggle)
 	float customDefense_ = 1, fallDefenseMul_ = 1;

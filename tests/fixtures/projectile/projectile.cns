@@ -1,0 +1,68 @@
+[Statedef 1000]
+type = S
+movetype = A
+physics = N
+anim = 0
+ctrl = 0
+
+[State 1000, projectile]
+type = Projectile
+trigger1 = time = 0
+projid = 7
+projanim = 200
+projhitanim = -1
+projremove = 1
+projremovetime = 60
+projhits = 1
+offset = 100,-20
+velocity = -4,0
+attr = S, NP
+hitflag = MAF
+guardflag = MA
+damage = 50,5
+pausetime = 0,8
+sparkno = F0
+hitsound = F5,0
+ground.type = High
+ground.slidetime = 5
+ground.hittime = 12
+ground.velocity = -4,0
+air.type = High
+air.velocity = -3,-4
+
+[State 1000, done]
+type = ChangeState
+trigger1 = time >= 1
+value = 0
+ctrl = 1
+
+[Statedef 1001]
+type = S
+movetype = A
+physics = N
+anim = 0
+ctrl = 0
+
+[State 1001, projectile clash]
+type = Projectile
+trigger1 = time = 0
+projid = 8
+projanim = 200
+projcancelanim = -1
+projremovetime = 60
+projhits = 1
+projpriority = 1
+offset = 40,-20
+velocity = 4,0
+attr = S, NP
+hitflag = MAF
+damage = 50,5
+ground.type = High
+ground.hittime = 12
+ground.velocity = -4,0
+
+[State 1001, done]
+type = ChangeState
+trigger1 = time >= 1
+value = 0
+ctrl = 1

@@ -11,7 +11,7 @@ as compatibility grows.
 
 ## Current status
 
-Milestone 6e is complete and milestone 7a has started. KFM can fight full matches with commands, attacks, guarding, throws, falls, life and rounds,
+Milestones through 7b are complete. KFM can fight full matches with commands, attacks, guarding, throws, falls, life and rounds,
 a CPU opponent, hit effects, Explods, palette effects, pauses, afterimages, environmental shake, and sound. Kung Fu
 Blocking now parries attacks through ReversalDef and HitOverride, and attacks apply MUGEN corner push. Both the
 Windows and Xbox 360 builds pass the current test and build checks.
@@ -144,7 +144,11 @@ paths use forward slashes.
      `data/mugen360.ini`, with optional PC command-line overrides. Character positions, velocities, collision boxes,
      widths, effects and rendering convert through Ikemen's `localscl`; the official 1280x720 KFM variant loads from
      the reference release, draws at the same world size, and passes the normal-attack and real-hit regressions.
-   - 7b projectiles: Projectile controllers, animation, movement, collision, hits and projectile triggers.
+   - 7b projectiles (done): Projectile controllers create independent character or shared animations with localcoord-aware
+     position, velocity, acceleration and scale. Projectiles hit and guard through regular HitDef rules, pause on contact,
+     use hit/remove/cancel animations, expire at configured bounds, trade by priority, and expose NumProj plus the
+     ProjHit/Guarded/ContactTime triggers. Focused fixtures test hits after the creator leaves its state and symmetric
+     projectile cancellation.
    - 7c helpers: Helper, DestroySelf, parent/root binding and parent variables.
    - 7d broader state compatibility: remaining common controllers and triggers, selected from real character usage.
    - 7e legacy characters: SFF v1 and PCX support for WinMUGEN-era content.

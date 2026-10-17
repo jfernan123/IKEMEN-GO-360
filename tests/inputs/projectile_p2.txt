@@ -1,0 +1,4 @@
+# P2 fires the same projectile as P1 so equal-priority projectiles cancel each other.
+20 -
+2 y
+98 -

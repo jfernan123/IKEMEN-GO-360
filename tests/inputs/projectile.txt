@@ -1,0 +1,5 @@
+# The fixture character fires Projectile ID 7. It must outlive state 1000 and hit P2 from state 0.
+# Run with --p1 tests/fixtures/projectile/projectile.def --quickstart --quit 120 --trace.
+20 -
+2 x
+98 -

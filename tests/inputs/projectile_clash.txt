@@ -1,0 +1,4 @@
+# Both fixture characters fire ID 8 toward the center for a projectile priority trade.
+20 -
+2 y
+98 -

@@ -20,6 +20,8 @@ call :run effects 260 --quickstart --power 3000 || exit /b 1
 call :reversal || exit /b 1
 call :run cornerpush 400 --quickstart || exit /b 1
 call :run taunt 100 --quickstart || exit /b 1
+call :projectile || exit /b 1
+call :projectile_clash || exit /b 1
 call :run buttons 80 --quickstart || exit /b 1
 call :run commands 260 --quickstart || exit /b 1
 call :run states 330 --quickstart || exit /b 1
@@ -33,6 +35,8 @@ findstr /c:"state 1300 -> 1310" tests\out\latest_reversal.log >nul || (echo FAIL
 findstr /c:"reverses p2 state 200" tests\out\latest_reversal.log >nul || (echo FAIL: ReversalDef did not catch P2's punch & exit /b 1)
 findstr /c:"cornerpush" tests\out\latest_cornerpush.log >nul || (echo FAIL: corner push was not applied & exit /b 1)
 findstr /c:"-> 195" tests\out\latest_taunt.log >nul || (echo FAIL: Start did not reach KFM's taunt state & exit /b 1)
+findstr /c:"projectile 7 hits for 50 damage" tests\out\latest_projectile.log >nul || (echo FAIL: Projectile did not hit P2 & exit /b 1)
+findstr /c:"projectile 8 clashes with p2 projectile 8" tests\out\latest_projectile_clash.log >nul || (echo FAIL: Projectiles did not cancel each other & exit /b 1)
 for %%S in (200 210 230 240 400 410 430 440 600 610 630 640) do findstr /c:"-> %%S" tests\out\latest_attacks.log >nul || (echo FAIL: attack state %%S did not run & exit /b 1)
 for %%S in (100 105 1000 1400 1100 800 810 820 821) do findstr /c:"-> %%S" tests\out\latest_specials.log >nul || (echo FAIL: special state %%S did not run & exit /b 1)
 findstr /c:"hits: damage" tests\out\latest_hits.log >nul || (echo FAIL: hit test made no contact & exit /b 1)
@@ -66,4 +70,16 @@ exit /b 0
 echo     reversal
 "%EXE%" --input tests\inputs\reversal.txt --input2 tests\inputs\reversal_p2.txt --quickstart --quit 180 --trace >nul || exit /b 1
 copy /y m360.log tests\out\latest_reversal.log >nul
+exit /b 0
+
+:projectile
+echo     projectile
+"%EXE%" --p1 tests/fixtures/projectile/projectile.def --input tests/inputs/projectile.txt --quickstart --quit 120 --trace >nul || exit /b 1
+copy /y m360.log tests\out\latest_projectile.log >nul
+exit /b 0
+
+:projectile_clash
+echo     projectile clash
+"%EXE%" --p1 tests/fixtures/projectile/projectile.def --p2 tests/fixtures/projectile/projectile.def --input tests/inputs/projectile_clash.txt --input2 tests/inputs/projectile_p2.txt --quickstart --quit 120 --trace >nul || exit /b 1
+copy /y m360.log tests\out\latest_projectile_clash.log >nul
 exit /b 0

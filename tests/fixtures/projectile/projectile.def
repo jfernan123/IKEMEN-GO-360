@@ -1,0 +1,14 @@
+[Info]
+name = "Projectile Test"
+displayname = "Projectile Test"
+mugenversion = 1.0
+localcoord = 320,240
+
+[Files]
+cmd = projectile.cmd
+cns = ../../../data/chars/kfm/kfm.cns
+st = projectile.cns
+stcommon = common1.cns
+sprite = ../../../data/chars/kfm/kfm.sff
+anim = ../../../data/chars/kfm/kfm.air
+sound = ../../../data/chars/kfm/kfm.snd

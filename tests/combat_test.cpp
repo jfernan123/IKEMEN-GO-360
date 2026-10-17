@@ -9,6 +9,7 @@
 #include "core/game_config.h"
 #include "core/coords.h"
 #include "core/states.h"
+#include "core/projectile.h"
 
 using namespace m360;
 
@@ -98,6 +99,24 @@ int run7Tests()
 	expect(std::fabs(coords::toWorld(280, .25f) - 70) < .001f, "local position converts to stage position");
 	expect(std::fabs(coords::toLocal(70, .25f) - 280) < .001f, "stage position converts to local position");
 	expect(std::fabs(coords::between(9.6f, .25f, 1) - 2.4f) < .001f, "velocity converts between characters");
-	std::printf("7a content configuration: %d passed, %d failed\n", passed, failed);
+
+	Projectile projectile;
+	projectile.x = 10;
+	projectile.vx = 2;
+	projectile.ax = 1;
+	projectile.velmulX = .5f;
+	projectile.removeTime = 2;
+	projectile.advance();
+	expect(std::fabs(projectile.x - 12) < .001f, "projectile advances by velocity");
+	expect(std::fabs(projectile.vx - 1.5f) < .001f, "projectile applies acceleration and velocity multiplier");
+	expect(projectile.removeTime == 1, "projectile removal timer advances");
+	projectile.localScale = .25f;
+	projectile.x = 1000;
+	expect(projectile.outside(0, 160), "projectile edge bound uses local scale");
+	projectile.hitPause = 2;
+	const float pausedX = projectile.x;
+	projectile.advance();
+	expect(projectile.x == pausedX && projectile.hitPause == 1, "projectile hit pause freezes motion");
+	std::printf("7a-7b content and projectiles: %d passed, %d failed\n", passed, failed);
 	return failed;
 }
