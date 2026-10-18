@@ -1,0 +1,23 @@
+# Stage 10g Watch: player 1 picks both fighters and their palettes, then stage 1, skips the VS screen, and lets go:
+# the computer plays both sides.
+#   build\pc\mugen360.exe --select --mode watch --input tests\inputs\watch.txt --quickstart --quit 900 --trace
+# Expect "select: WATCH MODE", both picks, "match: round 1", then player 1 attacking with no input (a p1 state
+# change into an attack, 200-499).
+30 -
+# Player 1's fighter: KFM, palette 1.
+2 a
+10 -
+2 a
+20 -
+# Player 2's fighter, picked by player 1: KFM, palette 1.
+2 a
+10 -
+2 a
+60 -
+# Stage 1, then skip the VS screen.
+2 R
+10 -
+2 a
+220 -
+2 s
+600 -

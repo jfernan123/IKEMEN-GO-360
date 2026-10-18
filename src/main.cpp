@@ -481,10 +481,13 @@ public:
 		bool run[4] = { false, false, false, false };
 		for (int i = 0; i < count_; i++)
 			run[i] = !effects_.pausedFor(i);
+		players_[0].aiLevel = watch_ ? AI_LEVEL : 0;
+		if (watch_)
+			ai_[0].update((float)AI_LEVEL, match_.roundState() == 2);
 		if (run[0]) {
 			InputState input1;
 			toInput(pad1, input1);
-			players_[0].turnAndInput(input1);
+			players_[0].turnAndInput(watch_ ? ai_[0].state() : input1);
 			recordCommands(players_[0]);
 		}
 		if (run[1]) {
@@ -765,11 +768,18 @@ private:
 	AiInput ai_[4];
 	bool forceCpu_ = false;
 	bool training_ = false;
+	// Watch mode: the computer plays player 1 as well (Ikemen's cpuSide[1]).
+	bool watch_ = false;
 	bool selectAfterMatch_ = false, finished_ = false;
 
 public:
 	// After the match, the game goes back to the select screen (finished() turns true) instead of starting another.
 	void returnToSelectAfterMatch() { selectAfterMatch_ = true; }
+	void setWatch(bool watch)
+	{
+		watch_ = watch;
+		ai_[0].seed(0x2545F491u);
+	}
 	bool finished() const { return finished_; }
 	// Each side's matches won in a row, to carry into the next fight.
 	int winCount(int side) const { return fightScreen_.winCount(side); }
@@ -988,7 +998,7 @@ int main(int argc, char **argv)
 	const bool testRun = !inputPath.empty() || !shots.empty() || quitFrame != UINT32_MAX;
 	if (!platform::init(testRun && !show))
 		return 1;
-	logf("mugen360: milestone 10f, team menu, build %s", buildVersion());
+	logf("mugen360: milestone 10, match modes and teams, build %s", buildVersion());
 	if (!configLoaded)
 		logf("mugen360: %s", configError.c_str());
 	logf("game: p1=%s p2=%s stage=%s", config.player1.c_str(), config.player2.c_str(), config.stage.c_str());
@@ -1044,8 +1054,14 @@ int main(int argc, char **argv)
 			mode = SelectMode::TeamVersus, presetTeam = MotifSelect::TEAM_SIMUL;
 		else if (forcedMode == "simularcade")
 			mode = SelectMode::TeamArcade, modeCpu = true, presetTeam = MotifSelect::TEAM_SIMUL;
-		// Simul when either side chose it (the other may be one fighter); otherwise Turns when either did.
-		bool simul = false;
+		else if (forcedMode == "watch")
+			mode = SelectMode::Watch, modeCpu = true, presetTeam = MotifSelect::TEAM_SINGLE;
+		// Simul when either side chose it (the other may be one fighter); otherwise Turns when either did; a Single
+		// pair is a normal match.
+		bool simul = false, turnsFight = false;
+		const auto teamMode = [&] {
+			return mode == SelectMode::TeamVersus || mode == SelectMode::TeamArcade || mode == SelectMode::Watch;
+		};
 		// A new character selection, on whichever select screen there is.
 		auto resetSelect = [&](bool secondController) {
 			if (motifSelectLoaded)
@@ -1068,9 +1084,10 @@ int main(int argc, char **argv)
 			fight.mode = mode == SelectMode::QuickMatch ? "freebattle"
 				: mode == SelectMode::Arcade            ? "arcade"
 				: mode == SelectMode::Training          ? "training"
-				: (mode == SelectMode::TeamVersus || mode == SelectMode::TeamArcade) && simul ? "simul"
-				: mode == SelectMode::TeamVersus || mode == SelectMode::TeamArcade ? "turns"
-				: mode == SelectMode::Survival                                      ? "survival"
+				: teamMode() && simul                    ? "simul"
+				: teamMode() && turnsFight               ? "turns"
+				: mode == SelectMode::TeamArcade         ? "arcade"
+				: mode == SelectMode::Survival           ? "survival"
 														: "versus";
 			if (fight.mode == "turns" && !fight.team1.empty() && !fight.team2.empty()) {
 				const GameConfig::Fighter &p1 = fight.team1[(size_t)turns.active(0)];
@@ -1086,6 +1103,8 @@ int main(int argc, char **argv)
 			fight.winCount[1] = winCounts[1];
 			stage = std::make_unique<StageDemo>(fightAssets);
 			stageLoaded = stage->load(fight, error, trace, quickStart, (cpu || modeCpu) && !noAi);
+			if (stageLoaded && mode == SelectMode::Watch && !noAi)
+				stage->setWatch(true);
 			// Turns winners and the Survival player keep their life and power (Ikemen's persistLife).
 			if (stageLoaded && (fight.mode == "turns" || fight.mode == "survival"))
 				for (int side = 0; side < 2; side++)
@@ -1216,13 +1235,14 @@ int main(int argc, char **argv)
 				if (choice != TitleChoice::None) {
 					// Arcade and Quick Match force a CPU opponent. Training leaves player 2 as a stationary dummy.
 					modeCpu = choice == TitleChoice::Arcade || choice == TitleChoice::TeamArcade ||
-						choice == TitleChoice::QuickMatch || choice == TitleChoice::Survival;
+						choice == TitleChoice::QuickMatch || choice == TitleChoice::Survival || choice == TitleChoice::Watch;
 					mode = choice == TitleChoice::QuickMatch ? SelectMode::QuickMatch
 						: choice == TitleChoice::Arcade      ? SelectMode::Arcade
 						: choice == TitleChoice::TeamArcade  ? SelectMode::TeamArcade
 						: choice == TitleChoice::TeamVersus  ? SelectMode::TeamVersus
 						: choice == TitleChoice::Training    ? SelectMode::Training
 						: choice == TitleChoice::Survival    ? SelectMode::Survival
+						: choice == TitleChoice::Watch       ? SelectMode::Watch
 															 : SelectMode::Versus;
 					resetSelect(secondController);
 					screen = gameScreen = Screen::Select;
@@ -1237,7 +1257,9 @@ int main(int argc, char **argv)
 					selectedFight = motifSelect.fight();
 					simul = motifSelect.teamMode(0) == MotifSelect::TEAM_SIMUL ||
 						motifSelect.teamMode(1) == MotifSelect::TEAM_SIMUL;
-					if (mode == SelectMode::TeamVersus || mode == SelectMode::TeamArcade) {
+					turnsFight = !simul && (motifSelect.teamMode(0) == MotifSelect::TEAM_TURNS ||
+											   motifSelect.teamMode(1) == MotifSelect::TEAM_TURNS);
+					if (teamMode()) {
 						turns.reset((int32_t)selectedFight.team1.size(), (int32_t)selectedFight.team2.size());
 						turnsLife[0] = turnsLife[1] = -1;
 						turnsPower[0] = turnsPower[1] = 0;
@@ -1282,7 +1304,7 @@ int main(int argc, char **argv)
 					stage.reset();
 					bool nextTurn = false;
 					// A Simul match is a normal best-of match; only Turns goes member by member.
-					if ((mode == SelectMode::TeamVersus || mode == SelectMode::TeamArcade) && !simul) {
+					if (teamMode() && turnsFight) {
 						turnsLife[0] = turnsLife[1] = -1;
 						if (winner >= 0) {
 							const int recovery = turnsRecovery(lifeMax[winner], timeLeft, Match::ROUND_TIME);

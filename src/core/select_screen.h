@@ -19,7 +19,7 @@
 namespace m360 {
 
 // The game mode the select screen is for: it decides the title and who picks player 2.
-enum class SelectMode : uint8_t { Versus, QuickMatch, Arcade, Training, TeamVersus, TeamArcade, Survival };
+enum class SelectMode : uint8_t { Versus, QuickMatch, Arcade, Training, TeamVersus, TeamArcade, Survival, Watch };
 
 // Ikemen's select screen, from a screenpack's [Select Info] and SelectBG (Ikemen's start.lua: the start.t_grid
 // build, getCellOverride, f_cellMovement, f_drawCursor, updateDrawList, f_selectMenu, f_palMenu, f_stageMenu,
@@ -158,7 +158,10 @@ private:
 	void drawFaces(int index);
 	void drawPalMenu(int index);
 	void drawTeamMenu(int index);
-	bool teamModes() const { return mode_ == SelectMode::TeamVersus || mode_ == SelectMode::TeamArcade; }
+	bool teamModes() const
+	{
+		return mode_ == SelectMode::TeamVersus || mode_ == SelectMode::TeamArcade || mode_ == SelectMode::Watch;
+	}
 	void drawStage();
 	void startVersus();
 	void setArcadeOpponent(const std::vector<int32_t> &real);
@@ -187,7 +190,7 @@ private:
 	// The team menu's items ("teammenu.itemname.single" ...) and whether moving wraps.
 	std::string teamNames_[3] = { "Single", "Simul", "Turns" };
 	bool teamWrap_ = true;
-	std::string titles_[7];
+	std::string titles_[8];
 	int32_t cancelSnd_[2] = { -1, 0 };
 	ScreenFade fadeIn_, fadeOut_;
 	// The stage line.

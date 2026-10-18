@@ -1,5 +1,8 @@
-MUGEN360 - milestone 10f: Simul and the team menu (homebrew test build)
-=======================================================================
+MUGEN360 - milestone 10: match modes and teams (homebrew test build)
+=====================================================================
+
+New: WATCH MODE > CPU MATCH. Pick both fighters (and their team modes) and a
+stage, then the computer plays both sides.
 
 New: TEAM VERSUS and TEAM ARCADE ask each side for a team mode first: Single
 (one fighter), Simul (two fighters on screen at once, your partner played by
