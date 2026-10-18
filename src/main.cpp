@@ -291,15 +291,24 @@ public:
 			logf("fightscreen: %s; using the plain HUD", config.fight.empty() ? "none" : fightError.c_str());
 		world_.effects = &effects_;
 		world_.commonSound = &commonSound_;
-		// Simul: both members of each team fight at once, players 1 and 3 against 2 and 4 (Ikemen's player order).
-		count_ = config.mode == "simul" && config.team1.size() >= 2 && config.team2.size() >= 2 ? 4 : 2;
+		// Simul: every member of each team fights at once, the leaders first, then the partners (Ikemen's player
+		// order: 1 and 3 on one side, 2 and 4 on the other). A side may have one fighter against two.
 		std::string characterDefs[4] = { config.player1, config.player2 };
 		int palettes[4] = { config.p1Palette, config.p2Palette, 1, 1 };
-		if (count_ == 4) {
-			for (int i = 0; i < 4; i++) {
-				const GameConfig::Fighter &f = (i % 2 == 0 ? config.team1 : config.team2)[(size_t)(i / 2)];
-				characterDefs[i] = f.def;
-				palettes[i] = f.palette;
+		count_ = 2;
+		side_[0] = 0;
+		side_[1] = 1;
+		if (config.mode == "simul" && !config.team1.empty() && !config.team2.empty()) {
+			const std::vector<GameConfig::Fighter> *teams[2] = { &config.team1, &config.team2 };
+			count_ = 0;
+			for (size_t member = 0; member < 2; member++) {
+				for (int side = 0; side < 2; side++) {
+					if (member >= teams[side]->size())
+						continue;
+					characterDefs[count_] = (*teams[side])[member].def;
+					palettes[count_] = (*teams[side])[member].palette;
+					side_[count_++] = side;
+				}
 			}
 		}
 		for (int i = 0; i < count_; i++) {
@@ -309,17 +318,17 @@ public:
 				return false;
 			players_[i].setGameWidth(stage_.gameWidth);
 			// Win, Lose and TeamSide go by side: a partner is on its leader's side.
-			players_[i].playerNo = i % 2;
+			players_[i].playerNo = side_[i];
 			players_[i].setWorld(&world_);
 		}
 		for (int i = 0; i < count_; i++) {
-			if (count_ == 2) {
+			if (config.mode != "simul") {
 				players_[i].setOpponent(&players_[1 - i]);
 				continue;
 			}
 			std::vector<Character *> enemies, partners;
 			for (int j = 0; j < count_; j++) {
-				if (j % 2 != i % 2)
+				if (side_[j] != side_[i])
 					enemies.push_back(&players_[j]);
 				else if (j != i)
 					partners.push_back(&players_[j]);
@@ -329,9 +338,17 @@ public:
 		// Each computer partner jams its own buttons.
 		for (int i = 2; i < 4; i++)
 			ai_[i].seed(0x9E3779B9u * (uint32_t)(i + 1));
-		if (count_ == 4)
-			logf("simul: %s and %s vs %s and %s", characterDefs[0].c_str(), characterDefs[2].c_str(),
-				characterDefs[1].c_str(), characterDefs[3].c_str());
+		if (config.mode == "simul") {
+			std::string teams[2];
+			for (int i = 0; i < count_; i++)
+				teams[side_[i]] += (teams[side_[i]].empty() ? "" : " and ") + characterDefs[i];
+			logf("simul: %s vs %s", teams[0].c_str(), teams[1].c_str());
+		}
+		// A side with a partner shows Simul's lifebars, faces and names.
+		const Character *partners[2] = { nullptr, nullptr };
+		for (int i = 2; i < count_; i++)
+			partners[side_[i]] = &players_[i];
+		fightScreen_.setPartners(partners[0], partners[1]);
 		quickStart_ = quickStart;
 		forceCpu_ = cpu;
 		training_ = config.mode == "training";
@@ -359,8 +376,9 @@ public:
 	{
 		if (side < 0 || side >= 2)
 			return;
-		for (int i = side; i < count_; i += 2)
-			players_[i].life = std::clamp(value, 1, players_[i].lifeMax());
+		for (int i = 0; i < count_; i++)
+			if (side_[i] == side)
+				players_[i].life = std::clamp(value, 1, players_[i].lifeMax());
 	}
 	void setFighterStats(int side, int32_t life, int32_t power)
 	{
@@ -429,7 +447,8 @@ public:
 	{
 		const bool globallyPaused = effects_.paused();
 		Character *const fighters[4] = { &players_[0], &players_[1], &players_[2], &players_[3] };
-		const Match::Event event = globallyPaused ? Match::Event::None : match_.step(fighters, count_, fightScreen_);
+		const Match::Event event =
+			globallyPaused ? Match::Event::None : match_.step(fighters, count_, fightScreen_, side_);
 		if (event == Match::Event::NextRound) {
 			startRound(false);
 			return;
@@ -498,7 +517,7 @@ public:
 		// opponents pushes; teammates pass through each other.
 		for (int i = 0; i < count_; i++) {
 			for (int j = i + 1; j < count_; j++) {
-				if (i % 2 != j % 2 && players_[i].playerPush() && players_[j].playerPush() &&
+				if (side_[i] != side_[j] && players_[i].playerPush() && players_[j].playerPush() &&
 					players_[i].clsnTouch(players_[j], 2, 2))
 					pushApart(i, j, edge);
 			}
@@ -729,6 +748,8 @@ private:
 	// Players 1 and 2, and in Simul their partners 3 and 4.
 	Character players_[4];
 	int count_ = 2;
+	// Each fighter's side: 0 with player 1, 1 with player 2.
+	int side_[4] = { 0, 1, 0, 1 };
 	Camera camera_;
 	FightWorld world_;
 	Match match_;
@@ -967,7 +988,7 @@ int main(int argc, char **argv)
 	const bool testRun = !inputPath.empty() || !shots.empty() || quitFrame != UINT32_MAX;
 	if (!platform::init(testRun && !show))
 		return 1;
-	logf("mugen360: milestone 10e, Simul, build %s", buildVersion());
+	logf("mugen360: milestone 10f, team menu, build %s", buildVersion());
 	if (!configLoaded)
 		logf("mugen360: %s", configError.c_str());
 	logf("game: p1=%s p2=%s stage=%s", config.player1.c_str(), config.player2.c_str(), config.stage.c_str());
@@ -1015,16 +1036,20 @@ int main(int argc, char **argv)
 			mode = SelectMode::TeamVersus;
 		else if (forcedMode == "survival")
 			mode = SelectMode::Survival, modeCpu = true;
-		// Team modes fight as Turns unless Simul is chosen: both members of a team at once.
-		bool simul = false;
+		// Team modes ask each side Single, Simul or Turns in the select screen's team menu; a test's --mode presets it.
+		int32_t presetTeam = -1;
+		if (forcedMode == "teamarcade" || forcedMode == "turnsarcade" || forcedMode == "teamversus" || forcedMode == "turns")
+			presetTeam = MotifSelect::TEAM_TURNS;
 		if (forcedMode == "simul")
-			mode = SelectMode::TeamVersus, simul = true;
+			mode = SelectMode::TeamVersus, presetTeam = MotifSelect::TEAM_SIMUL;
 		else if (forcedMode == "simularcade")
-			mode = SelectMode::TeamArcade, modeCpu = true, simul = true;
+			mode = SelectMode::TeamArcade, modeCpu = true, presetTeam = MotifSelect::TEAM_SIMUL;
+		// Simul when either side chose it (the other may be one fighter); otherwise Turns when either did.
+		bool simul = false;
 		// A new character selection, on whichever select screen there is.
 		auto resetSelect = [&](bool secondController) {
 			if (motifSelectLoaded)
-				motifSelect.reset(mode, secondController && !cpu);
+				motifSelect.reset(mode, secondController && !cpu, presetTeam);
 			else
 				select.reset(cpu || modeCpu || !secondController);
 		};
@@ -1210,6 +1235,8 @@ int main(int argc, char **argv)
 				finishFrame();
 				if (motifSelect.done()) {
 					selectedFight = motifSelect.fight();
+					simul = motifSelect.teamMode(0) == MotifSelect::TEAM_SIMUL ||
+						motifSelect.teamMode(1) == MotifSelect::TEAM_SIMUL;
 					if (mode == SelectMode::TeamVersus || mode == SelectMode::TeamArcade) {
 						turns.reset((int32_t)selectedFight.team1.size(), (int32_t)selectedFight.team2.size());
 						turnsLife[0] = turnsLife[1] = -1;

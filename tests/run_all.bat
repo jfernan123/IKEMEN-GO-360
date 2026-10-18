@@ -70,6 +70,8 @@ findstr /c:"arcade: match 1 of 2" tests\out\latest_arcade.log >nul || (echo FAIL
 findstr /c:"versus: done at" tests\out\latest_arcade.log >nul || (echo FAIL: Arcade did not show its VS screen & exit /b 1)
 findstr /c:"match: round 1" tests\out\latest_arcade.log >nul || (echo FAIL: Arcade did not start its first match & exit /b 1)
 findstr /c:"title: VS MODE > TEAM VERSUS" tests\out\latest_team.log >nul || (echo FAIL: TEAM VERSUS did not start from the title & exit /b 1)
+findstr /c:"select: p1 team Turns" tests\out\latest_team.log >nul || (echo FAIL: player 1 did not choose Turns in the team menu & exit /b 1)
+findstr /c:"select: p2 team Turns" tests\out\latest_team.log >nul || (echo FAIL: player 2 did not choose Turns in the team menu & exit /b 1)
 findstr /c:"select: p1 member 2" tests\out\latest_team.log >nul || (echo FAIL: player 1 did not select two team members & exit /b 1)
 findstr /c:"select: p2 member 2" tests\out\latest_team.log >nul || (echo FAIL: player 2 did not select two team members & exit /b 1)
 findstr /c:"turns: p1 member 1 of 2 vs p2 member 1 of 2" tests\out\latest_team.log >nul || (echo FAIL: Turns did not start its first pairing & exit /b 1)

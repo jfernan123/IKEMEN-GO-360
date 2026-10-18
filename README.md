@@ -315,7 +315,14 @@ paths use forward slashes.
      Partners start partnerspacing behind their leader ([PlayerInfo] p3/p4 keys). NumEnemy, NumPartner, Enemy(n),
      EnemyNear(n) and Partner see the teams. `--mode simul` / `simularcade` select two members a side and fight them
      together; `tests/inputs/simul.txt` checks that the round goes on after P2's KO and ends at P4's.
-   - Next: Ikemen's team menu (Single / Simul / Turns) on the select screen and the Simul lifebars, then Watch.
+   - 10f team menu and Simul screen (done): TEAM VERSUS and TEAM ARCADE open Ikemen's team menu on each side first
+     (f_teamMenu from ikemen1's `pN.teammenu.*`): TEAM MODE, Single / Simul / Turns with the blinking active item,
+     cursor and member icons; player 1 sets the computer's side too. Single picks one fighter, Simul and Turns two
+     (Tag isn't offered). Simul is fought when either side chose it (a side of one against two works: fighters have
+     explicit sides), Turns when either chose Turns. In the fight a Simul side shows [Simul Lifebar], [Simul Face] and
+     [Simul Name] (p1 / p3 and p2 / p4). `--mode turns` / `simul` preset the menus for tests; `tests/inputs/team.txt`
+     now chooses Turns in both menus.
+   - Next: Watch mode (computer against computer).
 
 ## Asset notice
 

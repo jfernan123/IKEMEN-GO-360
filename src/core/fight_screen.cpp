@@ -224,24 +224,10 @@ bool FightScreen::load(const std::string &defPath, std::string &error)
 			readLifeBar(life_[i], p, *s);
 		if (const IniSection *s = findSection(sections, "powerbar"))
 			readPowerBar(power_[i], p, *s);
-		if (const IniSection *s = findSection(sections, "face")) {
-			Face &f = face_[i];
-			s->ints(p + "pos", { &f.pos[0], &f.pos[1] });
-			const char *names[4] = { "bg.", "bg0.", "bg1.", "bg2." };
-			for (int k = 0; k < 4; k++)
-				f.bg[k].read(p + names[k], *s, anims_);
-			f.top.read(p + "top.", *s, anims_);
-			f.ko.read(p + "ko.", *s, anims_);
-			s->ints(p + "face.spr", { &f.spr[0], &f.spr[1] });
-			f.layout.read(p + "face.", *s);
-		}
-		if (const IniSection *s = findSection(sections, "name")) {
-			Name &n = name_[i];
-			s->ints(p + "pos", { &n.pos[0], &n.pos[1] });
-			n.name.read(p + "name.", *s);
-			n.bg.read(p + "bg.", *s, anims_);
-			n.top.read(p + "top.", *s, anims_);
-		}
+		if (const IniSection *s = findSection(sections, "face"))
+			readFace(face_[i], p, *s);
+		if (const IniSection *s = findSection(sections, "name"))
+			readName(name_[i], p, *s);
 		if (const IniSection *s = findSection(sections, "winicon")) {
 			WinIcon &w = winIcon_[i];
 			s->ints(p + "pos", { &w.pos[0], &w.pos[1] });
@@ -257,6 +243,16 @@ bool FightScreen::load(const std::string &defPath, std::string &error)
 		if (const IniSection *s = findSection(sections, "combo"))
 			readCombo(combo_[i], s->has("team" + std::to_string(i + 1) + ".pos") ? "team" + std::to_string(i + 1) + "." : "",
 				*s, i);
+	}
+	// Simul's two members a side: p1 / p3 and p2 / p4 (Ikemen's [Simul Lifebar], [Simul Face], [Simul Name]).
+	for (int i = 0; i < 4; i++) {
+		const std::string p = "p" + std::to_string(i + 1) + ".";
+		if (const IniSection *s = findSection(sections, "simul lifebar"))
+			readLifeBar(simulLife_[i], p, *s);
+		if (const IniSection *s = findSection(sections, "simul face"))
+			readFace(simulFace_[i], p, *s);
+		if (const IniSection *s = findSection(sections, "simul name"))
+			readName(simulName_[i], p, *s);
 	}
 	if (const IniSection *s = findSection(sections, "time")) {
 		s->ints("pos", { &time_.pos[0], &time_.pos[1] });
@@ -487,6 +483,15 @@ void FightScreen::reset()
 	roundTimer_ = fightTimer_ = koTimer_ = winTimer_ = 0;
 	roundPhase_ = fightPhase_ = koPhase_ = winPhase_ = 0;
 	outroStarted_ = false;
+	for (LifeBar &l : simulLife_) {
+		for (Tiers<AnimLayout> &t : l.bg)
+			for (auto &[key, a] : t.items)
+				a.reset();
+		l.top.reset();
+		l.mid.reset();
+		for (auto &[key, a] : l.front.items)
+			a.reset();
+	}
 	for (int i = 0; i < 2; i++) {
 		LifeBar &l = life_[i];
 		for (Tiers<AnimLayout> &t : l.bg)
@@ -699,15 +704,16 @@ void FightScreen::step(const Match &match, const Character &p1, const Character 
 		fadeOut_.start(false);
 	const Character *p[2] = { &p1, &p2 };
 	for (int i = 0; i < 2; i++) {
-		stepLifeBar(life_[i], *p[i]);
+		if (partner_[i]) {
+			stepLifeBar(simulLife_[i], *p[i]);
+			stepLifeBar(simulLife_[i + 2], *partner_[i]);
+			stepFaceName(simulFace_[i], simulName_[i]);
+			stepFaceName(simulFace_[i + 2], simulName_[i + 2]);
+		} else {
+			stepLifeBar(life_[i], *p[i]);
+			stepFaceName(face_[i], name_[i]);
+		}
 		stepPowerBar(power_[i], *p[i]);
-		for (AnimLayout &a : face_[i].bg)
-			a.action();
-		face_[i].top.action();
-		face_[i].ko.action();
-		name_[i].bg.action();
-		name_[i].top.action();
-		name_[i].name.step();
 		// Win icons: one per round won, added as the win poses start (Ikemen adds them at winposetime 0).
 		WinIcon &w = winIcon_[i];
 		if ((int32_t)w.wins.size() > match.wins(i))
@@ -938,6 +944,45 @@ void FightScreen::drawPowerBar(PowerBar &pb, int32_t layer, const Character &c)
 	pb.top.draw(x, y, layer, *renderer_, space_);
 }
 
+void FightScreen::readFace(Face &f, const std::string &p, const IniSection &s)
+{
+	s.ints(p + "pos", { &f.pos[0], &f.pos[1] });
+	const char *names[4] = { "bg.", "bg0.", "bg1.", "bg2." };
+	for (int k = 0; k < 4; k++)
+		f.bg[k].read(p + names[k], s, anims_);
+	f.top.read(p + "top.", s, anims_);
+	f.ko.read(p + "ko.", s, anims_);
+	s.ints(p + "face.spr", { &f.spr[0], &f.spr[1] });
+	f.layout.read(p + "face.", s);
+}
+
+void FightScreen::readName(Name &n, const std::string &p, const IniSection &s)
+{
+	s.ints(p + "pos", { &n.pos[0], &n.pos[1] });
+	n.name.read(p + "name.", s);
+	n.bg.read(p + "bg.", s, anims_);
+	n.top.read(p + "top.", s, anims_);
+}
+
+void FightScreen::stepFaceName(Face &face, Name &name)
+{
+	for (AnimLayout &a : face.bg)
+		a.action();
+	face.top.action();
+	face.ko.action();
+	name.bg.action();
+	name.top.action();
+	name.name.step();
+}
+
+void FightScreen::drawName(const Name &n, int32_t layer, const Character &c)
+{
+	const float x = (float)n.pos[0], y = (float)n.pos[1];
+	n.bg.draw(x, y, layer, *renderer_, space_);
+	n.name.draw(c.name, x, y, layer, fonts_, space_);
+	n.top.draw(x, y, layer, *renderer_, space_);
+}
+
 void FightScreen::drawFace(const Face &f, int32_t layer, const Character &c)
 {
 	const float x = (float)f.pos[0], y = (float)f.pos[1];
@@ -1021,18 +1066,31 @@ void FightScreen::draw(int32_t layer, const Match &match, const Character &p1, c
 	if (!loaded_)
 		return;
 	const Character *p[2] = { &p1, &p2 };
-	for (int i = 0; i < 2; i++)
-		drawLifeBar(life_[i], layer, *p[i]);
+	for (int i = 0; i < 2; i++) {
+		if (partner_[i]) {
+			drawLifeBar(simulLife_[i], layer, *p[i]);
+			drawLifeBar(simulLife_[i + 2], layer, *partner_[i]);
+		} else {
+			drawLifeBar(life_[i], layer, *p[i]);
+		}
+	}
 	for (int i = 0; i < 2; i++)
 		drawPowerBar(power_[i], layer, *p[i]);
-	for (int i = 0; i < 2; i++)
-		drawFace(face_[i], layer, *p[i]);
 	for (int i = 0; i < 2; i++) {
-		const Name &n = name_[i];
-		const float x = (float)n.pos[0], y = (float)n.pos[1];
-		n.bg.draw(x, y, layer, *renderer_, space_);
-		n.name.draw(p[i]->name, x, y, layer, fonts_, space_);
-		n.top.draw(x, y, layer, *renderer_, space_);
+		if (partner_[i]) {
+			drawFace(simulFace_[i], layer, *p[i]);
+			drawFace(simulFace_[i + 2], layer, *partner_[i]);
+		} else {
+			drawFace(face_[i], layer, *p[i]);
+		}
+	}
+	for (int i = 0; i < 2; i++) {
+		if (partner_[i]) {
+			drawName(simulName_[i], layer, *p[i]);
+			drawName(simulName_[i + 2], layer, *partner_[i]);
+		} else {
+			drawName(name_[i], layer, *p[i]);
+		}
 	}
 
 	// The clock: whole seconds left, rounded up, in the font for that many ("counter10" from 10 down).

@@ -32,7 +32,12 @@ class MotifSelect {
 public:
 	bool load(Motif &motif, const GameConfig &config, std::string &error);
 	// A new selection. secondController: a second controller is plugged in.
-	void reset(SelectMode mode, bool secondController);
+	// presetTeam: skip the team menus with this team mode (TEAM_SINGLE / TEAM_SIMUL / TEAM_TURNS) for both sides, as
+	// a test run's --mode simul does; -1 shows them.
+	void reset(SelectMode mode, bool secondController, int32_t presetTeam = -1);
+	// The team modes of Ikemen's team menu that mugen360 runs (Tag isn't), and what each side chose.
+	static constexpr int32_t TEAM_SINGLE = 0, TEAM_SIMUL = 1, TEAM_TURNS = 2;
+	int32_t teamMode(int side) const { return sides_[side].teamMode; }
 	void update(const platform::Pad &pad1, const platform::Pad &pad2);
 	void draw();
 	// Picks made and the VS screen shown: fight() has the match.
@@ -106,13 +111,22 @@ private:
 		TextLayout palText, palNumber;
 		std::string palRandomText = "?";
 		int32_t palValueSnd[2] = { -1, 0 }, palDoneSnd[2] = { -1, 0 }, palCancelSnd[2] = { -1, 0 };
+		// The team menu ("pN.teammenu."): its title, items, blinking active item, cursor and member icons.
+		float teamPos[2] = { 0, 0 }, teamItemSpacing[2] = { 0, 0 }, teamValueSpacing[2] = { 0, 0 };
+		TextLayout teamSelfTitle, teamEnemyTitle, teamItem, teamItemActive, teamItemActive2;
+		AnimLayout teamCursor, teamValueIcon, teamValueEmpty;
+		int32_t teamMoveSnd[2] = { -1, 0 }, teamDoneSnd[2] = { -1, 0 };
+		int32_t teamSwitch = 2;
 
 		// The selection.
 		int32_t x = 0, y = 0;
 		float drawX = 0, drawY = 0;
 		bool cursorPlaced = false;
-		// 0 moving, 1 palette menu, 3 chosen (Ikemen's selectState).
+		// -1 team menu, 0 moving, 1 palette menu, 3 chosen (Ikemen's selectState).
 		int32_t state = 0;
+		// The team menu's cursor, the mode chosen and how many members that picks.
+		int32_t teamMenu = 0, teamMode = 0, numChars = 1, teamBlinkCount = 0;
+		bool teamBlink = false;
 		bool active = false;
 		// Drawn (cursor, portraits, name): both sides from the start, as Ikemen shows them, except an Arcade
 		// opponent, which appears once picked.
@@ -143,6 +157,8 @@ private:
 		const Entry *character);
 	void drawFaces(int index);
 	void drawPalMenu(int index);
+	void drawTeamMenu(int index);
+	bool teamModes() const { return mode_ == SelectMode::TeamVersus || mode_ == SelectMode::TeamArcade; }
 	void drawStage();
 	void startVersus();
 	void setArcadeOpponent(const std::vector<int32_t> &real);
@@ -168,6 +184,9 @@ private:
 	int32_t randomSwitch_ = 4, palRandomSwitch_ = 4;
 	std::vector<std::pair<std::string, CellOverride>> overrides_;
 	TextLayout title_;
+	// The team menu's items ("teammenu.itemname.single" ...) and whether moving wraps.
+	std::string teamNames_[3] = { "Single", "Simul", "Turns" };
+	bool teamWrap_ = true;
 	std::string titles_[7];
 	int32_t cancelSnd_[2] = { -1, 0 };
 	ScreenFade fadeIn_, fadeOut_;
