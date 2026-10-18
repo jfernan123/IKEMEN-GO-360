@@ -33,7 +33,7 @@ const char *const TITLE_DEFAULTS[][2] = {
 	{ "footer.info.font", "f-4x6.def, 0, 0, 191, 191, 191, 255" },
 	{ "footer.info.text", "" },
 	{ "footer.version.font", "f-4x6.def, 0, -1, 191, 191, 191, 255" },
-	{ "footer.version.text", "MILESTONE 8" },
+	{ "footer.version.text", "MILESTONE 9" },
 	{ "footer.overlay.col", "0, 0, 64" },
 	{ "footer.overlay.alpha", "255, 100" },
 };

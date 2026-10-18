@@ -1,5 +1,5 @@
-MUGEN360 - milestone 9d: stage palette effects (homebrew test build)
-===============================================================
+MUGEN360 - milestone 9: stages and rendering (homebrew test build)
+================================================================
 
 New: stage and menu backgrounds honor their clipping windows and scaling.
 Parallax floors widen toward the screen as real trapezoids, and stage BG

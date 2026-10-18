@@ -11,7 +11,7 @@ as compatibility grows.
 
 ## Current status
 
-Milestones 1 to 8 are complete, and 9 (stages and rendering) is under way. KFM can fight full matches with commands, attacks, guarding, throws, falls, life and
+Milestones 1 to 9 are complete; match modes and teams are next. KFM can fight full matches with commands, attacks, guarding, throws, falls, life and
 rounds, a CPU opponent, hit effects, Explods, helpers, projectiles, palette effects, pauses, afterimages,
 environmental shake, and sound. The game runs through Ikemen's default screenpack (ikemen1): title menu, select
 screen with the Color menu, VS screen, Ikemen's fight screen, and music for each when songs are added. Both the
@@ -60,7 +60,7 @@ tests\run_all.bat
 ```
 
 The suite includes unit coverage for expressions, state loading, effects, sound decoding and mixing, reversals,
-HitOverride and corner-push defaults. Hidden scripted matches cover commands, attacks, guarding, throws, falls,
+HitOverride, corner-push defaults, camera behavior, background controllers and palette effects. Hidden scripted matches cover commands, attacks, guarding, throws, falls,
 juggling, rounds, time over, SuperPause, AfterImage, Kung Fu Blocking, corner push and taunting, and the title,
 select and VS screens. Unit tests also cover the screenpack pieces and music decoding. Scripted runs never send
 keyboard or mouse input to the desktop.
@@ -88,8 +88,8 @@ paths use forward slashes.
    interpolation and collision boxes. Not yet drawn: additive/subtractive blending and rotation.
 3. **Stage and camera** (done) - stage .def: normal, parallax and animated backgrounds, tiling, masking, add/addalpha/sub
    blending, velocity, position links; 4:3 stages fitted to 16:9 with cuthigh/cutlow; MUGEN's camera (tension, bounds,
-   vertical follow) and screen edges; shadows. Not yet: zoom, BG controllers, windows, sine motion, reflections,
-   parallax "width" trapezoids (drawn at their average width).
+   vertical follow) and screen edges; shadows. Milestone 9 later added zoom, BG controllers, windows, sine motion,
+   reflections and parallax `width` trapezoids.
 4. **Hand-written movement** (done) - walking, neutral / forward / back jumps (direction fixed at takeoff), landing,
    crouching, with the speeds, gravity and body sizes from the character's CNS and its real animations; players push
    each other apart, jump over each other, and stop at the screen's edges and the stage's bounds. Stands in for the
@@ -162,7 +162,7 @@ paths use forward slashes.
      hit yet. `tests/fixtures/helper` spawns nested helpers that write through every redirect.
    - 7d broader state compatibility (done): LifeAdd, LifeSet, PowerAdd, PowerSet, AttackMulSet, AttackDist, Gravity,
      Offset, Trans, AngleDraw / AngleSet / AngleAdd / AngleMul (sprites rotate about the character), VarRandom,
-     MoveHitReset, HitAdd, BindToTarget, EnvColor, GameMakeAnim, AllPalFX (both players; stage colours not yet),
+     MoveHitReset, HitAdd, BindToTarget, EnvColor, GameMakeAnim, AllPalFX (fighters, effects and stage),
      Explod ids, bindtime, removeongethit, ontop, vfacing and trans, with ModifyExplod, RemoveExplod and
      ExplodBindTime; ForceFeedback, VictoryQuote, SndPan and the clipboard controllers are accepted. Triggers: Name,
      P1Name, P2Name, AuthorName, TeamMode, P2Life, P2StateNo, P2Ctrl, HitPauseTime, ID, PlayerIDExist, MatchNo,
@@ -244,14 +244,14 @@ paths use forward slashes.
    - 8g wiring and docs (done): the title footer, version line and READMEs say milestone 8; `AGENTS.md` (outside the
      repository) has the screens, music, 360 disk / memory notes and the publish scripts.
 
-9. Stages and rendering (in progress): the stage features the Ikemen release's stages use.
+9. Stages and rendering (done): the stage features the Ikemen release's stages use.
    - 9a stages (done): stage0, stage0-720, stage1, stageZ and interactivestage from the Ikemen release are in
      `data/stages/` and the stage menu. A stage's shape now sets the fight's game space as Ikemen's does: 240 units
      high and 240 x aspect wide (320 for 4:3, 426.7 for 16:9); the stage's own units convert by its localscl
      (game width / localcoord width) everywhere they're used (camera, start positions, bounds, screen edges, zoffset,
      shadow fade), and characters are scaled by game width / 320 on top of their localcoord, so on the 1280x720
      stage0-720 Kung Fu Man is drawn 4/3 as big as on a 4:3 stage. Each stage logs the keys it sets that aren't read
-     yet ("not read yet: ..."), the list for 9b-9d. The select screen reads a stage's portraitscale from
+     yet ("not read yet: ..."). The select screen reads a stage's portraitscale from
      [StageInfo], as Ikemen does. Not included: the 3D stages (glTF models) and interactivestage's attached
      character (a ZSS script).
    - 9b camera (done): `core/camera` is now a translation of Ikemen's fighting camera (camera.go Reset / Init /
@@ -275,7 +275,11 @@ paths use forward slashes.
      Stage BGCtrl PalFX applies per-element add, multiply, sinadd and sinmul effects. Palette effects stack in
      Ikemen's order and retain the renderer's texture-cache rounding. Tests cover timing, expiry, precedence,
      stacking and round reset.
-   - Next: 9e milestone documentation and packaging checks.
+   - 9e wrap-up (done): the visible and logged version, both READMEs and the handoff describe milestone 9. The full
+     hidden Windows suite passes, the Xbox build produces `default.xex`, and the Xenia scanner remains at the 13
+     known instructions in third-party/library code. The console ZIP was checked to contain neither the Ikemen-GO
+     reference tree nor the Pong project.
+   - Next: milestone 10 match modes and teams.
 
 ## Asset notice
 
