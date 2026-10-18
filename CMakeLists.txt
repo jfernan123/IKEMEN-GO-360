@@ -44,7 +44,15 @@ set(CORE_SOURCES
 	src/core/versus_screen.cpp
 	third_party/lodepng/lodepng.cpp
 	third_party/audio_decoders.c
+	${CMAKE_CURRENT_BINARY_DIR}/build_version.cpp
 )
+
+# The version text shown in the game, regenerated on every build (see cmake/build_version.cmake).
+add_custom_target(build_version
+	COMMAND ${CMAKE_COMMAND} -DOUT=${CMAKE_CURRENT_BINARY_DIR}/build_version.cpp -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+		-P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/build_version.cmake
+	BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/build_version.cpp
+	VERBATIM)
 
 if(XSDK)
 	# Set by xsdk's toolchain file (cmake/xsdk.cmake), which also gives XSDK_ROOT.
@@ -53,6 +61,7 @@ if(XSDK)
 	target_include_directories(mugen360 PRIVATE src third_party third_party/lodepng "${XSDK_ROOT}/tests" "${XSDK_ROOT}/src")
 	target_compile_options(mugen360 PRIVATE -O2 -g -Wall -Wextra)
 	set_source_files_properties(third_party/lodepng/lodepng.cpp third_party/audio_decoders.c PROPERTIES COMPILE_OPTIONS "-w")
+	add_dependencies(mugen360 build_version)
 	xsdk_add_xex(mugen360)
 else()
 	set(SDL3_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../tools/sdl3/SDL3-3.4.18/cmake" CACHE PATH "SDL3's CMake package")
@@ -60,6 +69,7 @@ else()
 	add_executable(mugen360 ${CORE_SOURCES} src/platform/pc/platform_pc.cpp)
 	target_include_directories(mugen360 PRIVATE src third_party third_party/lodepng)
 	target_link_libraries(mugen360 PRIVATE SDL3::SDL3)
+	add_dependencies(mugen360 build_version)
 	if(MSVC)
 		target_compile_options(mugen360 PRIVATE /W4 /utf-8)
 		set_source_files_properties(third_party/lodepng/lodepng.cpp third_party/audio_decoders.c PROPERTIES COMPILE_OPTIONS "/W0")
