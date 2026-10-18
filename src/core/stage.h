@@ -25,12 +25,18 @@ public:
 	static void logUnread(const std::vector<IniSection> &sections, const std::string &defPath);
 	// Moves the backgrounds one tick: velocity and animations.
 	void update();
-	// Draws the elements of one layer (0 behind the players, 1 in front).
+	// Draws the elements of one layer (-1 behind everything on a stage made for Ikemen, 0 behind the players, 1 in
+	// front).
 	void draw(int32_t layer, const View &view);
+	// A new round: the backgrounds and their controllers start over, unless [StageInfo] resetbg = 0.
+	void reset();
 	// The view for a camera position: localcoord scaled to the screen's width, the cut split by cuthigh / cutlow.
 	View view(float camX, float camY) const;
 
 	std::string name;
+	// [Info] ikemenversion is set: layer -1 is drawn (MUGEN doesn't draw it).
+	bool ikemen = false;
+	bool resetBg = true;
 	int32_t localWidth = 320, localHeight = 240;
 	// The fight's game space follows the stage's shape (Ikemen's applyFightAspect): 240 high and as wide as the stage's
 	// aspect makes it, 320 for 4:3, 426.7 for 16:9. localScale converts the .def's stage units to it (Ikemen's stage
@@ -56,6 +62,7 @@ public:
 	MusicTrack music;
 
 	const Sff &sff() const { return sff_; }
+	const BgDef &backgrounds() const { return bgs_; }
 
 private:
 	Sff sff_;

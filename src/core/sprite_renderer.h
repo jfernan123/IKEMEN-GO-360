@@ -64,6 +64,12 @@ public:
 
 	// Draws sprite group,number with its axis at screen (x, y).
 	void drawSprite(int32_t group, int32_t number, float x, float y, const SpriteDraw &how);
+	// Draws a sprite into a trapezoid: its top row from topLeft to topRight at screen row top, its bottom row from
+	// bottomLeft to bottomRight at row bottom (a parallax floor; Ikemen's renderSpriteQuad with xts != xbs). It's drawn
+	// as a grid of pieces, as the platform maps a texture straight across each triangle. how's scale, flips, angles
+	// and shear aren't used.
+	void drawSpriteTrapezoid(int32_t group, int32_t number, float topLeft, float topRight, float top, float bottomLeft,
+		float bottomRight, float bottom, const SpriteDraw &how);
 	// Draws an animation's current frame for a character at screen (x, y) facing right (1) or left (-1), scale screen
 	// pixels per MUGEN pixel: the frame's offset, flips, scale and transparency applied as MUGEN does. base sets
 	// anything else (a shadow, a palette); its scaleX / scaleY multiply the frame's, a negative scaleY drawing it

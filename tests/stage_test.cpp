@@ -8,6 +8,7 @@
 
 #include "core/camera.h"
 #include "core/character.h"
+#include "core/layout.h"
 #include "core/stage.h"
 
 using namespace m360;
@@ -111,6 +112,46 @@ int run9Tests()
 		step(-40, 40);
 	expect(near(camera.scale, 1), "close together: zoomed back in to zoomin");
 
-	std::printf("9 stages: %d passed, %d failed\n", passed, failed);
+	// 9c background data used by real stages and screenpacks.
+	Stage controlled;
+	expect(controlled.load("tests/fixtures/stage9c.def", error), "9c synthetic stage loads");
+	const BgDef &backgrounds = controlled.backgrounds();
+	expect(backgrounds.size() == 2 && backgrounds.controllerCount() == 4,
+		"window, width floor and four BG controllers load");
+	const BgElement &moving = backgrounds.element(0);
+	expect(moving.hasWindow && moving.window[0] == 10 && moving.window[2] == 109 &&
+		near(moving.windowDeltaX, .5f) && near(moving.windowDeltaY, .25f), "window and windowdelta parse");
+	ClipRect clip;
+	expect(backgrounds.clipRect(0, controlled.view(0, 0), clip) &&
+		clip.x == 190 && clip.y == 60 && clip.width == 300 && clip.height == 150,
+		"stage window converts to the expected screen rectangle");
+	const BgElement &floor = backgrounds.element(1);
+	expect(floor.widthTop == 100 && floor.widthBottom == 200, "parallax width parses");
+	const BgTrapezoid edges = BgDef::parallaxEdges(640, 640, 100, 50, 1, 2, 3);
+	expect(near(edges.topLeft, 490) && near(edges.topRight, 790) &&
+		near(edges.bottomLeft, 340) && near(edges.bottomRight, 940),
+		"parallax top and bottom edges converge about screen centre");
+
+	// At t0 it moves by 1. At t1 Enable=0 freezes it through t2. At t3 Enable=1 and VelSet=3 move it again.
+	controlled.update();
+	expect(!backgrounds.element(0).visible && near(backgrounds.element(0).offsetX, 1),
+		"BGCtrl Visible runs at time zero");
+	controlled.update();
+	controlled.update();
+	expect(!backgrounds.element(0).enabled && near(backgrounds.element(0).offsetX, 1),
+		"BGCtrl Enable freezes movement while disabled");
+	controlled.update();
+	expect(backgrounds.element(0).enabled && near(backgrounds.element(0).velocityX, 3) &&
+		near(backgrounds.element(0).offsetX, 4), "BGCtrl resumes and VelSet applies on its timeline");
+	controlled.update();
+	controlled.update();
+	controlled.update();
+	expect(near(backgrounds.element(0).offsetX, 13), "BGCtrl looptime repeats the time-zero controller");
+	controlled.reset();
+	expect(backgrounds.time() == 0 && backgrounds.element(0).visible && backgrounds.element(0).enabled &&
+		near(backgrounds.element(0).offsetX, 0) && near(backgrounds.element(0).velocityX, 1),
+		"stage reset restores BG motion and controller state");
+
+	std::printf("9a-9c stages and backgrounds: %d passed, %d failed\n", passed, failed);
 	return failed;
 }

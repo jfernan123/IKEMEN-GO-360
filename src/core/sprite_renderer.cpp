@@ -189,6 +189,44 @@ platform::Texture *SpriteRenderer::texture(const Sprite &sprite, int palette, co
 	return tex;
 }
 
+void SpriteRenderer::drawSpriteTrapezoid(int32_t group, int32_t number, float topLeft, float topRight, float top,
+	float bottomLeft, float bottomRight, float bottom, const SpriteDraw &how)
+{
+	if (group < 0 || number < 0)
+		return;
+	const Sprite *sprite = sff_.get((uint16_t)group, (uint16_t)number);
+	if (!sprite || sprite->isBlank())
+		return;
+	const bool chosen = palette_ >= 0 && (!sff_.isV1() || sprite->palette == 0);
+	const int palette = how.palette >= 0 ? how.palette : chosen ? palette_ : sprite->palette;
+	platform::Texture *tex = texture(*sprite, palette, how);
+	if (!tex)
+		return;
+	const platform::Blend blend = how.trans == Trans::Sub || how.trans == Trans::SubAdd ? platform::Blend::Subtract
+																					   : platform::Blend::Over;
+	// A grid of small pieces: each is nearly a parallelogram, so the texture's straight lines stay straight where a
+	// piece's two triangles meet.
+	constexpr int ROWS = 8, COLUMNS = 16;
+	const auto point = [&](int column, int row, platform::Vertex &out) {
+		const float fu = (float)column / COLUMNS, fv = (float)row / ROWS;
+		const float left = topLeft + (bottomLeft - topLeft) * fv, right = topRight + (bottomRight - topRight) * fv;
+		out.x = left + (right - left) * fu;
+		out.y = top + (bottom - top) * fv;
+		out.u = fu;
+		out.v = fv;
+	};
+	for (int row = 0; row < ROWS; row++) {
+		for (int column = 0; column < COLUMNS; column++) {
+			platform::Vertex piece[4];
+			point(column, row, piece[0]);
+			point(column + 1, row, piece[1]);
+			point(column, row + 1, piece[2]);
+			point(column + 1, row + 1, piece[3]);
+			platform::drawQuad(tex, piece, blend);
+		}
+	}
+}
+
 void SpriteRenderer::drawSprite(int32_t group, int32_t number, float x, float y, const SpriteDraw &how)
 {
 	if (group < 0 || number < 0)

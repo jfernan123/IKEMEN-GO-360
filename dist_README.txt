@@ -1,14 +1,17 @@
-MUGEN360 - milestone 9b: camera zoom (homebrew test build)
-==========================================================
+MUGEN360 - milestone 9c: stage backgrounds (homebrew test build)
+===============================================================
+
+New: stage and menu backgrounds honor their clipping windows and scaling.
+Parallax floors widen toward the screen as real trapezoids, and stage BG
+controllers can animate, show, hide, enable, move and oscillate elements.
 
 New: the camera works like Ikemen's: it glides after the fighters instead of
 snapping, and Training Stage Z and the Interactive Training Stage zoom out as
 the fighters move apart.
 
-New: five more stages from Ikemen on the stage screen (Training Room, Training
+Five more stages from Ikemen are on the stage screen (Training Room, Training
 Room 720, Training Stage, Training Stage Z, Interactive Training Stage). The
-720 one is widescreen and fills the whole screen. Zoom and some moving parts
-of these stages come in the next builds.
+720 one is widescreen and fills the whole screen.
 
 New: Ikemen's VS screen between select and the fight (both fighters in their
 colours, names, the next stage and its picture, "Match 1" in Arcade). It

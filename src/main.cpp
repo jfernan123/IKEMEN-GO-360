@@ -324,6 +324,7 @@ public:
 	void startRound(bool newMatch)
 	{
 		match_.newRound();
+		stage_.reset();
 		hud_.reset();
 		fightScreen_.reset();
 		effects_.clear();
@@ -451,6 +452,8 @@ public:
 	{
 		const View view = fightView(effects_.shakeX(), effects_.shakeY());
 		// Ikemen's order: the fight screen's layer -1 and 0 behind the characters, 1 and 2 in front.
+		if (stage_.ikemen)
+			stage_.draw(-1, view);
 		stage_.draw(0, view);
 		fightScreen_.draw(-1, match_, players_[0], players_[1]);
 		effects_.draw(view, (float)stage_.zoffset * stage_.localScale, -1);
@@ -866,7 +869,7 @@ int main(int argc, char **argv)
 	const bool testRun = !inputPath.empty() || !shots.empty() || quitFrame != UINT32_MAX;
 	if (!platform::init(testRun && !show))
 		return 1;
-	logf("mugen360: milestone 9b, camera zoom");
+	logf("mugen360: milestone 9c, stage backgrounds");
 	if (!configLoaded)
 		logf("mugen360: %s", configError.c_str());
 	logf("game: p1=%s p2=%s stage=%s", config.player1.c_str(), config.player2.c_str(), config.stage.c_str());
