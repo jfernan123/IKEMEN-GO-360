@@ -1776,10 +1776,10 @@ void Character::body(float &left, float &right, float &top) const
 	top = worldY() - height_ * localScale;
 }
 
-void Character::draw(const View &view, float groundY, int shadowIntensity, float shadowYScale)
+void Character::draw(const View &view, float groundY, int shadowIntensity, float shadowYScale, int reflection)
 {
 	for (auto &helper : helpers_)
-		helper->draw(view, groundY, shadowIntensity, shadowYScale);
+		helper->draw(view, groundY, shadowIntensity, shadowYScale, reflection);
 	auto drawProjectiles = [&](bool foreground) {
 	for (const Projectile &projectile : projectiles_) {
 		if (!projectile.active)
@@ -1816,6 +1816,16 @@ void Character::draw(const View &view, float groundY, int shadowIntensity, float
 	// Shaking from a hit: a pixel back every other frame.
 	const float shake = ghv_.hitshaketime > 0 && (stateTime & 1) ? -(float)facing : 0;
 	const float sx = view.screenX((x + shake) * localScale - view.camX);
+	if (reflection > 0) {
+		// Mirrored about the ground, as far below it as the character is above, added onto the floor at the stage's
+		// intensity (Ikemen's reflection: Add transparency, src * intensity, dst * (255 - intensity)).
+		SpriteDraw mirrored;
+		mirrored.trans = Trans::Add;
+		mirrored.srcAlpha = (uint8_t)reflection;
+		mirrored.dstAlpha = (uint8_t)(255 - reflection);
+		mirrored.scaleY = -1;
+		drawAnim(sx, view.screenY(groundY - y * localScale - view.camY), mirrored);
+	}
 	if (shadowIntensity > 0 && !(special_ & Special::NoShadow)) {
 		// The shadow lies on the ground under the character, the sprite flattened by the stage's shadow yscale: a
 		// positive one falls toward the viewer (drawn upside down), a negative one into the screen.

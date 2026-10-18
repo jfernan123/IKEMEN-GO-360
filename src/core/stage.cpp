@@ -69,6 +69,10 @@ bool Stage::load(const std::string &defPath, std::string &error)
 		s->readFloat("yscale", shadow.yscale);
 		s->ints("fade.range", { &shadow.fadeEnd, &shadow.fadeBegin });
 	}
+	if (const IniSection *r = findSection(sections, "reflection")) {
+		r->readInt("intensity", reflection);
+		reflection = std::clamp(reflection, 0, 255);
+	}
 
 	// The sprites: [BGdef] spr, next to the .def, else under data/.
 	const IniSection *bgdef = findSection(sections, "bgdef");
@@ -94,6 +98,15 @@ View Stage::view(float camX, float camY) const
 	View v;
 	v.camX = camX;
 	v.camY = camY;
+	const float screenAspect = (float)platform::SCREEN_WIDTH / platform::SCREEN_HEIGHT;
+	if ((float)localWidth / (float)localHeight < screenAspect - 0.01f) {
+		// A narrower stage (4:3) keeps its shape, as Ikemen's fight aspect follows the stage: its full height, black
+		// bars at the sides. The play area is as wide in stage units as when it filled the width.
+		v.scale = (float)platform::SCREEN_HEIGHT / (float)localHeight;
+		v.width = (float)localWidth * v.scale;
+		v.originX = ((float)platform::SCREEN_WIDTH - v.width) / 2;
+		return v;
+	}
 	v.scale = (float)platform::SCREEN_WIDTH / (float)localWidth;
 	// The stage height the screen can't show, taken off the top and bottom as cuthigh and cutlow divide it.
 	const float cut = (float)localHeight - platform::SCREEN_HEIGHT / v.scale;

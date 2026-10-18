@@ -43,6 +43,8 @@ public:
 		// Fully shown below fadeBegin (closer to the ground), gone above fadeEnd; both 0: no fading.
 		int32_t fadeEnd = 0, fadeBegin = 0;
 	} shadow;
+	// [Reflection] intensity: the fighters mirrored on the floor, 0 (none) to 255.
+	int32_t reflection = 0;
 
 	const Sff &sff() const { return sff_; }
 

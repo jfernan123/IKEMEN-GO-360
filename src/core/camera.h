@@ -12,14 +12,17 @@ struct View {
 	float camX = 0, camY = 0;
 	// Screen pixels per stage unit.
 	float scale = 4;
-	// The stage y shown at the top of the screen with the camera at rest. A 4:3 stage on a 16:9 screen is scaled to
-	// fill the width, so some of its height is cut: the stage's cuthigh / cutlow say how much from each end.
+	// The stage y shown at the top of the screen with the camera at rest: a stage wider than the screen is scaled
+	// to fill its height... and one cut, the stage's cuthigh / cutlow say how much from each end.
 	float topCut = 0;
-	// Half the screen's width, in stage units.
-	float halfWidth() const { return platform::SCREEN_WIDTH / 2.0f / scale; }
+	// Where on the screen the game is drawn: all of it, or (a 4:3 stage on a 16:9 screen, as Ikemen keeps the stage's
+	// shape) a centred area with black bars at the sides.
+	float originX = 0, width = (float)platform::SCREEN_WIDTH;
+	// Half the play area's width, in stage units.
+	float halfWidth() const { return width / 2.0f / scale; }
 
 	// Where a position relative to the screen's centre column (x) and the stage's top (y) lands on screen.
-	float screenX(float x) const { return platform::SCREEN_WIDTH / 2.0f + x * scale; }
+	float screenX(float x) const { return originX + width / 2.0f + x * scale; }
 	float screenY(float y) const { return (y - topCut) * scale; }
 };
 

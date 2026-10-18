@@ -81,7 +81,8 @@ void Layout::apply(SpriteDraw &how, const ScreenSpace &space) const
 	how.xangle = xangle;
 	how.yangle = yangle;
 	how.perspective = perspective;
-	how.focalLength = focalLength * space.scale;
+	how.focalLength = focalPixels(focalLength);
+	(void)space;
 }
 
 bool Layout::windowRect(const ScreenSpace &space, ClipRect &out) const

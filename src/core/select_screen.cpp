@@ -139,6 +139,8 @@ bool MotifSelect::load(Motif &motif, const GameConfig &config, std::string &erro
 	s.readInt("stage.active.switchtime", stageSwitch_);
 	stageBg_.read("stage.portrait.bg.", s, anims);
 	stageRandom_.read("stage.portrait.random.", s, anims);
+	stagePortrait_.read("stage.portrait.", s);
+	s.ints("stage.portrait.spr", { &stagePortraitSpr_[0], &stagePortraitSpr_[1] });
 	readSide(sides_[0], "p1.", s);
 	readSide(sides_[1], "p2.", s);
 	for (TextLayout *t : { &title_, &stageActive_, &stageActive2_, &stageDone_, &sides_[0].name, &sides_[1].name,
@@ -254,9 +256,31 @@ bool MotifSelect::load(Motif &motif, const GameConfig &config, std::string &erro
 	}
 	stages_ = config.stages.empty() ? std::vector<std::string>{ config.stage } : config.stages;
 	stageNames_.clear();
+	stagePortraits_.clear();
 	for (const std::string &stage : stages_) {
-		const std::string name = infoName(readDef(stage), false);
+		const std::vector<IniSection> def = readDef(stage);
+		const std::string name = infoName(def, false);
 		stageNames_.push_back(name.empty() ? stage : name);
+		// Only the portrait is kept of the stage's sprites.
+		StagePortrait portrait;
+		const IniSection *bgdef = findSection(def, "bgdef");
+		const std::string spr = bgdef ? bgdef->text("spr") : std::string();
+		int32_t localW = 320, localH = 240;
+		if (const IniSection *info = findSection(def, "stageinfo"))
+			info->ints("localcoord", { &localW, &localH });
+		float portraitScale = 1;
+		if (const IniSection *info = findSection(def, "info"))
+			info->readFloat("portraitscale", portraitScale);
+		portrait.resFix = portraitScale * (float)motif.localWidth() / (float)std::max(1, localW);
+		std::string sffError;
+		portrait.sff = std::make_unique<Sff>();
+		if (!spr.empty() && (portrait.sff->load(directoryOf(stage) + spr, sffError) || portrait.sff->load("data/" + spr, sffError))) {
+			portrait.sff->keepOnly({ { (uint16_t)stagePortraitSpr_[0], (uint16_t)stagePortraitSpr_[1] } });
+			portrait.renderer = std::make_unique<SpriteRenderer>(*portrait.sff);
+		} else {
+			portrait.sff.reset();
+		}
+		stagePortraits_.push_back(std::move(portrait));
 	}
 	if (std::none_of(roster_.begin(), roster_.end(), [](const Entry &e) { return !e.random; })) {
 		error = "no characters to select";
@@ -414,6 +438,7 @@ void MotifSelect::reset(SelectMode mode, bool secondController)
 		side.randomShown = -1;
 		// Player 2 picks alongside player 1 only in 1P vs 2P with a second controller; otherwise it waits.
 		side.active = i == 0 || (mode == SelectMode::Versus && secondController);
+		side.shown = i == 0 || mode != SelectMode::Arcade;
 	}
 	// A button still held from the last screen doesn't count as a press.
 	for (platform::Pad &p : before_) {
@@ -473,6 +498,7 @@ void MotifSelect::confirmPick(int index)
 			cpu.chosen = real[(size_t)random((int32_t)real.size())];
 			const Entry &e = roster_[(size_t)cpu.chosen];
 			cpu.palette = e.palettes[(size_t)random((int32_t)e.palettes.size())];
+			cpu.shown = true;
 			confirmPick(1);
 		} else {
 			// Against the computer, player 1 picks its character too, starting where player 1's cursor is.
@@ -678,7 +704,7 @@ GameConfig MotifSelect::fight() const
 void MotifSelect::drawCell(const AnimLayout &piece, int32_t column, int32_t row, float x, float y,
 	SpriteRenderer &renderer, const Entry *character)
 {
-	if (!piece.present && !character)
+	if ((!piece.present && !character) || !inPass(piece.layout.layer))
 		return;
 	const ScreenSpace &space = motif_->space();
 	SpriteDraw how;
@@ -699,7 +725,7 @@ void MotifSelect::drawCell(const AnimLayout &piece, int32_t column, int32_t row,
 		if (o->hasProjection)
 			how.perspective = o->perspective;
 		if (o->hasFocal)
-			how.focalLength = o->focalLength * space.scale;
+			how.focalLength = Layout::focalPixels(o->focalLength);
 	}
 	const float px = space.x(x + piece.layout.offsetX), py = space.y(y + piece.layout.offsetY);
 	if (character) {
@@ -719,7 +745,7 @@ void MotifSelect::drawFaces(int index)
 {
 	Side &side = sides_[index];
 	const int32_t shown = shownEntry(side);
-	if (!side.active || shown < 0 || roster_[(size_t)shown].random)
+	if (!side.shown || shown < 0 || roster_[(size_t)shown].random)
 		return;
 	const Entry &e = roster_[(size_t)shown];
 	const ScreenSpace &space = motif_->space();
@@ -729,7 +755,7 @@ void MotifSelect::drawFaces(int index)
 	e.renderer->setPalette(-1);
 	// face2 (9000,1, turned in 3D) behind face (the character's own animation), each clipped to its window.
 	ClipRect window;
-	if (side.face2Spr[0] >= 0) {
+	if (side.face2Spr[0] >= 0 && inPass(side.face2.layer)) {
 		SpriteDraw how;
 		side.face2.apply(how, space);
 		const Sprite *sprite = e.sff->get((uint16_t)side.face2Spr[0], (uint16_t)side.face2Spr[1]);
@@ -746,7 +772,7 @@ void MotifSelect::drawFaces(int index)
 		if (clip)
 			platform::clearClip();
 	}
-	if (side.faceShownFor == shown && !side.faceShown.frames.empty()) {
+	if (side.faceShownFor == shown && !side.faceShown.frames.empty() && inPass(side.face.layer)) {
 		e.renderer->setPalette(chosen);
 		SpriteDraw how;
 		side.face.apply(how, space);
@@ -770,11 +796,14 @@ void MotifSelect::drawPalMenu(int index)
 		return;
 	const ScreenSpace &space = motif_->space();
 	const int32_t count = (int32_t)roster_[(size_t)side.chosen].palettes.size();
-	side.palBg.draw(side.palPos[0], side.palPos[1], side.palBg.layout.layer, motif_->renderer(), space);
-	side.palText.draw(side.palPos[0], side.palPos[1], side.palText.layout.layer, motif_->fonts(), space);
+	if (inPass(side.palBg.layout.layer))
+		side.palBg.draw(side.palPos[0], side.palPos[1], side.palBg.layout.layer, motif_->renderer(), space);
+	if (inPass(side.palText.layout.layer))
+		side.palText.draw(side.palPos[0], side.palPos[1], side.palText.layout.layer, motif_->fonts(), space);
 	const std::string number = side.palIndex > count ? side.palRandomText
 													 : std::to_string(roster_[(size_t)side.chosen].palettes[(size_t)side.palIndex - 1]);
-	side.palNumber.draw(number, side.palPos[0], side.palPos[1], side.palNumber.layout.layer, motif_->fonts(), space);
+	if (inPass(side.palNumber.layout.layer))
+		side.palNumber.draw(number, side.palPos[0], side.palPos[1], side.palNumber.layout.layer, motif_->fonts(), space);
 }
 
 void MotifSelect::drawStage()
@@ -783,12 +812,32 @@ void MotifSelect::drawStage()
 		return;
 	const ScreenSpace &space = motif_->space();
 	// The portrait frame sits relative to the stage line.
-	stageBg_.draw(stagePos_[0], stagePos_[1], stageBg_.layout.layer, motif_->renderer(), space);
-	if (stage_ == 0)
+	if (inPass(stageBg_.layout.layer))
+		stageBg_.draw(stagePos_[0], stagePos_[1], stageBg_.layout.layer, motif_->renderer(), space);
+	if (stage_ == 0 && inPass(stageRandom_.layout.layer))
 		stageRandom_.draw(stagePos_[0], stagePos_[1], stageRandom_.layout.layer, motif_->renderer(), space);
+	// The stage's own portrait, clipped to stage.portrait.window.
+	if (stage_ > 0 && inPass(stagePortrait_.layer)) {
+		const StagePortrait &p = stagePortraits_[(size_t)stage_ - 1];
+		if (p.renderer) {
+			SpriteDraw how;
+			stagePortrait_.apply(how, space);
+			how.scaleX = stagePortrait_.scaleX * p.resFix * space.scale;
+			how.scaleY = stagePortrait_.scaleY * p.resFix * space.scale;
+			ClipRect window;
+			const bool clip = stagePortrait_.windowRect(space, window);
+			if (clip)
+				platform::setClip(window.x, window.y, window.width, window.height);
+			p.renderer->drawSprite(stagePortraitSpr_[0], stagePortraitSpr_[1], space.x(stagePos_[0] + stagePortrait_.offsetX),
+				space.y(stagePos_[1] + stagePortrait_.offsetY), how);
+			if (clip)
+				platform::clearClip();
+		}
+	}
 	const TextLayout &t = phase_ != Phase::Stage ? stageDone_ : stageBlink_ ? stageActive_ : stageActive2_;
 	const std::string line = stage_ == 0 ? stageRandomText_ : format(stageText_, stage_, stageNames_[(size_t)stage_ - 1]);
-	t.draw(line, stagePos_[0], stagePos_[1], t.layout.layer, motif_->fonts(), space);
+	if (inPass(t.layout.layer))
+		t.draw(line, stagePos_[0], stagePos_[1], t.layout.layer, motif_->fonts(), space);
 }
 
 void MotifSelect::draw()
@@ -798,7 +847,38 @@ void MotifSelect::draw()
 	platform::fillRect(0, 0, platform::SCREEN_WIDTH, platform::SCREEN_HEIGHT, clearColour_);
 	const View view = m.view();
 	bg_.draw(0, view);
-	title_.draw(titles_[(int)mode_], 0, 0, title_.layout.layer, m.fonts(), space);
+	front_ = false;
+	drawElements();
+	bg_.draw(1, view);
+	front_ = true;
+	drawElements();
+
+	if (fadeOut_.isActive())
+		fadeOut_.draw();
+	else if (fadeIn_.isActive())
+		fadeIn_.draw();
+	// After the fade: the plain VS screen until milestone 8e brings Ikemen's.
+	if (phase_ == Phase::Versus && timer_ > 1000 && !fadeOut_.isActive()) {
+		platform::fillRect(0, 0, platform::SCREEN_WIDTH, platform::SCREEN_HEIGHT, 0xFF000000);
+		const TextLayout &t = sides_[0].name;
+		TextLayout centred = t;
+		centred.align = 0;
+		centred.layout.offsetX = centred.layout.offsetY = 0;
+		const float w = (float)m.localWidth(), h = (float)m.localHeight();
+		centred.draw(roster_[(size_t)sides_[0].chosen].name, w * 0.25f, h * 0.5f, centred.layout.layer, m.fonts(), space);
+		centred.draw("VS", w * 0.5f, h * 0.5f, centred.layout.layer, m.fonts(), space);
+		centred.draw(roster_[(size_t)sides_[1].chosen].name, w * 0.75f, h * 0.5f, centred.layout.layer, m.fonts(), space);
+	}
+}
+
+// One pass of Ikemen's f_selectScreen draw order: the title, the big portraits, the grid, the cursors, the names, the
+// palette menus, the stage line; front_ picks the elements behind or in front of SelectBG's layer 1.
+void MotifSelect::drawElements()
+{
+	Motif &m = *motif_;
+	const ScreenSpace &space = m.space();
+	if (inPass(title_.layout.layer))
+		title_.draw(titles_[(int)mode_], 0, 0, title_.layout.layer, m.fonts(), space);
 	for (int i = 0; i < 2; i++)
 		drawFaces(i);
 
@@ -824,7 +904,7 @@ void MotifSelect::draw()
 	// Cursors, eased toward their cells (Ikemen's f_drawCursor); a side that has picked shows its "done" cursor.
 	for (int i = 0; i < 2; i++) {
 		Side &side = sides_[i];
-		if (!side.active)
+		if (!side.shown)
 			continue;
 		const Point p = cellPosition(side.x, side.y);
 		const float targetX = posX_ + p.x, targetY = posY_ + p.y;
@@ -842,30 +922,12 @@ void MotifSelect::draw()
 	for (int i = 0; i < 2; i++) {
 		const Side &side = sides_[i];
 		const int32_t shown = shownEntry(side);
-		if (side.active && shown >= 0 && !roster_[(size_t)shown].random)
+		if (side.shown && shown >= 0 && !roster_[(size_t)shown].random && inPass(side.name.layout.layer))
 			side.name.draw(roster_[(size_t)shown].name, 0, 0, side.name.layout.layer, m.fonts(), space);
 	}
 	for (int i = 0; i < 2; i++)
 		drawPalMenu(i);
 	drawStage();
-	bg_.draw(1, view);
-
-	if (fadeOut_.isActive())
-		fadeOut_.draw();
-	else if (fadeIn_.isActive())
-		fadeIn_.draw();
-	// After the fade: the plain VS screen until milestone 8e brings Ikemen's.
-	if (phase_ == Phase::Versus && timer_ > 1000 && !fadeOut_.isActive()) {
-		platform::fillRect(0, 0, platform::SCREEN_WIDTH, platform::SCREEN_HEIGHT, 0xFF000000);
-		const TextLayout &t = sides_[0].name;
-		TextLayout centred = t;
-		centred.align = 0;
-		centred.layout.offsetX = centred.layout.offsetY = 0;
-		const float w = (float)m.localWidth(), h = (float)m.localHeight();
-		centred.draw(roster_[(size_t)sides_[0].chosen].name, w * 0.25f, h * 0.5f, centred.layout.layer, m.fonts(), space);
-		centred.draw("VS", w * 0.5f, h * 0.5f, centred.layout.layer, m.fonts(), space);
-		centred.draw(roster_[(size_t)sides_[1].chosen].name, w * 0.75f, h * 0.5f, centred.layout.layer, m.fonts(), space);
-	}
 }
 
 } // namespace m360

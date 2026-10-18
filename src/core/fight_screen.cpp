@@ -176,6 +176,13 @@ void FightScreen::Call::draw(float x, float y, int32_t layer, SpriteRenderer &re
 	top.draw(x, y, layer, renderer, space);
 }
 
+void FightScreen::setViewport(float originX, float width)
+{
+	space_.scale = width / (float)std::max(1, localWidth_);
+	space_.originX = originX;
+	space_.originY = 0;
+}
+
 bool FightScreen::load(const std::string &defPath, std::string &error)
 {
 	std::vector<uint8_t> bytes;
@@ -257,6 +264,20 @@ bool FightScreen::load(const std::string &defPath, std::string &error)
 		time_.bg.read("bg.", *s, anims_);
 		time_.top.read("top.", *s, anims_);
 		s->readInt("framespercount", time_.framesPerCount);
+	}
+	if (const IniSection *s = findSection(sections, "wincount")) {
+		for (int i = 0; i < 2; i++) {
+			const std::string p = i == 0 ? "p1." : "p2.";
+			WinCount &w = winCount_[i];
+			s->ints(p + "pos", { &w.pos[0], &w.pos[1] });
+			w.text.read(p + "text.", *s);
+			w.bg.read(p + "bg.", *s, anims_);
+			w.top.read(p + "top.", *s, anims_);
+			for (const auto &[key, value] : s->values) {
+				if (text::startsWith(key, p + "enabled."))
+					w.enabled[key.substr(p.size() + 8)] = text::atoi(value) != 0;
+			}
+		}
 	}
 	if (const IniSection *s = findSection(sections, "round"))
 		readRound(*s);
@@ -436,8 +457,19 @@ void FightScreen::play(const int32_t snd[2])
 		snd_.play(snd[0], snd[1]);
 }
 
+void FightScreen::setMatchInfo(const std::string &mode, const int winCount[2])
+{
+	for (int i = 0; i < 2; i++) {
+		WinCount &w = winCount_[i];
+		w.wins = winCount[i];
+		const auto found = w.enabled.find(mode);
+		w.active = found != w.enabled.end() && found->second;
+	}
+}
+
 void FightScreen::newMatch()
 {
+	matchCounted_ = false;
 	for (WinIcon &w : winIcon_)
 		w.wins.clear();
 	for (PowerBar &p : power_)
@@ -649,6 +681,19 @@ void FightScreen::handleRoundOutro(const Match &match)
 
 void FightScreen::step(const Match &match, const Character &p1, const Character &p2)
 {
+	// A match won: that side's count goes up; a drawn match clears both (Ikemen, as the win poses start).
+	if (match.matchOver() && !matchCounted_) {
+		matchCounted_ = true;
+		if (match.winner() >= 0)
+			winCount_[match.winner()].wins++;
+		else
+			winCount_[0].wins = winCount_[1].wins = 0;
+	}
+	for (WinCount &w : winCount_) {
+		w.bg.action();
+		w.top.action();
+		w.text.step();
+	}
 	// The round's fade-out starts as it nears its end (Ikemen's stepRoundState).
 	if (match.intro() == match.fadeOutStart() && !fadeOut_.isActive())
 		fadeOut_.start(false);
@@ -825,7 +870,7 @@ ClipRect FightScreen::barRect(const int32_t pos[2], const int32_t rangeX[2], con
 	r.width = platform::SCREEN_WIDTH;
 	r.height = platform::SCREEN_HEIGHT;
 	if (rangeX[0] != 0 || rangeX[1] != 0)
-		barSpan(pos[0], rangeX, space_.scale, 0, fill, r.x, r.width);
+		barSpan(pos[0], rangeX, space_.scale, space_.originX, fill, r.x, r.width);
 	if (rangeY[0] != 0 || rangeY[1] != 0)
 		barSpan(pos[1], rangeY, space_.scale, space_.originY, fill, r.y, r.height);
 	return r;
@@ -999,6 +1044,16 @@ void FightScreen::draw(int32_t layer, const Match &match, const Character &p1, c
 			time_.counter.pick((float)left).draw(std::to_string(left), x, y, layer, fonts_, space_);
 		}
 		time_.top.draw(x, y, layer, *renderer_, space_);
+	}
+
+	// Matches won in a row ("WINS 2").
+	for (const WinCount &w : winCount_) {
+		if (!w.active)
+			continue;
+		const float x = (float)w.pos[0], y = (float)w.pos[1];
+		w.bg.draw(x, y, layer, *renderer_, space_);
+		w.text.draw(replaceFirst(w.text.text, "%s", std::to_string(w.wins)), x, y, layer, fonts_, space_);
+		w.top.draw(x, y, layer, *renderer_, space_);
 	}
 
 	// One slot per round needed, filled with an icon for each won (Ikemen's FightScreenWinIcon.draw).
