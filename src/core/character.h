@@ -93,7 +93,8 @@ public:
 	void hitDetection();
 	void tick();
 
-	void draw(const View &view, float groundY, int shadowIntensity, float shadowYScale);
+	// reflection: the stage's reflection intensity (0 none), the character mirrored on the floor.
+	void draw(const View &view, float groundY, int shadowIntensity, float shadowYScale, int reflection = 0);
 	// The attack (red) and hurt (blue) boxes the hit detection uses, for the debug view.
 	void drawBoxes(const View &view, float groundY) const;
 

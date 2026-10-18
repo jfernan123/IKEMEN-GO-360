@@ -18,6 +18,10 @@ struct GameConfig {
 	std::string motif = "data/ikemen1/system.def";
 	// Palettes 1-12 for each player (the select screen's pick; 1 and 2 by default).
 	int p1Palette = 1, p2Palette = 2;
+	// The game mode, as Ikemen names it ("versus", "freebattle", "arcade", "training"), and each side's matches won in
+	// a row so far: the fight screen's [WinCount].
+	std::string mode = "versus";
+	int winCount[2] = { 0, 0 };
 	// The select screen's roster and stages ([Characters] and [Stages], one per line as in MUGEN's select.def: "kfm",
 	// "kfm/kfm.def" or a path under data/). Empty: no select screen, the fight above starts at once.
 	std::vector<std::string> characters;

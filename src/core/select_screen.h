@@ -102,6 +102,9 @@ private:
 		// 0 moving, 1 palette menu, 3 chosen (Ikemen's selectState).
 		int32_t state = 0;
 		bool active = false;
+		// Drawn (cursor, portraits, name): both sides from the start, as Ikemen shows them, except an Arcade
+		// opponent, which appears once picked.
+		bool shown = false;
 		int32_t chosen = -1, palette = 1;
 		int32_t palIndex = 1, randomPreview = 1, randomPalCount = 0;
 		// The random cell's character on show, and its switch timer.
@@ -128,6 +131,10 @@ private:
 	void drawPalMenu(int index);
 	void drawStage();
 	int32_t random(int32_t n);
+	// Elements on layerno 0 draw behind SelectBG's layer 1, those on 1 and 2 in front (as Ikemen layers its sprites).
+	bool inPass(int32_t layer) const { return (layer >= 1) == front_; }
+	void drawElements();
+	bool front_ = false;
 
 	Motif *motif_ = nullptr;
 	GameConfig base_;
@@ -154,6 +161,15 @@ private:
 	std::string stageText_ = "Stage %i: %s", stageRandomText_ = "Stage: Random";
 	int32_t stageMoveSnd_[2] = { -1, 0 }, stageDoneSnd_[2] = { -1, 0 }, stageSwitch_ = 2;
 	AnimLayout stageBg_, stageRandom_;
+	// Each stage's portrait (stage.portrait.spr from its own sprites), scaled from its localcoord like a character's.
+	struct StagePortrait {
+		std::unique_ptr<Sff> sff;
+		std::unique_ptr<SpriteRenderer> renderer;
+		float resFix = 1;
+	};
+	std::vector<StagePortrait> stagePortraits_;
+	Layout stagePortrait_;
+	int32_t stagePortraitSpr_[2] = { 9000, 1 };
 	Side sides_[2];
 
 	SelectMode mode_ = SelectMode::Versus;

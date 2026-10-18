@@ -255,6 +255,7 @@ void BgDef::drawElement(const BgElement &bg, const View &view)
 	const float spanY = bg.spacingY > 0 ? (float)bg.spacingY : 0.0f;
 	const float halfW = view.halfWidth();
 	const float visibleTop = view.topCut, visibleBottom = view.topCut + platform::SCREEN_HEIGHT / view.scale;
+
 	int32_t firstX = 0, lastX = 0, firstY = 0, lastY = 0;
 	if (bg.tileX && spanX > 0) {
 		if (bg.tileX == 1 || bg.tileX == INT32_MAX) {

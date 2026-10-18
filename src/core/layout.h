@@ -9,6 +9,7 @@
 #include "core/font.h"
 #include "core/ini.h"
 #include "core/sprite_renderer.h"
+#include "platform/platform.h"
 
 namespace m360 {
 
@@ -16,9 +17,9 @@ namespace m360 {
 // vertically when the shapes differ.
 struct ScreenSpace {
 	float scale = 1;
-	float originY = 0;
+	float originX = 0, originY = 0;
 	static ScreenSpace forLocalcoord(int32_t width, int32_t height);
-	float x(float localX) const { return localX * scale; }
+	float x(float localX) const { return originX + localX * scale; }
 	float y(float localY) const { return originY + localY * scale; }
 };
 
@@ -52,6 +53,9 @@ struct Layout {
 	void read(const std::string &prefix, const IniSection &section);
 	// Puts the scale, angles, shear and projection into a draw.
 	void apply(SpriteDraw &how, const ScreenSpace &space) const;
+	// A focal length in screen pixels. Ikemen measures it in its 240-high game space whatever the screenpack's
+	// localcoord (render.go: fLength * sys.heightScale).
+	static float focalPixels(float focal) { return focal * (float)platform::SCREEN_HEIGHT / 240.0f; }
 	// The window in screen pixels, if it has one.
 	bool windowRect(const ScreenSpace &space, ClipRect &out) const;
 };

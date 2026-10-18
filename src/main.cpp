@@ -245,8 +245,12 @@ public:
 			return false;
 		// The screenpack's fight screen sets the round's timings; without one, the plain HUD and default timings.
 		std::string fightError;
-		if (!config.fight.empty() && fightScreen_.load(config.fight, fightError))
+		if (!config.fight.empty() && fightScreen_.load(config.fight, fightError)) {
 			match_.setTimings(fightScreen_.timings());
+			const View area = stage_.view(0, 0);
+			fightScreen_.setViewport(area.originX, area.width);
+			fightScreen_.setMatchInfo(config.mode, config.winCount);
+		}
 		else
 			logf("fightscreen: %s; using the plain HUD", config.fight.empty() ? "none" : fightError.c_str());
 		world_.effects = &effects_;
@@ -403,13 +407,18 @@ public:
 		fightScreen_.draw(0, match_, players_[0], players_[1]);
 		// Player 1 in front.
 		for (int i = 1; i >= 0; i--)
-			players_[i].draw(view, (float)stage_.zoffset, shadowFor(players_[i]), stage_.shadow.yscale);
+			players_[i].draw(view, (float)stage_.zoffset, shadowFor(players_[i]), stage_.shadow.yscale, stage_.reflection);
 		effects_.draw(view, (float)stage_.zoffset, 0);
 		stage_.draw(1, view);
 		if (effects_.superPaused())
-			platform::fillRect(0, 0, platform::SCREEN_WIDTH, platform::SCREEN_HEIGHT, 0x70000000);
+			platform::fillRect(view.originX, 0, view.width, platform::SCREEN_HEIGHT, 0x70000000);
 		fightScreen_.draw(1, match_, players_[0], players_[1]);
 		effects_.draw(view, (float)stage_.zoffset, 1);
+		// A pillarboxed stage: black at the sides, over whatever of the stage and the fighters reached past it.
+		if (view.originX > 0) {
+			platform::fillRect(0, 0, view.originX, platform::SCREEN_HEIGHT, 0xFF000000);
+			platform::fillRect(view.originX + view.width, 0, view.originX, platform::SCREEN_HEIGHT, 0xFF000000);
+		}
 		fightScreen_.draw(2, match_, players_[0], players_[1]);
 		if (fightScreen_.loaded())
 			fightScreen_.drawFade();
@@ -585,7 +594,10 @@ public:
 	// After the match, the game goes back to the select screen (finished() turns true) instead of starting another.
 	void returnToSelectAfterMatch() { selectAfterMatch_ = true; }
 	bool finished() const { return finished_; }
-	bool showInfo_ = true;
+	// Each side's matches won in a row, to carry into the next fight.
+	int winCount(int side) const { return fightScreen_.winCount(side); }
+	// The debug text and hitboxes (Q / LB); off, as Ikemen shows none.
+	bool showInfo_ = false;
 	Press lbPress_, ltPress_;
 	std::vector<std::string> lastActive_;
 	std::vector<std::pair<std::string, int>> history_;
@@ -836,7 +848,16 @@ int main(int argc, char **argv)
 		std::unique_ptr<StageDemo> stage;
 		bool stageLoaded = false;
 		// A fight with these characters and stage.
-		auto startFight = [&](const GameConfig &fight) {
+		// Matches won in a row on each side, kept from one fight to the next.
+		int winCounts[2] = { 0, 0 };
+		auto startFight = [&](const GameConfig &picked) {
+			GameConfig fight = picked;
+			fight.mode = mode == SelectMode::QuickMatch ? "freebattle"
+				: mode == SelectMode::Arcade            ? "arcade"
+				: mode == SelectMode::Training          ? "training"
+														: "versus";
+			fight.winCount[0] = winCounts[0];
+			fight.winCount[1] = winCounts[1];
 			stage = std::make_unique<StageDemo>();
 			stageLoaded = stage->load(fight, error, trace, quickStart, cpu || modeCpu);
 			if (stageLoaded && testPower >= 0)
@@ -955,6 +976,8 @@ int main(int argc, char **argv)
 				stage->draw();
 				// Match over: back to pick again.
 				if (stage->finished()) {
+					winCounts[0] = stage->winCount(0);
+					winCounts[1] = stage->winCount(1);
 					stage.reset();
 					resetSelect(pad2.connected);
 					screen = gameScreen = Screen::Select;

@@ -63,11 +63,17 @@ public:
 	FightScreen &operator=(const FightScreen &) = delete;
 
 	bool load(const std::string &defPath, std::string &error);
+	// The area the fight is drawn in (a 4:3 stage is pillarboxed): the fight screen fits its width there, from its
+	// top, as Ikemen's FightScreen.setScale fits it to the game's viewport.
+	void setViewport(float originX, float width);
 	bool loaded() const { return loaded_; }
 	const RoundTimings &timings() const { return timings_; }
 
 	// A new match (win icons cleared) and a new round (everything back to its start, the fade in begins).
 	void newMatch();
+	// The mode ([WinCount] shows in the modes it's enabled for) and each side's matches won in a row so far.
+	void setMatchInfo(const std::string &mode, const int winCount[2]);
+	int winCount(int side) const { return winCount_[side].wins; }
 	void reset();
 	// --quickstart: the round and fight calls are done.
 	void skipIntro();
@@ -200,6 +206,17 @@ private:
 	WinIcon winIcon_[2];
 	Combo combo_[2];
 	Time time_;
+	// [WinCount]: matches won in a row ("WINS %s"), shown in the modes it's enabled for (Ikemen's FightScreenWinCount).
+	struct WinCount {
+		int32_t pos[2] = { 0, 0 };
+		TextLayout text;
+		AnimLayout bg, top;
+		std::map<std::string, bool> enabled;
+		bool active = false;
+		int32_t wins = 0;
+	};
+	WinCount winCount_[2];
+	bool matchCounted_ = false;
 
 	// [Round]
 	int32_t roundPos_[2] = { 0, 0 };
