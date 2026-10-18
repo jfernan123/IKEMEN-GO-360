@@ -47,6 +47,8 @@ public:
 	bool isV1() const { return v1_; }
 	// Adds or replaces palette group,number (a .act file); returns its index.
 	int setPalette(uint16_t group, uint16_t number, const Palette &palette);
+	// Adds a sprite built elsewhere (an FNT v1 font cuts its glyphs out of one PCX); an existing group,number stays.
+	void addSprite(const Sprite &sprite);
 	// Drops every sprite but these (group, number) pairs; the select screen keeps only portraits.
 	void keepOnly(const std::vector<std::pair<uint16_t, uint16_t>> &keys);
 
@@ -66,6 +68,10 @@ private:
 
 	bool loadV1(const std::vector<uint8_t> &file, const std::string &name, std::string &error, bool character);
 };
+
+// PCX run-length pixels: a byte of 0xC0 or more repeats the next one (its low 6 bits) times; each row is bytesPerLine
+// long, of which the image keeps its width (Ikemen's RlePcxDecode). bytesPerLine 0: the pixels are stored raw.
+std::vector<uint8_t> decodePcxRle(const uint8_t *rle, size_t size, int width, int height, int bytesPerLine);
 
 // A .act palette file: 256 RGB colours stored last to first, colour 0 transparent (Ikemen's readActPalette).
 bool readActPalette(const std::string &path, Palette &out);

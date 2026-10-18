@@ -11,16 +11,19 @@ set(CORE_SOURCES
 	src/main.cpp
 	src/core/ai.cpp
 	src/core/air.cpp
+	src/core/bgdef.cpp
 	src/core/character.cpp
 	src/core/debug_text.cpp
 	src/core/effects.cpp
 	src/core/expr.cpp
 	src/core/file.cpp
+	src/core/font.cpp
 	src/core/game_config.cpp
 	src/core/hitdef.cpp
 	src/core/hud.cpp
 	src/core/ini.cpp
 	src/core/input.cpp
+	src/core/layout.cpp
 	src/core/log.cpp
 	src/core/match.cpp
 	src/core/select.cpp
@@ -58,8 +61,8 @@ else()
 
 	# Unit tests for the engine's core, no platform: build\pc\mugen360_tests.exe, run from this folder.
 	add_executable(mugen360_tests tests/expr_test.cpp tests/states_test.cpp tests/effects_sound_test.cpp tests/combat_test.cpp
-		tests/legacy_test.cpp
-		src/core/expr.cpp src/core/air.cpp src/core/effects.cpp src/core/file.cpp src/core/game_config.cpp src/core/hitdef.cpp src/core/ini.cpp src/core/log.cpp src/core/sff.cpp src/core/sound.cpp
+		tests/legacy_test.cpp tests/screenpack_test.cpp
+		src/core/expr.cpp src/core/air.cpp src/core/bgdef.cpp src/core/effects.cpp src/core/file.cpp src/core/font.cpp src/core/game_config.cpp src/core/hitdef.cpp src/core/ini.cpp src/core/layout.cpp src/core/log.cpp src/core/sff.cpp src/core/sound.cpp
 		src/core/projectile.cpp src/core/sprite_renderer.cpp src/core/states.cpp src/core/text.cpp third_party/lodepng/lodepng.cpp)
 	target_include_directories(mugen360_tests PRIVATE src third_party/lodepng)
 	if(MSVC)

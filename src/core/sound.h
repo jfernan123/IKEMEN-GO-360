@@ -8,6 +8,8 @@
 namespace m360 {
 
 // Elecbyte SND archive and its embedded PCM WAV files. All binary fields pass through ByteReader for the 360.
+// The file stays in memory as it is and each sound is decoded the first time it's asked for: decoded to 48 kHz
+// float stereo, a screenpack's fight.snd (6 MB) would take tens of MB, most of it sounds a match never plays.
 class SoundBank {
 public:
 	struct Sound { std::vector<float> stereo48k; };
@@ -20,7 +22,14 @@ public:
 	static constexpr int SAMPLE_RATE = 48000;
 
 private:
-	std::map<std::pair<int32_t, int32_t>, Sound> sounds_;
+	// Where a sound's WAV is in the file, and once asked for, the sound decoded (empty if it didn't decode).
+	struct Entry {
+		size_t offset = 0, length = 0;
+		bool decoded = false;
+		Sound sound;
+	};
+	std::vector<uint8_t> file_;
+	mutable std::map<std::pair<int32_t, int32_t>, Entry> sounds_;
 };
 
 } // namespace m360

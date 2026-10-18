@@ -61,9 +61,9 @@ bool SoundBank::decodeWave(const uint8_t *data, size_t size, Sound &out)
 
 bool SoundBank::load(const std::string &path, std::string &error)
 {
-	std::vector<uint8_t> bytes;
-	if (!readFile(path, bytes)) { error = "can't read " + path; return false; }
-	ByteReader r(bytes);
+	sounds_.clear();
+	if (!readFile(path, file_)) { error = "can't read " + path; return false; }
+	ByteReader r(file_);
 	char signature[12]{};
 	if (!r.bytes(signature, 12) || std::memcmp(signature, "ElecbyteSnd\0", 12) != 0) {
 		error = path + " has an invalid SND header"; return false;
@@ -75,10 +75,13 @@ bool SoundBank::load(const std::string &path, std::string &error)
 		r.seek(offset);
 		const uint32_t next = r.u32(), length = r.u32();
 		const int32_t group = (int32_t)r.u32(), number = (int32_t)r.u32();
-		const uint8_t *wave = r.at(r.pos(), length);
-		Sound decoded;
-		if (wave && group >= 0 && number >= 0 && decodeWave(wave, length, decoded))
-			sounds_.emplace(std::make_pair(group, number), std::move(decoded));
+		// The first of two sounds with the same numbers wins.
+		if (r.at(r.pos(), length) && group >= 0 && number >= 0) {
+			Entry entry;
+			entry.offset = r.pos();
+			entry.length = length;
+			sounds_.emplace(std::make_pair(group, number), std::move(entry));
+		}
 		offset = next;
 	}
 	if (!r.ok()) { error = path + " is truncated"; return false; }
@@ -88,7 +91,15 @@ bool SoundBank::load(const std::string &path, std::string &error)
 const SoundBank::Sound *SoundBank::get(int32_t group, int32_t number) const
 {
 	const auto found = sounds_.find({ group, number });
-	return found == sounds_.end() ? nullptr : &found->second;
+	if (found == sounds_.end())
+		return nullptr;
+	Entry &entry = found->second;
+	if (!entry.decoded) {
+		entry.decoded = true;
+		if (!decodeWave(file_.data() + entry.offset, entry.length, entry.sound))
+			entry.sound.stereo48k.clear();
+	}
+	return entry.sound.stereo48k.empty() ? nullptr : &entry.sound;
 }
 
 void SoundBank::play(int32_t group, int32_t number, int channel) const

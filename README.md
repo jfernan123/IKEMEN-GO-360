@@ -176,8 +176,14 @@ paths use forward slashes.
      the select screen after the match. Without a roster (or in test runs, unless `--select`) the [Game] fight starts
      at once. KFM720 joins the roster. `tests/inputs/select.txt` plays through it.
 
-Screenpack-driven `fight.def`, polished menus and the remaining stage presentation features are planned after the
-general character-compatibility work.
+8. Screenpack, menus and music (in progress): the fight screen, title menu, select and VS screens from a MUGEN /
+   Ikemen screenpack, Ikemen's default "ikemen1" skin (`data/fight.def`, `data/ikemen1/system.def`).
+   - 8a foundations (done): MUGEN bitmap fonts (`core/font`: FNT v1 .fnt files and FNT v2 .def + .sff, colour banks,
+     alignment; TrueType fonts are refused), backgrounds as a reusable `BgDef` read by section prefix ("BG" for
+     stages, "TitleBG" / "SelectBG" / "VersusBG" for screenpacks), and the screenpack layout keys (`core/layout`:
+     .spr / .anim / .font / .text with .offset, .facing, .scale, .layerno). Sound files are kept as they are and each
+     sound decodes the first time it plays, so the 6 MB fight.snd doesn't become tens of MB. The ikemen1 screenpack
+     files and the MUGEN fonts are in `data/`. `tests/screenpack_test.cpp` loads them.
 
 ## Asset notice
 
