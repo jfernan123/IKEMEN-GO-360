@@ -6,40 +6,13 @@
 #include <vector>
 
 #include "core/air.h"
+#include "core/bgdef.h"
 #include "core/camera.h"
 #include "core/ini.h"
 #include "core/sff.h"
 #include "core/sprite_renderer.h"
 
 namespace m360 {
-
-// One [BG ...] element of a stage.
-struct BgElement {
-	enum class Type { Normal, Anim, Parallax, Dummy };
-	std::string name;
-	Type type = Type::Normal;
-	int32_t layer = 0;
-	float startX = 0, startY = 0;
-	float deltaX = 1, deltaY = 1;
-	// Normal and parallax: one sprite. Anim: an action from the stage's own [Begin Action] list.
-	int32_t group = -1, number = 0;
-	int32_t actionNo = -1;
-	Animation anim;
-	Trans trans = Trans::None;
-	uint8_t srcAlpha = 255, dstAlpha = 0;
-	bool mask = false;
-	// 0 no tiling, 1 forever, n > 1 that many copies; spacing is from one copy's start to the next.
-	int32_t tileX = 0, tileY = 0;
-	int32_t spacingX = 0, spacingY = 0;
-	float velocityX = 0, velocityY = 0;
-	// Parallax: how fast the top and bottom rows scroll ("xscale"), or the top and bottom widths ("width").
-	float rasterTop = 1, rasterBottom = 1;
-	int32_t widthTop = 0, widthBottom = 0;
-	float yscalestart = 100, yscaledelta = 0;
-	bool positionlink = false;
-	// Where velocity has moved it so far.
-	float offsetX = 0, offsetY = 0;
-};
 
 // A MUGEN stage: its .def's camera, player and bound settings, and its background elements.
 // Translated from Ikemen-GO src/stage.go (loadStage, readBackGround, backGround.drawTransformed), without zoom, BG
@@ -74,12 +47,9 @@ public:
 	const Sff &sff() const { return sff_; }
 
 private:
-	void drawElement(const BgElement &bg, const View &view);
-
 	Sff sff_;
 	AnimationTable anims_;
-	std::vector<BgElement> bgs_;
-	std::unique_ptr<SpriteRenderer> renderer_;
+	BgDef bgs_;
 };
 
 } // namespace m360

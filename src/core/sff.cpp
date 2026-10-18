@@ -381,11 +381,7 @@ bool Sff::loadBytes(const std::vector<uint8_t> &file, const std::string &path, s
 	return true;
 }
 
-namespace {
-
-// PCX run-length: a byte of 0xC0 or more repeats the next one (its low 6 bits) times; each row is bytesPerLine long,
-// of which the sprite keeps its width (Ikemen's RlePcxDecode).
-std::vector<uint8_t> pcxDecode(const uint8_t *rle, size_t size, int width, int height, int bytesPerLine)
+std::vector<uint8_t> decodePcxRle(const uint8_t *rle, size_t size, int width, int height, int bytesPerLine)
 {
 	std::vector<uint8_t> out((size_t)width * height, 0);
 	if (!rle || size == 0)
@@ -420,6 +416,8 @@ std::vector<uint8_t> pcxDecode(const uint8_t *rle, size_t size, int width, int h
 	}
 	return out;
 }
+
+namespace {
 
 Palette readV1Palette(const std::vector<uint8_t> &file, size_t offset)
 {
@@ -516,7 +514,7 @@ bool Sff::loadV1(const std::vector<uint8_t> &file, const std::string &path, std:
 				if (dataEnd < dataStart)
 					dataEnd = dataStart;
 				const uint8_t *rle = ByteReader(file).at(dataStart, dataEnd - dataStart);
-				s.indices = pcxDecode(rle, rle ? dataEnd - dataStart : 0, s.width, s.height,
+				s.indices = decodePcxRle(rle, rle ? dataEnd - dataStart : 0, s.width, s.height,
 					encoding == 1 ? bytesPerLine : 0);
 				if (shared) {
 					s.palette = prevPalette;
@@ -547,6 +545,14 @@ int Sff::setPalette(uint16_t group, uint16_t number, const Palette &palette)
 	palettes_.push_back(palette);
 	paletteByKey_[key(group, number)] = (int)palettes_.size() - 1;
 	return (int)palettes_.size() - 1;
+}
+
+void Sff::addSprite(const Sprite &sprite)
+{
+	if (byKey_.count(key(sprite.group, sprite.number)))
+		return;
+	byKey_[key(sprite.group, sprite.number)] = sprites_.size();
+	sprites_.push_back(sprite);
 }
 
 void Sff::keepOnly(const std::vector<std::pair<uint16_t, uint16_t>> &keys)
