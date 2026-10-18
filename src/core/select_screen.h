@@ -36,6 +36,8 @@ public:
 	void draw();
 	// Picks made and the VS screen shown: fight() has the match.
 	bool done() const { return phase_ == Phase::Done; }
+	// The VS screen is showing (its music plays).
+	bool inVersus() const { return versusStarted_; }
 	// Back pressed while choosing: back to the title.
 	bool cancelled() const { return cancelled_; }
 	GameConfig fight() const;

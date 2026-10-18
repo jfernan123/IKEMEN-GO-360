@@ -11,9 +11,10 @@ as compatibility grows.
 
 ## Current status
 
-Milestones through 7b are complete. KFM can fight full matches with commands, attacks, guarding, throws, falls, life and rounds,
-a CPU opponent, hit effects, Explods, palette effects, pauses, afterimages, environmental shake, and sound. Kung Fu
-Blocking now parries attacks through ReversalDef and HitOverride, and attacks apply MUGEN corner push. Both the
+Milestones 1 to 8 are complete. KFM can fight full matches with commands, attacks, guarding, throws, falls, life and
+rounds, a CPU opponent, hit effects, Explods, helpers, projectiles, palette effects, pauses, afterimages,
+environmental shake, and sound. The game runs through Ikemen's default screenpack (ikemen1): title menu, select
+screen with the Color menu, VS screen, Ikemen's fight screen, and music for each when songs are added. Both the
 Windows and Xbox 360 builds pass the current test and build checks.
 
 The launch content is no longer compiled into the engine. Edit `data/mugen360.ini` to choose P1, P2 and the stage;
@@ -42,10 +43,12 @@ build needs WSL Debian with xsdk at `~/xsdk` and its GCC toolchain at `~/xsdk-gc
 | R | Start a new match |
 | Enter | Taunt / character Start button |
 | Tab | Change debug screen |
-| Esc | Quit |
+| Esc | Back: fight to select, select to title; on the title, to EXIT |
 
 On a controller, use X/Y/RB for punches, A/B/RT for kicks, LB for debug information, LT for a new match, Start for
-the character's Start button or taunt, LB+Start to change screens, and Back to quit.
+the character's Start button or taunt, LB+Start to change screens, and Back as Esc. In the menus, the attack buttons
+choose; on the select screen the Color menu takes left / right and Start for a random colour; on the VS screen an
+attack button or Start skips to the fight.
 
 ## Tests
 
@@ -58,8 +61,9 @@ tests\run_all.bat
 
 The suite includes unit coverage for expressions, state loading, effects, sound decoding and mixing, reversals,
 HitOverride and corner-push defaults. Hidden scripted matches cover commands, attacks, guarding, throws, falls,
-juggling, rounds, time over, SuperPause, AfterImage, Kung Fu Blocking, corner push and taunting. Scripted runs never
-send keyboard or mouse input to the desktop.
+juggling, rounds, time over, SuperPause, AfterImage, Kung Fu Blocking, corner push and taunting, and the title,
+select and VS screens. Unit tests also cover the screenpack pieces and music decoding. Scripted runs never send
+keyboard or mouse input to the desktop.
 
 ## Project layout
 
@@ -70,7 +74,9 @@ send keyboard or mouse input to the desktop.
 - `data/` contains the current KFM character, stage, common states, effects, and sounds.
 - `data/mugen360.ini` chooses the two character definitions and stage loaded at startup.
 - `tests/` contains unit tests and scripted fight regressions.
-- `third_party/` contains lodepng.
+- `data/ikemen1/` is Ikemen's default screenpack (system.def), `data/fight.def` its fight screen; songs go in
+  `data/ikemen1/sound/` (none ship with Ikemen).
+- `third_party/` contains lodepng, dr_mp3 and stb_vorbis.
 
 MUGEN files are little-endian while Xbox 360 is big-endian. Binary data is read through `core/bytes.h`, and runtime
 paths use forward slashes.
@@ -176,7 +182,7 @@ paths use forward slashes.
      the select screen after the match. Without a roster (or in test runs, unless `--select`) the [Game] fight starts
      at once. KFM720 joins the roster. `tests/inputs/select.txt` plays through it.
 
-8. Screenpack, menus and music (in progress): the fight screen, title menu, select and VS screens from a MUGEN /
+8. Screenpack, menus and music (done): the fight screen, title menu, select and VS screens from a MUGEN /
    Ikemen screenpack, Ikemen's default "ikemen1" skin (`data/fight.def`, `data/ikemen1/system.def`).
    - 8a foundations (done): MUGEN bitmap fonts (`core/font`: FNT v1 .fnt files and FNT v2 .def + .sff, colour banks,
      alignment; TrueType fonts are refused), backgrounds as a reusable `BgDef` read by section prefix ("BG" for
@@ -220,12 +226,25 @@ paths use forward slashes.
      "Next Stage: ...", Arcade's "Match 1", between VersusBG's layers, with its fades. It lasts `time` (390 ticks in
      ikemen1) after fading in; an attack button or Start cuts it short (a computer's pad doesn't). The select screen
      hands it the picks after its own fade out, replacing the plain VS text. Not yet: team order select, the timer,
-     background loading, face2, the VS music (8f).
+     background loading, face2.
+   - 8f music (done): `core/music` is Ikemen's Bgm: one song at a time, MP3 (dr_mp3), Ogg Vorbis (stb_vorbis) or WAV,
+     decoded about 85 ms at a time into a one-second queue each platform mixes under the sounds
+     (`platform::queueMusic`), so a song never sits decoded in memory. It's resampled to 48 kHz, played at Ikemen's
+     music volume (2 ^ (-5 + 75 * 0.06 * volume / 100)) and loops between its loop points. The screenpack's `[Music]`
+     plays on the title and select screens (replacing what plays; none means silence) and on the VS screen (only if
+     it names one), and the stage's `[Music]` bgmusic starts over with each match; files are found as Ikemen's
+     SearchFile finds them. The Ikemen release ships no music (ikemen1 names sound/Title.mp3, Select.mp3,
+     Versus.mp3; KFM's stage names kfm.mid), so nothing plays until songs are added. Not yet: MIDI and tracker
+     files, round / final / low-life / victory music, the pause volume, options for the volumes.
    - Checked against real Ikemen-GO screenshots (a scripted copy of the release): focal lengths are in Ikemen's
      240-high game space; select elements draw by layerno around SelectBG layer 1; both sides show from the start;
      the stage portrait shows in its frame. In the fight a 4:3 stage is pillarboxed at 960x720 as Ikemen keeps the
      stage's shape, with the fight screen fitted to that area; `[WinCount]` shows matches won in a row; stage
      `[Reflection]` mirrors the fighters on the floor; the debug text starts hidden (Q / LB).
+   - 8g wiring and docs (done): the title footer, version line and READMEs say milestone 8; `AGENTS.md` (outside the
+     repository) has the screens, music, 360 disk / memory notes and the publish scripts.
+   - Next (9 onward, not planned in detail): options, the real arcade ladder and training mode, victory / continue /
+     results screens, team modes, storyboards, MIDI and round / victory music.
 
 ## Asset notice
 
