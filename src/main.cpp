@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <map>
 #include <memory>
 #include <string>
@@ -49,6 +50,7 @@
 #include "core/sound.h"
 #include "core/sprite_renderer.h"
 #include "core/stage.h"
+#include "core/version.h"
 #include "platform/platform.h"
 
 using namespace m360;
@@ -508,6 +510,11 @@ public:
 			hud_.draw(match_, players_[0], players_[1], fightScreen_.roundCalled(), fightScreen_.fightCalled());
 		if (players_[1].aiLevel > 0)
 			drawTextf(platform::SCREEN_WIDTH - 40 - 6 * 2 * 9, 176, 2, 0xFFFFD040, "CPU LV %d", players_[1].aiLevel);
+		// Which build this is, faint in the bottom-right corner (inside a TV's overscan), so a console's build can be
+		// told apart.
+		const char *version = buildVersion();
+		drawText(version, platform::SCREEN_WIDTH - 48 - 6 * 2 * (float)strlen(version), platform::SCREEN_HEIGHT - 40, 2,
+			0x90FFFFFF);
 		if (showInfo_) {
 			for (const Character &c : players_)
 				c.drawBoxes(view, (float)stage_.zoffset * stage_.localScale);
@@ -907,7 +914,7 @@ int main(int argc, char **argv)
 	const bool testRun = !inputPath.empty() || !shots.empty() || quitFrame != UINT32_MAX;
 	if (!platform::init(testRun && !show))
 		return 1;
-	logf("mugen360: milestone 10d, Survival");
+	logf("mugen360: milestone 10d, Survival, build %s", buildVersion());
 	if (!configLoaded)
 		logf("mugen360: %s", configError.c_str());
 	logf("game: p1=%s p2=%s stage=%s", config.player1.c_str(), config.player2.c_str(), config.stage.c_str());
