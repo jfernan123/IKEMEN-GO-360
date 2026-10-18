@@ -27,7 +27,7 @@ public:
 	void update();
 	// Draws the elements of one layer (-1 behind everything on a stage made for Ikemen, 0 behind the players, 1 in
 	// front).
-	void draw(int32_t layer, const View &view);
+	void draw(int32_t layer, const View &view, const PalFX *globalPalFX = nullptr, float brightness = 1);
 	// A new round: the backgrounds and their controllers start over, unless [StageInfo] resetbg = 0.
 	void reset();
 	// The view for a camera position: localcoord scaled to the screen's width, the cut split by cuthigh / cutlow.

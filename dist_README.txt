@@ -1,9 +1,13 @@
-MUGEN360 - milestone 9c: stage backgrounds (homebrew test build)
+MUGEN360 - milestone 9d: stage palette effects (homebrew test build)
 ===============================================================
 
 New: stage and menu backgrounds honor their clipping windows and scaling.
 Parallax floors widen toward the screen as real trapezoids, and stage BG
 controllers can animate, show, hide, enable, move and oscillate elements.
+
+New: SuperPause darkens the stage while keeping the fighters and lifebars
+bright. Character BGPalFX / AllPalFX controllers and stage BGCtrl PalFX now
+change stage colours with add, multiply and sine effects.
 
 New: the camera works like Ikemen's: it glides after the fighters instead of
 snapping, and Training Stage Z and the Interactive Training Stage zoom out as

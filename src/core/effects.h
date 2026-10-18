@@ -8,6 +8,7 @@
 
 #include "core/air.h"
 #include "core/camera.h"
+#include "core/layout.h"
 #include "core/sff.h"
 #include "core/sprite_renderer.h"
 
@@ -17,6 +18,7 @@ namespace m360 {
 // animation player here gives the later Explod and Projectile work one owner and avoids loading fightfx per player.
 class FightEffects {
 public:
+	FightEffects();
 	struct Spawn {
 		int32_t animNo = -1;
 		bool shared = false;
@@ -79,11 +81,18 @@ public:
 		float multiplier = 1, float direction = 0, float directionAdd = 0, float decay = 1);
 	float shakeX() const { return shakeOffsetX_; }
 	float shakeY() const { return shakeOffsetY_; }
-	void startPause(int owner, int32_t time, int32_t moveTime, bool pauseBackground, bool superPause);
+	void startPause(int owner, int32_t time, int32_t moveTime, bool pauseBackground, bool superPause,
+		float brightness = 1);
 	bool paused() const { return pauseLeft_ > 0; }
 	bool pausedFor(int owner) const { return pauseLeft_ > 0 && (owner != pauseOwner_ || pauseMoveLeft_ <= 0); }
 	bool backgroundPaused() const { return pauseLeft_ > 0 && pauseBackground_; }
 	bool superPaused() const { return pauseLeft_ > 0 && superPause_; }
+	float superBrightness() const { return superPaused() && superDarkenDelay_ == 0 ? superBrightness_ : 1; }
+	void setAllPalFX(const PalFX &effect) { allPalFX_ = effect; }
+	void setBgPalFX(const PalFX &effect) { bgPalFX_ = effect; }
+	const PalFX *stagePalFX() const { return allPalFX_.enabled ? &allPalFX_ : bgPalFX_.enabled ? &bgPalFX_ : nullptr; }
+	const PalFX &allPalFX() const { return allPalFX_; }
+	const PalFX &bgPalFX() const { return bgPalFX_; }
 	void tickPause();
 	void tick();
 	// Pass -1 is below players, 0 above players but below foreground stage layers, 1 above those layers.
@@ -125,6 +134,9 @@ private:
 	int pauseOwner_ = -1;
 	int32_t pauseLeft_ = 0, pauseMoveLeft_ = 0;
 	bool pauseBackground_ = true, superPause_ = false;
+	float superBrightness_ = 1;
+	int32_t superDarkenDelay_ = 0;
+	PalFX allPalFX_, bgPalFX_;
 };
 
 } // namespace m360

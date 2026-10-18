@@ -116,8 +116,8 @@ int run9Tests()
 	Stage controlled;
 	expect(controlled.load("tests/fixtures/stage9c.def", error), "9c synthetic stage loads");
 	const BgDef &backgrounds = controlled.backgrounds();
-	expect(backgrounds.size() == 2 && backgrounds.controllerCount() == 4,
-		"window, width floor and four BG controllers load");
+	expect(backgrounds.size() == 2 && backgrounds.controllerCount() == 5,
+		"window, width floor and five BG controllers load");
 	const BgElement &moving = backgrounds.element(0);
 	expect(moving.hasWindow && moving.window[0] == 10 && moving.window[2] == 109 &&
 		near(moving.windowDeltaX, .5f) && near(moving.windowDeltaY, .25f), "window and windowdelta parse");
@@ -140,6 +140,8 @@ int run9Tests()
 	controlled.update();
 	expect(!backgrounds.element(0).enabled && near(backgrounds.element(0).offsetX, 1),
 		"BGCtrl Enable freezes movement while disabled");
+	expect(backgrounds.element(0).palfx.enabled && backgrounds.element(0).palfx.effectAdd[0] == 16 &&
+		backgrounds.element(0).palfx.effectMul[1] == 192, "BGCtrl PalFX applies on its timeline");
 	controlled.update();
 	expect(backgrounds.element(0).enabled && near(backgrounds.element(0).velocityX, 3) &&
 		near(backgrounds.element(0).offsetX, 4), "BGCtrl resumes and VelSet applies on its timeline");
@@ -151,7 +153,19 @@ int run9Tests()
 	expect(backgrounds.time() == 0 && backgrounds.element(0).visible && backgrounds.element(0).enabled &&
 		near(backgrounds.element(0).offsetX, 0) && near(backgrounds.element(0).velocityX, 1),
 		"stage reset restores BG motion and controller state");
+	expect(!backgrounds.element(0).palfx.enabled && backgrounds.element(0).palfx.time == 0,
+		"stage reset clears a BGCtrl PalFX");
 
-	std::printf("9a-9c stages and backgrounds: %d passed, %d failed\n", passed, failed);
+	PalFX stacked;
+	stacked.enabled = true;
+	stacked.effectAdd[0] = stacked.effectAdd[1] = stacked.effectAdd[2] = 16;
+	stacked.effectMul[0] = stacked.effectMul[1] = stacked.effectMul[2] = 128;
+	SpriteDraw colour;
+	colour.addR = colour.addG = colour.addB = 8;
+	colour.mulR = colour.mulG = colour.mulB = 128;
+	stacked.stack(colour);
+	expect(colour.addR == 24 && colour.mulR == 64, "stacked PalFX composes add and multiply in Ikemen order");
+
+	std::printf("9a-9d stages and backgrounds: %d passed, %d failed\n", passed, failed);
 	return failed;
 }

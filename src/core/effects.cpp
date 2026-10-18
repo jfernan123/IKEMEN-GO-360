@@ -5,6 +5,11 @@
 
 namespace m360 {
 
+FightEffects::FightEffects()
+{
+	clear();
+}
+
 bool FightEffects::load(const std::string &sffPath, const std::string &airPath, std::string &error)
 {
 	if (!sff_.load(sffPath, error) || !anims_.load(airPath, error))
@@ -22,9 +27,16 @@ void FightEffects::clear()
 	pauseOwner_ = -1;
 	pauseLeft_ = pauseMoveLeft_ = 0;
 	superPause_ = false;
+	superBrightness_ = 1;
+	superDarkenDelay_ = 0;
+	allPalFX_ = PalFX{};
+	allPalFX_.time = allPalFX_.startTime = 0;
+	bgPalFX_ = PalFX{};
+	bgPalFX_.time = bgPalFX_.startTime = 0;
 }
 
-void FightEffects::startPause(int owner, int32_t time, int32_t moveTime, bool pauseBackground, bool superPause)
+void FightEffects::startPause(int owner, int32_t time, int32_t moveTime, bool pauseBackground, bool superPause,
+	float brightness)
 {
 	if (time <= 0)
 		return;
@@ -33,6 +45,9 @@ void FightEffects::startPause(int owner, int32_t time, int32_t moveTime, bool pa
 	pauseMoveLeft_ = std::max(0, moveTime);
 	pauseBackground_ = pauseBackground;
 	superPause_ = superPause;
+	superBrightness_ = superPause ? std::clamp(brightness, 0.0f, 1.0f) : 1.0f;
+	// MUGEN compatibility: the SuperPause begins now, but its background darkening begins on the next frame.
+	superDarkenDelay_ = superPause ? 2 : 0;
 }
 
 void FightEffects::tickPause()
@@ -41,9 +56,13 @@ void FightEffects::tickPause()
 		pauseLeft_--;
 	if (pauseMoveLeft_ > 0)
 		pauseMoveLeft_--;
+	if (superDarkenDelay_ > 0)
+		superDarkenDelay_--;
 	if (pauseLeft_ <= 0) {
 		pauseOwner_ = -1;
 		superPause_ = false;
+		superBrightness_ = 1;
+		superDarkenDelay_ = 0;
 	}
 }
 
@@ -224,6 +243,9 @@ int32_t FightEffects::countExplods(int owner) const
 
 void FightEffects::tick()
 {
+	// Ikemen advances the global palette effects even while a Pause has stopped the stage.
+	allPalFX_.step();
+	bgPalFX_.step();
 	if (shakeLeft_ > 0) {
 		constexpr double PI = 3.14159265358979323846;
 		const float elapsed = (float)(shakeTime_ - shakeLeft_);
@@ -281,6 +303,7 @@ void FightEffects::draw(const View &view, float groundY, int pass)
 		how.trans = effect.trans;
 		how.srcAlpha = effect.srcAlpha;
 		how.dstAlpha = effect.dstAlpha;
+		allPalFX_.stack(how);
 		effect.renderer->drawAnimation(effect.anim, sx, sy, v.drawScaleX(), effect.facing, how);
 	}
 }

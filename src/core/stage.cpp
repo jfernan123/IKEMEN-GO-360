@@ -207,7 +207,7 @@ void Stage::update()
 	bgs_.update();
 }
 
-void Stage::draw(int32_t layer, const View &view)
+void Stage::draw(int32_t layer, const View &view, const PalFX *globalPalFX, float brightness)
 {
 	// The backgrounds are in stage units: the same view, measured in them.
 	View local = view;
@@ -216,7 +216,7 @@ void Stage::draw(int32_t layer, const View &view)
 	local.topCut = view.topCut / localScale;
 	local.ground = view.ground / localScale;
 	local.scale = view.scale * localScale;
-	bgs_.draw(layer, local);
+	bgs_.draw(layer, local, globalPalFX, brightness);
 }
 
 } // namespace m360

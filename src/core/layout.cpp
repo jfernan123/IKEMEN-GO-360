@@ -161,6 +161,21 @@ void PalFX::apply(SpriteDraw &how) const
 	how.mulB = (uint16_t)std::clamp(steps(effectMul[2]), 0, 1024);
 }
 
+void PalFX::stack(SpriteDraw &how) const
+{
+	if (!enabled)
+		return;
+	const int32_t oldAdd[3] = { how.addR, how.addG, how.addB };
+	const int32_t oldMul[3] = { how.mulR, how.mulG, how.mulB };
+	PalFX combined;
+	combined.enabled = true;
+	for (int i = 0; i < 3; i++) {
+		combined.effectAdd[i] = oldAdd[i] * effectMul[i] / 256 + effectAdd[i];
+		combined.effectMul[i] = oldMul[i] * effectMul[i] / 256;
+	}
+	combined.apply(how);
+}
+
 void AnimLayout::read(const std::string &prefix, const IniSection &section, const AnimationTable &anims, int32_t layer)
 {
 	// ".spr" is a one-frame animation that shows forever; ".anim" replaces it when both are given.

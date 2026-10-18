@@ -451,10 +451,12 @@ public:
 	void draw()
 	{
 		const View view = fightView(effects_.shakeX(), effects_.shakeY());
+		const PalFX *stagePalFX = effects_.stagePalFX();
+		const float stageBrightness = effects_.superBrightness();
 		// Ikemen's order: the fight screen's layer -1 and 0 behind the characters, 1 and 2 in front.
 		if (stage_.ikemen)
-			stage_.draw(-1, view);
-		stage_.draw(0, view);
+			stage_.draw(-1, view, stagePalFX, stageBrightness);
+		stage_.draw(0, view, stagePalFX, stageBrightness);
 		fightScreen_.draw(-1, match_, players_[0], players_[1]);
 		effects_.draw(view, (float)stage_.zoffset * stage_.localScale, -1);
 		fightScreen_.draw(0, match_, players_[0], players_[1]);
@@ -463,9 +465,7 @@ public:
 			players_[i].draw(view, (float)stage_.zoffset * stage_.localScale, shadowFor(players_[i]), stage_.shadow.yscale,
 				stage_.reflection);
 		effects_.draw(view, (float)stage_.zoffset * stage_.localScale, 0);
-		stage_.draw(1, view);
-		if (effects_.superPaused())
-			platform::fillRect(view.originX, 0, view.width, platform::SCREEN_HEIGHT, 0x70000000);
+		stage_.draw(1, view, stagePalFX, stageBrightness);
 		fightScreen_.draw(1, match_, players_[0], players_[1]);
 		effects_.draw(view, (float)stage_.zoffset * stage_.localScale, 1);
 		// A pillarboxed stage: black at the sides, over whatever of the stage and the fighters reached past it.
@@ -869,7 +869,7 @@ int main(int argc, char **argv)
 	const bool testRun = !inputPath.empty() || !shots.empty() || quitFrame != UINT32_MAX;
 	if (!platform::init(testRun && !show))
 		return 1;
-	logf("mugen360: milestone 9c, stage backgrounds");
+	logf("mugen360: milestone 9d, stage palette effects");
 	if (!configLoaded)
 		logf("mugen360: %s", configError.c_str());
 	logf("game: p1=%s p2=%s stage=%s", config.player1.c_str(), config.player2.c_str(), config.stage.c_str());
