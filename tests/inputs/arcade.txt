@@ -1,0 +1,13 @@
+# Stage 10a Arcade: choose ARCADE from the title, pick KFM and palette 1 once, let Arcade choose its first route
+# opponent and stage, skip the numbered VS screen, and start the fight.
+#   build\pc\mugen360.exe --title --input tests\inputs\arcade.txt --quit 500 --trace
+# Expect: "title: ARCADE > SINGLE MODE", "arcade: match 1 of 2", a VS screen and "match: round 1".
+30 -
+2 a
+40 -
+2 a
+10 -
+2 a
+200 -
+2 s
+150 -

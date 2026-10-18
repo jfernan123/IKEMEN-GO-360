@@ -1,5 +1,11 @@
-MUGEN360 - milestone 9: stages and rendering (homebrew test build)
-================================================================
+MUGEN360 - milestone 10a: Arcade and Training (homebrew test build)
+==================================================================
+
+New: Arcade is a full route through the installed roster. Pick your fighter
+once; each win advances to the next CPU opponent and a new random stage.
+
+New: Training keeps the timer at 99, refills life and power, and uses a
+stationary player-2 dummy. Start Training from PRACTICE on the title menu.
 
 New: stage and menu backgrounds honor their clipping windows and scaling.
 Parallax floors widen toward the screen as real trapezoids, and stage BG

@@ -23,6 +23,7 @@ call :run hits 600 --quickstart || exit /b 1
 call :guard || exit /b 1
 call :run falls 700 --quickstart || exit /b 1
 call :run effects 260 --quickstart --power 3000 || exit /b 1
+call :training || exit /b 1
 call :reversal || exit /b 1
 call :run cornerpush 400 --quickstart || exit /b 1
 call :run taunt 100 --quickstart || exit /b 1
@@ -32,6 +33,7 @@ call :helper || exit /b 1
 call :misc || exit /b 1
 call :select || exit /b 1
 call :title || exit /b 1
+call :arcade || exit /b 1
 call :run buttons 80 --quickstart || exit /b 1
 call :run commands 260 --quickstart || exit /b 1
 call :run states 330 --quickstart || exit /b 1
@@ -41,6 +43,7 @@ call :run timeover 6400 --quickstart || exit /b 1
 findstr /c:"state 0 -> 3000" tests\out\latest_effects.log >nul || (echo FAIL: super state 3000 did not run & exit /b 1)
 findstr /c:"superpause 30 ticks" tests\out\latest_effects.log >nul || (echo FAIL: SuperPause did not run & exit /b 1)
 findstr /c:"afterimage length 20" tests\out\latest_effects.log >nul || (echo FAIL: super AfterImage did not run & exit /b 1)
+findstr /c:"training restore life" tests\out\latest_training.log >nul || (echo FAIL: Training did not restore hit damage & exit /b 1)
 findstr /c:"state 1300 -> 1310" tests\out\latest_reversal.log >nul || (echo FAIL: Kung Fu Blocking did not enter its success state & exit /b 1)
 findstr /c:"reverses p2 state 200" tests\out\latest_reversal.log >nul || (echo FAIL: ReversalDef did not catch P2's punch & exit /b 1)
 findstr /c:"cornerpush" tests\out\latest_cornerpush.log >nul || (echo FAIL: corner push was not applied & exit /b 1)
@@ -59,6 +62,10 @@ findstr /c:"music: can't open sound/Versus.mp3" tests\out\latest_title.log >nul 
 findstr /c:"music: can't open sound/kfm.mid" tests\out\latest_title.log >nul || (echo FAIL: the fight did not ask for the stage music & exit /b 1)
 findstr /c:"versus: done at" tests\out\latest_title.log >nul || (echo FAIL: Start did not skip the VS screen & exit /b 1)
 findstr /c:"match: round 1" tests\out\latest_title.log >nul || (echo FAIL: the fight did not start from the title menu & exit /b 1)
+findstr /c:"title: ARCADE > SINGLE MODE" tests\out\latest_arcade.log >nul || (echo FAIL: ARCADE did not start from the title & exit /b 1)
+findstr /c:"arcade: match 1 of 2" tests\out\latest_arcade.log >nul || (echo FAIL: Arcade did not build its roster route & exit /b 1)
+findstr /c:"versus: done at" tests\out\latest_arcade.log >nul || (echo FAIL: Arcade did not show its VS screen & exit /b 1)
+findstr /c:"match: round 1" tests\out\latest_arcade.log >nul || (echo FAIL: Arcade did not start its first match & exit /b 1)
 findstr /c:"state 1002 -> 1009" tests\out\latest_misc.log >nul || (echo FAIL: 7d controllers and triggers did not all check out & exit /b 1)
 findstr /c:"helper 88 state 1200" tests\out\latest_helper.log >nul || (echo FAIL: nested Helper was not created & exit /b 1)
 findstr /c:"state 1000 -> 1002" tests\out\latest_helper.log >nul || (echo FAIL: Helper parent/root redirects or NumHelper failed & exit /b 1)
@@ -97,6 +104,12 @@ echo     guard
 copy /y m360.log tests\out\latest_guard.log >nul
 exit /b 0
 
+:training
+echo     training
+"%EXE%" --mode training --input tests\inputs\hits.txt --quickstart --quit 180 --trace %SHOW% >nul || exit /b 1
+copy /y m360.log tests\out\latest_training.log >nul
+exit /b 0
+
 :reversal
 echo     reversal
 "%EXE%" --input tests\inputs\reversal.txt --input2 tests\inputs\reversal_p2.txt --quickstart --quit 180 --trace %SHOW% >nul || exit /b 1
@@ -131,6 +144,12 @@ exit /b 0
 echo     title menu
 "%EXE%" --title --cpu --input tests/inputs/title.txt --quit 600 --trace %SHOW% >nul || exit /b 1
 copy /y m360.log tests\out\latest_title.log >nul
+exit /b 0
+
+:arcade
+echo     arcade
+"%EXE%" --title --input tests\inputs\arcade.txt --quit 500 --trace %SHOW% >nul || exit /b 1
+copy /y m360.log tests\out\latest_arcade.log >nul
 exit /b 0
 
 :misc

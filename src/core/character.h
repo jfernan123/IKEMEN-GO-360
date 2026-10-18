@@ -73,6 +73,8 @@ public:
 	bool asserts(uint32_t special) const { return (special_ & special) != 0; }
 	int32_t lifeMax() const { return (int32_t)constF("data.life", 1000); }
 	int32_t powerMax() const { return (int32_t)constF("data.power", 3000); }
+	// Training's default recovery, after this tick's hits have landed.
+	void trainingRestore();
 	// 0 for player 1's side, 1 for player 2's (Win, Lose, TeamSide).
 	int playerNo = 0;
 	// The computer's level (1-8) while it plays this character, 0 for a person (the AILevel trigger).

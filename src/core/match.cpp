@@ -126,7 +126,7 @@ Match::Event Match::step(Character &p1, Character &p2, RoundAnnouncer &announcer
 	}
 
 	// The clock runs while the round is fought.
-	if (intro_ == 0 && !p1.asserts(Special::TimerFreeze) && !p2.asserts(Special::TimerFreeze) && time_ > 0)
+	if (!training_ && intro_ == 0 && !p1.asserts(Special::TimerFreeze) && !p2.asserts(Special::TimerFreeze) && time_ > 0)
 		time_--;
 
 	if (intro_ < -timings_.overHit || decide(p1, p2)) {

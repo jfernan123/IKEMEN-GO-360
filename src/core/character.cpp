@@ -1254,6 +1254,16 @@ void Character::runGlobalPalFX(const StateController &sc, bool all)
 	}
 }
 
+void Character::trainingRestore()
+{
+	const int32_t oldLife = life;
+	life = lifeMax();
+	power = powerMax();
+	if (oldLife != life && !traceLabel.empty())
+		logf("%s frame %u: training restore life %d -> %d", traceLabel.c_str(), world_ ? world_->gameTime : 0,
+			oldLife, life);
+}
+
 void Character::runAfterImage(const StateController &sc)
 {
 	afterImage_ = AfterImageState{};

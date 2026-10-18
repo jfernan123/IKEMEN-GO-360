@@ -301,6 +301,8 @@ public:
 		}
 		quickStart_ = quickStart;
 		forceCpu_ = cpu;
+		training_ = config.mode == "training";
+		match_.setTraining(training_);
 		newMatch();
 		return true;
 	}
@@ -393,7 +395,7 @@ public:
 		camera_.resetTracking();
 		const float edge = world_.screenEdge;
 		// Player 2 is the computer unless a second controller is plugged in.
-		const bool cpu = forceCpu_ || !pad2.connected;
+		const bool cpu = forceCpu_ || (!training_ && !pad2.connected);
 		players_[1].aiLevel = cpu ? AI_LEVEL : 0;
 		ai_.update((float)AI_LEVEL, cpu && match_.roundState() == 2);
 		const bool run[2] = { !effects_.pausedFor(0), !effects_.pausedFor(1) };
@@ -437,6 +439,12 @@ public:
 			if (run[i]) players_[i].hitDetection();
 		for (int i = 0; i < 2; i++)
 			if (run[i]) players_[i].tick();
+		if (training_) {
+			// Ikemen's default training values: both life bars recover and both power bars stay full. The dummy has no
+			// AI unless --cpu explicitly asks for it.
+			for (Character &player : players_)
+				player.trainingRestore();
+		}
 		// The camera runs after the characters, pauses included (Ikemen's System.action).
 		camera_.action();
 		effects_.tick();
@@ -655,6 +663,7 @@ private:
 	static constexpr int AI_LEVEL = 8;
 	AiInput ai_;
 	bool forceCpu_ = false;
+	bool training_ = false;
 	bool selectAfterMatch_ = false, finished_ = false;
 
 public:
@@ -663,6 +672,7 @@ public:
 	bool finished() const { return finished_; }
 	// Each side's matches won in a row, to carry into the next fight.
 	int winCount(int side) const { return fightScreen_.winCount(side); }
+	int winner() const { return match_.winner(); }
 	// The debug text and hitboxes (Q / LB); off, as Ikemen shows none.
 	bool showInfo_ = false;
 	Press lbPress_, ltPress_;
@@ -828,7 +838,7 @@ int main(int argc, char **argv)
 	std::string configError;
 	const bool configLoaded = config.load("data/mugen360.ini", configError);
 	// Test-run options (see InputScript).
-	std::string inputPath, input2Path;
+	std::string inputPath, input2Path, forcedMode;
 	std::map<uint32_t, std::string> shots;
 	uint32_t quitFrame = UINT32_MAX;
 	int32_t testPower = -1;
@@ -851,6 +861,8 @@ int main(int argc, char **argv)
 			quickStart = true;
 		else if (arg == "--cpu")
 			cpu = true;
+		else if (arg == "--mode" && i + 1 < argc)
+			forcedMode = text::toLower(argv[++i]);
 		else if (arg == "--show")
 			show = true;
 		else if (arg == "--select")
@@ -869,7 +881,7 @@ int main(int argc, char **argv)
 	const bool testRun = !inputPath.empty() || !shots.empty() || quitFrame != UINT32_MAX;
 	if (!platform::init(testRun && !show))
 		return 1;
-	logf("mugen360: milestone 9, stages and rendering");
+	logf("mugen360: milestone 10a, arcade and training");
 	if (!configLoaded)
 		logf("mugen360: %s", configError.c_str());
 	logf("game: p1=%s p2=%s stage=%s", config.player1.c_str(), config.player2.c_str(), config.stage.c_str());
@@ -902,9 +914,15 @@ int main(int argc, char **argv)
 		const bool titleLoaded = useTitle && title.load(motif, error);
 		if (useTitle && !titleLoaded)
 			logf("mugen360: %s", error.c_str());
-		// The mode picked on the title: whether the computer plays player 2.
+		// The mode picked on the title and whether player 2 is forced to use computer input.
 		bool modeCpu = false;
 		SelectMode mode = SelectMode::Versus;
+		if (forcedMode == "arcade")
+			mode = SelectMode::Arcade, modeCpu = true;
+		else if (forcedMode == "training")
+			mode = SelectMode::Training;
+		else if (forcedMode == "quick" || forcedMode == "freebattle")
+			mode = SelectMode::QuickMatch, modeCpu = true;
 		// A new character selection, on whichever select screen there is.
 		auto resetSelect = [&](bool secondController) {
 			if (motifSelectLoaded)
@@ -1047,8 +1065,8 @@ int main(int argc, char **argv)
 				if (choice == TitleChoice::Exit)
 					break;
 				if (choice != TitleChoice::None) {
-					// 1P vs 2P: player 2 is controller 2 when there is one; the other modes are against the computer.
-					modeCpu = choice != TitleChoice::Versus;
+					// Arcade and Quick Match force a CPU opponent. Training leaves player 2 as a stationary dummy.
+					modeCpu = choice == TitleChoice::Arcade || choice == TitleChoice::QuickMatch;
 					mode = choice == TitleChoice::QuickMatch ? SelectMode::QuickMatch
 						: choice == TitleChoice::Arcade      ? SelectMode::Arcade
 						: choice == TitleChoice::Training    ? SelectMode::Training
@@ -1093,10 +1111,17 @@ int main(int argc, char **argv)
 				stage->draw();
 				// Match over: back to pick again.
 				if (stage->finished()) {
+					const int winner = stage->winner();
 					winCounts[0] = stage->winCount(0);
 					winCounts[1] = stage->winCount(1);
 					stage.reset();
-					resetSelect(pad2.connected);
+					if (mode == SelectMode::Arcade && winner == 0 && motifSelectLoaded && motifSelect.nextArcadeMatch()) {
+						logf("arcade: player advances");
+					} else {
+						if (mode == SelectMode::Arcade)
+							logf("arcade: %s", winner == 0 ? "route complete" : "route lost");
+						resetSelect(pad2.connected);
+					}
 					screen = gameScreen = Screen::Select;
 				}
 			} else if (screen == Screen::Animations) {

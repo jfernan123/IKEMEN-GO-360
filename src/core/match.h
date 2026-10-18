@@ -52,6 +52,7 @@ public:
 	enum class Event : uint8_t { None, NextRound, MatchOver };
 
 	void setTimings(const RoundTimings &timings) { timings_ = timings; }
+	void setTraining(bool training) { training_ = training; }
 	const RoundTimings &timings() const { return timings_; }
 
 	// A new match: round 1, no wins.
@@ -108,6 +109,7 @@ private:
 	int32_t slowTime_ = 60;
 	Finish finish_ = Finish::None;
 	int winTeam_ = -1;
+	bool training_ = false;
 };
 
 } // namespace m360

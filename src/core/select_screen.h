@@ -8,6 +8,7 @@
 #include "core/air.h"
 #include "core/bgdef.h"
 #include "core/game_config.h"
+#include "core/game_flow.h"
 #include "core/layout.h"
 #include "core/motif.h"
 #include "core/sff.h"
@@ -41,6 +42,10 @@ public:
 	// Back pressed while choosing: back to the title.
 	bool cancelled() const { return cancelled_; }
 	GameConfig fight() const;
+	// A won Arcade fight: pick the next route opponent and stage, and enter its VS screen. False completes the route.
+	bool nextArcadeMatch();
+	int32_t arcadeMatchNo() const { return arcade_.matchNo(); }
+	int32_t arcadeMatchCount() const { return arcade_.matchCount(); }
 
 	// For the tests.
 	struct Point {
@@ -135,6 +140,7 @@ private:
 	void drawPalMenu(int index);
 	void drawStage();
 	void startVersus();
+	void setArcadeOpponent(const std::vector<int32_t> &real);
 	int32_t random(int32_t n);
 	// Elements on layerno 0 draw behind SelectBG's layer 1, those on 1 and 2 in front (as Ikemen layers its sprites).
 	bool inPass(int32_t layer) const { return (layer >= 1) == front_; }
@@ -188,6 +194,7 @@ private:
 	int32_t timer_ = 0;
 	platform::Pad before_[2];
 	uint32_t random_ = 0x9E3779B9u;
+	ArcadeLadder arcade_;
 };
 
 } // namespace m360
