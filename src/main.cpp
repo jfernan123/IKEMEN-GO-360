@@ -36,6 +36,8 @@
 #include "core/game_config.h"
 #include "core/fight_screen.h"
 #include "core/hud.h"
+#include "core/motif.h"
+#include "core/title_screen.h"
 #include "core/log.h"
 #include "core/match.h"
 #include "core/select.h"
@@ -736,7 +738,7 @@ private:
 	size_t current_ = 0;
 };
 
-enum class Screen { Select, Stage, Animations, Sprites };
+enum class Screen { Title, Select, Stage, Animations, Sprites };
 
 } // namespace
 
@@ -750,7 +752,7 @@ int main(int argc, char **argv)
 	std::map<uint32_t, std::string> shots;
 	uint32_t quitFrame = UINT32_MAX;
 	int32_t testPower = -1;
-	bool trace = false, quickStart = false, cpu = false, show = false, forceSelect = false;
+	bool trace = false, quickStart = false, cpu = false, show = false, forceSelect = false, forceTitle = false;
 	for (int i = 1; i < argc; i++) {
 		const std::string arg = argv[i];
 		if (arg == "--input" && i + 1 < argc)
@@ -773,6 +775,8 @@ int main(int argc, char **argv)
 			show = true;
 		else if (arg == "--select")
 			forceSelect = true;
+		else if (arg == "--title")
+			forceTitle = forceSelect = true;
 		else if (arg == "--power" && i + 1 < argc)
 			testPower = text::atoi(argv[++i]);
 		else if (arg == "--p1" && i + 1 < argc)
@@ -785,7 +789,7 @@ int main(int argc, char **argv)
 	const bool testRun = !inputPath.empty() || !shots.empty() || quitFrame != UINT32_MAX;
 	if (!platform::init(testRun && !show))
 		return 1;
-	logf("mugen360: milestone 8b, fight screen");
+	logf("mugen360: milestone 8c, title screen");
 	if (!configLoaded)
 		logf("mugen360: %s", configError.c_str());
 	logf("game: p1=%s p2=%s stage=%s", config.player1.c_str(), config.player2.c_str(), config.stage.c_str());
@@ -804,12 +808,21 @@ int main(int argc, char **argv)
 		const bool selectLoaded = useSelect && select.load(config, error);
 		if (useSelect && !selectLoaded)
 			logf("mugen360: %s", error.c_str());
+		// The title screen and its menu come first when the screenpack has one (test runs only with --title).
+		Motif motif;
+		TitleScreen title;
+		const bool useTitle = selectLoaded && !config.motif.empty() && (!testRun || forceTitle);
+		const bool titleLoaded = useTitle && motif.load(config.motif, error) && title.load(motif, error);
+		if (useTitle && !titleLoaded)
+			logf("mugen360: %s", error.c_str());
+		// The mode picked on the title: whether the computer plays player 2.
+		bool modeCpu = false;
 		std::unique_ptr<StageDemo> stage;
 		bool stageLoaded = false;
 		// A fight with these characters and stage.
 		auto startFight = [&](const GameConfig &fight) {
 			stage = std::make_unique<StageDemo>();
-			stageLoaded = stage->load(fight, error, trace, quickStart, cpu);
+			stageLoaded = stage->load(fight, error, trace, quickStart, cpu || modeCpu);
 			if (stageLoaded && testPower >= 0)
 				stage->setTestPower(testPower);
 			if (!stageLoaded)
@@ -818,7 +831,9 @@ int main(int argc, char **argv)
 				stage->returnToSelectAfterMatch();
 		};
 		Screen screen = Screen::Stage;
-		if (selectLoaded) {
+		if (titleLoaded) {
+			screen = Screen::Title;
+		} else if (selectLoaded) {
 			select.reset(cpu || !platform::pad(1).connected);
 			screen = Screen::Select;
 		} else {
@@ -833,31 +848,62 @@ int main(int argc, char **argv)
 		AnimationViewer animViewer(kfm.anims(), renderer);
 		SpriteViewer spriteViewer(kfm.sff(), renderer);
 		Buttons buttons;
+		// Where the debug screens go back to.
+		Screen gameScreen = screen;
 
 		for (uint32_t frame = 0; frame <= quitFrame && platform::beginFrame(BACKGROUND); frame++) {
 			const platform::Pad pad = inputPath.empty() ? platform::pad(0) : script.at(frame);
 			const platform::Pad pad2 = inputPath.empty() ? platform::pad(1) : script2.at(frame);
-			if (buttons.back.update(pad.back))
+			// Back: out of a fight to the select screen, out of the select screen to the title, else quit. The title
+			// handles it itself (it moves to Exit).
+			const bool back = buttons.back.update(pad.back);
+			if (back && screen == Screen::Stage && selectLoaded) {
+				stage.reset();
+				select.reset(cpu || modeCpu || !pad2.connected);
+				screen = gameScreen = Screen::Select;
+			} else if (back && screen == Screen::Select && titleLoaded) {
+				title.reset();
+				screen = gameScreen = Screen::Title;
+			} else if (back && screen != Screen::Title) {
 				break;
+			}
 			if (const auto shot = shots.find(frame); shot != shots.end())
 				platform::requestScreenshot(shot->second.c_str());
 			// The debug screens cycle; from the last one, back to the fight (or the select screen before one).
-			if (buttons.menu.update(pad.menu))
-				screen = screen == Screen::Stage || screen == Screen::Select ? Screen::Animations
-					: screen == Screen::Animations                         ? Screen::Sprites
-					: stage                                                ? Screen::Stage
-																		   : Screen::Select;
+			if (buttons.menu.update(pad.menu)) {
+				if (screen == Screen::Animations)
+					screen = Screen::Sprites;
+				else if (screen == Screen::Sprites)
+					screen = gameScreen;
+				else
+					screen = Screen::Animations;
+			}
 			platform::Pad gameplayPad = pad;
 			if (pad.menu) {
 				gameplayPad.start = false;
 				gameplayPad.lb = false;
+			}
+			if (screen == Screen::Title) {
+				title.update(gameplayPad, pad2);
+				title.draw();
+				platform::endFrame();
+				const TitleChoice choice = title.result();
+				if (choice == TitleChoice::Exit)
+					break;
+				if (choice != TitleChoice::None) {
+					// 1P vs 2P: player 2 is controller 2 when there is one; the other modes are against the computer.
+					modeCpu = choice != TitleChoice::Versus;
+					select.reset(cpu || modeCpu || !pad2.connected);
+					screen = gameScreen = Screen::Select;
+				}
+				continue;
 			}
 			if (screen == Screen::Select) {
 				select.update(gameplayPad, pad2);
 				select.draw();
 				if (select.done()) {
 					startFight(select.fight());
-					screen = Screen::Stage;
+					screen = gameScreen = Screen::Stage;
 				}
 				platform::endFrame();
 				continue;
@@ -873,8 +919,8 @@ int main(int argc, char **argv)
 				// Match over: back to pick again.
 				if (stage->finished()) {
 					stage.reset();
-					select.reset(cpu || !pad2.connected);
-					screen = Screen::Select;
+					select.reset(cpu || modeCpu || !pad2.connected);
+					screen = gameScreen = Screen::Select;
 				}
 			} else if (screen == Screen::Animations) {
 				animViewer.update(buttons, gameplayPad);

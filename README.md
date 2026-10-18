@@ -194,6 +194,15 @@ paths use forward slashes.
      "Fight", 300 ticks of ending) and waits for the calls as Ikemen's does. Without a fight.def the plain HUD and
      default timings remain. Not yet: team modes, guard / stun bars, red life, [Action] messages, perfect / clutch
      wins, the vs-CPU win and lose calls.
+   - 8c title screen (done): `core/motif` loads a screenpack's system.def (`[Game] motif` in `data/mugen360.ini`), and
+     `core/title_screen` draws Ikemen's title from `[Title Info]` and TitleBG: the background (with sin.x / sin.y
+     motion, now in `BgDef`), the menu built from the `menu.itemname.` keys in file order (`IniSection::keys`), its
+     scrolling window and tween, active-item font, move / done / cancel sounds, fades and the footer; fonts can be
+     named by file. Modes that can't run yet are left out of the menu; a submenu left with one mode runs it directly
+     (Ikemen's main.lua). ikemen1 gives ARCADE, VS MODE (1P VS 2P, QUICK MATCH), PRACTICE, OPTIONS, EXIT; arcade,
+     quick match and training are a versus match against the computer until stages 10 and 11, options shows a notice.
+     Back leaves a fight for the select screen and the select screen for the title. `--title` runs it in a test
+     (`tests/inputs/title.txt`). Not yet: the logo storyboard, demo and attract modes, the info box, music.
 
 ## Asset notice
 

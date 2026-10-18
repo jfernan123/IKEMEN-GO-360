@@ -12,6 +12,8 @@
 #include "core/ini.h"
 #include "core/fight_screen.h"
 #include "core/layout.h"
+#include "core/motif.h"
+#include "core/title_screen.h"
 #include "core/sff.h"
 
 using namespace m360;
@@ -139,5 +141,67 @@ int run8bTests()
 	expect(empty.end(1, true), "a call with nothing to show is done at once");
 
 	std::printf("8b fight screen: %d passed, %d failed\n", passed, failed);
+	return failed;
+}
+
+// Milestone 8c: the title screen. system.def as a motif, its title background, the menu built from ikemen1's
+// itemname keys (with the modes mugen360 can't run left out), fonts named by file, and moving around the menu.
+int run8cTests()
+{
+	passed = failed = 0;
+	std::string error;
+
+	const std::vector<IniSection> ordered = parseIni("[A]\nb = 1\na = 2\nb = 3\n");
+	expect(ordered.size() == 1 && ordered[0].keys == std::vector<std::string>{ "b", "a" } && ordered[0].text("b") == "1",
+		"ini keys keep file order, first value wins");
+
+	Motif motif;
+	expect(motif.load("data/ikemen1/system.def", error), "system.def loads as a motif");
+	expect(motif.localWidth() == 1280 && motif.localHeight() == 720, "motif localcoord 1280x720");
+	BgDef titleBg;
+	uint32_t clear = 0;
+	motif.loadBg("titlebg", titleBg, clear);
+	expect(titleBg.size() == 9 && clear == 0xFFFFFFFFu, "TitleBG: 9 elements on white");
+	expect(titleBg.size() > 7 && titleBg.element(7).sinRadius[1] == 15 && titleBg.element(7).sinPeriod[1] == 264,
+		"the logo bobs: sin.y = 15, 264");
+
+	TextLayout footer;
+	footer.fontFile = "default-3x5.def";
+	FontTable fonts;
+	FontFiles files;
+	resolveFontFile(footer, fonts, files, "data/ikemen1/system.def");
+	expect(footer.font == 1000 && fonts.count(1000) == 1, "a font named by file loads under a free id");
+
+	TitleScreen title;
+	expect(title.load(motif, error), "[Title Info] loads");
+	const std::vector<TitleScreen::Item> &menu = title.menu();
+	std::string top;
+	for (const TitleScreen::Item &item : menu)
+		top += item.display + "|";
+	expect(top == "ARCADE|VS MODE|PRACTICE|OPTIONS|EXIT|", "the menu keeps what can run, in order");
+	std::string versus;
+	if (menu.size() > 1)
+		for (const TitleScreen::Item &item : menu[1].children)
+			versus += item.name + "|";
+	expect(versus == "versus|freebattle|back|", "VS MODE: 1P VS 2P, QUICK MATCH, BACK");
+	const TitleScreen::Item *arcade = menu.empty() ? nullptr : TitleScreen::singleAction(menu[0]);
+	expect(arcade && arcade->name == "arcade", "ARCADE runs its one mode directly");
+	expect(menu.size() > 2 && !TitleScreen::singleAction(menu[1]), "VS MODE opens as a submenu");
+
+	// Wait out the fade, then down five times wraps back to the top, and up once goes to the end.
+	platform::Pad idle, downPad, upPad;
+	downPad.down = true;
+	upPad.up = true;
+	for (int i = 0; i < 15; i++)
+		title.update(idle, idle);
+	for (int i = 0; i < 5; i++) {
+		title.update(downPad, idle);
+		title.update(idle, idle);
+	}
+	expect(title.selected() == "menuarcade", "down past the end wraps to the top");
+	title.update(upPad, idle);
+	expect(title.selected() == "exit", "up from the top wraps to the end");
+
+	std::printf("8c title screen: %d passed, %d failed\n", passed, failed);
 	return failed;
 }

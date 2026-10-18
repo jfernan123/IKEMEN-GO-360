@@ -121,8 +121,22 @@ void BgDef::load(const std::vector<IniSection> &sections, const std::string &pre
 				bg.tileY = 0;
 		}
 		s.floats("velocity", { &bg.velocityX, &bg.velocityY });
-		if (s.has("window") || s.has("maskwindow") || s.has("sin.x") || s.has("sin.y"))
-			logf("bgdef: %s: %s: window and sin aren't supported yet", defPath.c_str(), bg.name.c_str());
+		for (int i = 0; i < 2; i++) {
+			float radius = 0, period = 0, phase = 0;
+			if (!s.floats(i == 0 ? "sin.x" : "sin.y", { &radius, &period, &phase }))
+				continue;
+			bg.sinRadius[i] = radius;
+			bg.sinPeriod[i] = (int32_t)period;
+			// The phase, in degrees, is where in the swing it starts.
+			if (bg.sinPeriod[i] > 0) {
+				bg.sinStart[i] = (int32_t)(phase * (float)bg.sinPeriod[i] / 360) % bg.sinPeriod[i];
+				if (bg.sinStart[i] < 0)
+					bg.sinStart[i] += bg.sinPeriod[i];
+				bg.sinTime[i] = bg.sinStart[i];
+			}
+		}
+		if (s.has("window") || s.has("maskwindow"))
+			logf("bgdef: %s: %s: window isn't supported yet", defPath.c_str(), bg.name.c_str());
 
 		bgs_.push_back(std::move(bg));
 		if (!bgs_.back().positionlink)
@@ -144,6 +158,10 @@ void BgDef::reset()
 {
 	for (BgElement &bg : bgs_) {
 		bg.offsetX = bg.offsetY = 0;
+		for (int i = 0; i < 2; i++) {
+			bg.sinTime[i] = bg.sinStart[i];
+			bg.sinOffset[i] = 0;
+		}
 		if (bg.actionNo >= 0)
 			bg.anim.reset();
 	}
@@ -159,6 +177,13 @@ void BgDef::update()
 			bg.offsetX = std::fmod(bg.offsetX, (float)bg.spacingX);
 		if (bg.tileY && bg.spacingY > 0)
 			bg.offsetY = std::fmod(bg.offsetY, (float)bg.spacingY);
+		for (int i = 0; i < 2; i++) {
+			if (bg.sinPeriod[i] <= 0)
+				continue;
+			bg.sinOffset[i] = bg.sinRadius[i] * (float)std::sin(2 * 3.14159265358979 * bg.sinTime[i] / bg.sinPeriod[i]);
+			if (++bg.sinTime[i] >= bg.sinPeriod[i])
+				bg.sinTime[i] = 0;
+		}
 		if (bg.actionNo >= 0)
 			bg.anim.action();
 	}
@@ -175,8 +200,8 @@ void BgDef::draw(int32_t layer, const View &view)
 void BgDef::drawElement(const BgElement &bg, const View &view)
 {
 	// The element's position in stage units, relative to the screen's centre column and the stage's top.
-	const float x = bg.startX + bg.offsetX - view.camX * bg.deltaX;
-	const float y = bg.startY + bg.offsetY - view.camY * bg.deltaY;
+	const float x = bg.startX + bg.offsetX + bg.sinOffset[0] - view.camX * bg.deltaX;
+	const float y = bg.startY + bg.offsetY + bg.sinOffset[1] - view.camY * bg.deltaY;
 
 	int32_t group = bg.group, number = bg.number;
 	if (bg.actionNo >= 0) {

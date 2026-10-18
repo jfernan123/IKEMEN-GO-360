@@ -13,6 +13,8 @@ struct IniSection {
 	std::string name;
 	std::string lower;
 	std::map<std::string, std::string> values;
+	// The keys in file order, each once: for lists whose order matters, like a menu's "menu.itemname." entries.
+	std::vector<std::string> keys;
 
 	bool has(const std::string &key) const { return values.count(key) != 0; }
 	// The raw value, or "" when missing.

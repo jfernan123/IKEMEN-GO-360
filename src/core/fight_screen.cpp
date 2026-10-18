@@ -130,50 +130,6 @@ bool AnimTextSnd::end(int32_t dt, bool inf) const
 	return dt >= displayTime;
 }
 
-void ScreenFade::read(const std::string &prefix, const IniSection &section)
-{
-	section.readInt(prefix + "time", time);
-	int32_t c[3] = { 0, 0, 0 };
-	section.ints(prefix + "col", { &c[0], &c[1], &c[2] });
-	colour = (uint32_t)(c[0] & 0xFF) << 16 | (uint32_t)(c[1] & 0xFF) << 8 | (uint32_t)(c[2] & 0xFF);
-	section.ints(prefix + "snd", { &snd[0], &snd[1] });
-}
-
-void ScreenFade::start(bool in)
-{
-	totalTime = duration();
-	if (totalTime <= 0) {
-		active = false;
-		return;
-	}
-	fadeIn = in;
-	active = true;
-	timeRemaining = totalTime;
-}
-
-bool ScreenFade::step()
-{
-	if (!active)
-		return false;
-	const bool sound = timeRemaining == totalTime && snd[0] != -1 && snd[1] != -1;
-	if (--timeRemaining < 0)
-		active = false;
-	return sound;
-}
-
-void ScreenFade::draw() const
-{
-	if (!isActive() || time <= 0)
-		return;
-	const int32_t elapsed = totalTime - timeRemaining;
-	if (elapsed < 0 || elapsed > time)
-		return;
-	const int32_t alpha = fadeIn ? (int32_t)std::floor(255.0 - 255.0 * (elapsed - 1) / time)
-								 : (int32_t)std::floor(255.0 * elapsed / time);
-	platform::fillRect(0, 0, platform::SCREEN_WIDTH, platform::SCREEN_HEIGHT,
-		(uint32_t)std::clamp(alpha, 0, 255) << 24 | colour);
-}
-
 void FightScreen::Call::read(const std::string &prefix, const IniSection &section, const AnimationTable &anims,
 	int32_t layer, int32_t bgLayer)
 {
