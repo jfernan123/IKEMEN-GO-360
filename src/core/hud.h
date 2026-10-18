@@ -7,14 +7,15 @@
 
 namespace m360 {
 
-// The fight screen, drawn plainly until a screenpack's lifebars (fight.def) come in: lifebars with a red trail for
+// The plain fight screen, drawn when there's no screenpack fight.def (see FightScreen): lifebars with a red trail for
 // recent damage, power gauges with their level, the clock, round wins, and the round's announcements ("Round 1",
 // "Fight", "KO", "Time over", who won).
 class FightHud {
 public:
 	// Each game tick: the red trail catches up with the life bar once a combo is over.
 	void update(const Character &p1, const Character &p2);
-	void draw(const Match &match, const Character &p1, const Character &p2) const;
+	// roundCalled / fightCalled: whether the round's "Round N" and "Fight" calls have come (FightScreen's).
+	void draw(const Match &match, const Character &p1, const Character &p2, bool roundCalled, bool fightCalled) const;
 	void reset();
 
 private:

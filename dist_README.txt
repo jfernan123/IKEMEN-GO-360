@@ -1,5 +1,10 @@
-MUGEN360 - milestone 7: general compatibility (homebrew test build)
-===================================================================
+MUGEN360 - milestone 8b: fight screen (homebrew test build)
+===========================================================
+
+The fight now looks like Ikemen: its default skin's lifebars, power bars,
+portraits, names, clock, combo counter, win icons, and the "Round 1",
+"Fight!", "K.O." and "Winner!" calls with their sounds.
+
 
 The game opens on a character select screen: pick Kung Fu Man or the
 high-resolution Kung Fu Man 720 (the attack button you pick with chooses his

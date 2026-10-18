@@ -1,6 +1,7 @@
 #include "core/layout.h"
 
 #include <algorithm>
+#include <cmath>
 
 #include "core/file.h"
 #include "core/log.h"
@@ -55,6 +56,73 @@ void Layout::read(const std::string &prefix, const IniSection &section)
 	layer = std::min(layer, 2);
 	section.floats(prefix + "scale", { &scaleX, &scaleY });
 	section.readFloat(prefix + "angle", angle);
+	section.readFloat(prefix + "xshear", xshear);
+}
+
+void PalFX::read(const std::string &prefix, const IniSection &section)
+{
+	*this = PalFX();
+	section.readInt(prefix + "time", time);
+	section.ints(prefix + "add", { &add[0], &add[1], &add[2] });
+	section.ints(prefix + "mul", { &mul[0], &mul[1], &mul[2] });
+	// "sinadd = r, g, b, period": a negative period swings the other way.
+	for (int k = 0; k < 2; k++) {
+		int32_t s[4] = { 0, 0, 0, 0 };
+		if (!section.ints(prefix + (k == 0 ? "sinadd" : "sinmul"), { &s[0], &s[1], &s[2], &s[3] }))
+			continue;
+		int32_t *amplitude = k == 0 ? sinAdd : sinMul;
+		const int32_t sign = s[3] < 0 ? -1 : 1;
+		for (int i = 0; i < 3; i++)
+			amplitude[i] = s[i] * sign;
+		cycle[k] = s[3] * sign;
+	}
+	startTime = time;
+}
+
+void PalFX::step()
+{
+	enabled = time != 0;
+	if (!enabled)
+		return;
+	for (int i = 0; i < 3; i++) {
+		effectAdd[i] = add[i];
+		effectMul[i] = mul[i];
+	}
+	// The sine waves (Ikemen's sinAdd / sinMul); a period of 2 starts a quarter turn in.
+	for (int k = 0; k < 2; k++) {
+		if (cycle[k] <= 1)
+			continue;
+		double turn = 2 * 3.14159265358979 * sinTime[k];
+		if (cycle[k] == 2)
+			turn += 3.14159265358979 / 2;
+		const double wave = std::sin(turn / cycle[k]);
+		for (int i = 0; i < 3; i++) {
+			if (k == 0)
+				effectAdd[i] += (int32_t)(wave * sinAdd[i]);
+			else
+				effectMul[i] += (int32_t)(wave * sinMul[i]);
+		}
+	}
+	for (int k = 0; k < 2; k++) {
+		if (cycle[k] > 0)
+			sinTime[k] = (sinTime[k] + 1) % cycle[k];
+	}
+	if (time > 0)
+		time--;
+}
+
+void PalFX::apply(SpriteDraw &how) const
+{
+	if (!enabled)
+		return;
+	// Steps of 8, so the renderer's texture cache sees few distinct colours.
+	const auto steps = [](int32_t v) { return (v >= 0 ? v + 4 : v - 4) / 8 * 8; };
+	how.addR = (int16_t)std::clamp(steps(effectAdd[0]), -255, 255);
+	how.addG = (int16_t)std::clamp(steps(effectAdd[1]), -255, 255);
+	how.addB = (int16_t)std::clamp(steps(effectAdd[2]), -255, 255);
+	how.mulR = (uint16_t)std::clamp(steps(effectMul[0]), 0, 1024);
+	how.mulG = (uint16_t)std::clamp(steps(effectMul[1]), 0, 1024);
+	how.mulB = (uint16_t)std::clamp(steps(effectMul[2]), 0, 1024);
 }
 
 void AnimLayout::read(const std::string &prefix, const IniSection &section, const AnimationTable &anims, int32_t layer)
@@ -76,6 +144,7 @@ void AnimLayout::read(const std::string &prefix, const IniSection &section, cons
 	}
 	layout.layer = layer;
 	layout.read(prefix, section);
+	palfx.read(prefix + "palfx.", section);
 	reset();
 }
 
@@ -87,20 +156,38 @@ void AnimLayout::reset()
 
 void AnimLayout::action()
 {
+	palfx.step();
 	if (present)
 		anim.action();
 }
 
-void AnimLayout::draw(float x, float y, int32_t layer, SpriteRenderer &renderer, const ScreenSpace &space) const
+bool AnimLayout::ended(bool inf) const
+{
+	if (!present || anim.frames.empty() || anim.loopEnd())
+		return true;
+	const AnimFrame *last = anim.curFrame();
+	return inf && (size_t)anim.curElem() == anim.frames.size() - 1 && last && last->time == -1;
+}
+
+void AnimLayout::draw(float x, float y, int32_t layer, SpriteRenderer &renderer, const ScreenSpace &space,
+	const ClipRect *clip, float fillX, float fillY) const
 {
 	if (!present || layout.layer != layer)
 		return;
 	SpriteDraw how;
-	how.scaleX = layout.scaleX;
-	how.scaleY = layout.scaleY * layout.vfacing;
+	how.scaleX = layout.scaleX * fillX;
+	how.scaleY = layout.scaleY * fillY * layout.vfacing;
 	how.angle = layout.angle;
+	// Ikemen shears by -xshear about the sprite's top, then moves it back by the shear at the axis: a shear about the
+	// axis, which is what SpriteDraw's is.
+	how.shear = -layout.xshear;
+	palfx.apply(how);
+	if (clip)
+		platform::setClip(clip->x, clip->y, clip->width, clip->height);
 	renderer.drawAnimation(anim, space.x(x + layout.offsetX), space.y(y + layout.offsetY), space.scale, layout.facing,
 		how);
+	if (clip)
+		platform::clearClip();
 }
 
 void TextLayout::read(const std::string &prefix, const IniSection &section, int32_t defaultAlign, int32_t layer)
@@ -116,6 +203,7 @@ void TextLayout::read(const std::string &prefix, const IniSection &section, int3
 		text = section.text(prefix + "text");
 	layout.layer = layer;
 	layout.read(prefix, section);
+	palfx.read(prefix + "palfx.", section);
 }
 
 void TextLayout::draw(float x, float y, int32_t layer, const FontTable &fonts, const ScreenSpace &space) const
@@ -130,6 +218,8 @@ void TextLayout::draw(const std::string &line, float x, float y, int32_t layer, 
 	if (layout.layer != layer || line.empty() || found == fonts.end())
 		return;
 	const Font &f = *found->second;
+	SpriteDraw effects;
+	palfx.apply(effects);
 	const float sx = layout.scaleX * layout.facing * space.scale, sy = layout.scaleY * layout.vfacing * space.scale;
 	const float lineHeight = (float)(f.height() + f.spacingY()) * layout.scaleY;
 	// A literal "\n" (backslash, n) in the def splits lines.
@@ -138,7 +228,7 @@ void TextLayout::draw(const std::string &line, float x, float y, int32_t layer, 
 		const size_t end = line.find("\\n", start);
 		const std::string part = line.substr(start, end == std::string::npos ? std::string::npos : end - start);
 		f.draw(part, space.x(x + layout.offsetX), space.y(y + layout.offsetY + row * lineHeight), sx, sy, bank, align,
-			colour);
+			colour, effects);
 		if (end == std::string::npos)
 			break;
 		start = end + 2;

@@ -184,6 +184,16 @@ paths use forward slashes.
      .spr / .anim / .font / .text with .offset, .facing, .scale, .layerno). Sound files are kept as they are and each
      sound decodes the first time it plays, so the 6 MB fight.snd doesn't become tens of MB. The ikemen1 screenpack
      files and the MUGEN fonts are in `data/`. `tests/screenpack_test.cpp` loads them.
+   - 8b fight screen (done): `core/fight_screen` draws Ikemen's fight screen from `fight.def` (`[Game] fight` in
+     `data/mugen360.ini`): slanted lifebars whose red part waits out the combo then drains, power bars with the level
+     number and level-up sounds, portraits (9000,0 in the character's palette), names, the clock, win icons, the combo
+     counter sliding in with hits / damage / percent, and the round calls ("Round N", "Fight", KO, double KO, time
+     over, the winner) with their animations and fight.snd sounds, plus the round's fade in and out. Layouts gained
+     xshear, palfx (add, mul, sinadd, sinmul; rounded to steps of 8 so pulsing makes few textures) and clipped bar
+     fills (`platform::setClip`). The round's pacing now comes from `[Round]` (ikemen1: control 50 ticks after
+     "Fight", 300 ticks of ending) and waits for the calls as Ikemen's does. Without a fight.def the plain HUD and
+     default timings remain. Not yet: team modes, guard / stun bars, red life, [Action] messages, perfect / clutch
+     wins, the vs-CPU win and lose calls.
 
 ## Asset notice
 

@@ -57,6 +57,10 @@ void drawQuad(Texture *texture, const Vertex corners[4], Blend blend = Blend::Ov
 void drawTexture(Texture *texture, float x, float y, float width, float height, Blend blend = Blend::Over);
 // A solid rectangle of straight (not premultiplied) 0xAARRGGBB.
 void fillRect(float x, float y, float width, float height, uint32_t argb);
+// Draws after this only touch the pixels inside the rectangle, in screen pixels, until clearClip (or the next frame).
+// A screenpack's bars fill by clipping their sprite (Ikemen's DrawAnim window).
+void setClip(int x, int y, int width, int height);
+void clearClip();
 
 // Player 0 or 1's controller; the keyboard plays player 0 on PC.
 Pad pad(int player);

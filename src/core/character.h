@@ -66,6 +66,7 @@ public:
 	// The round's over and it's still standing: into a win, lose or draw state (180, 170, 175), once.
 	void startOverState(int32_t no);
 	bool overAlive() const { return overAlive_; }
+	bool overKo() const { return overKo_; }
 	// Done for the round, ready for the win poses: KO'd and down (5150), or idle on its feet with control.
 	bool readyForWinPose() const;
 	bool alive() const { return !ko_; }
@@ -126,6 +127,12 @@ public:
 	std::string traceLabel;
 
 	const Sff &sff() const { return source_->sff_; }
+	// Draws one of this character's sprites in its palette at screen (x, y): the fight screen's portrait.
+	void drawSprite(int32_t group, int32_t number, float screenX, float screenY, const SpriteDraw &how) const;
+	// The current combo against this character, for the fight screen's counter (Ikemen's receivedHits / receivedDmg):
+	// hits and damage since it was last free.
+	int32_t receivedHits() const { return receivedHits_; }
+	int32_t receivedDamage() const { return receivedDmg_; }
 	const AnimationTable &anims() const { return source_->anims_; }
 	const StateTable &states() const { return source_->states_; }
 	const HitDef &hitDef() const { return hitdef_; }
@@ -310,6 +317,7 @@ private:
 	char moveContactType_ = 'H';    // H hit, G guarded
 	int32_t moveContactTime_ = 0;   // MoveContact's count; -1 just touched, becoming 1 at tick
 	int32_t hitCount_ = 0, uniqHitCount_ = 0, guardCount_ = 0;
+	int32_t receivedHits_ = 0, receivedDmg_ = 0;
 	int hitState_ = 0;              // 0 not hit, 1 hit, 2 falling (Ikemen's hittmp; F / - / + hitflags)
 	int32_t unhittableTime_ = 0;
 	int p1facing_ = 0;              // a facing a hit sets, applied at the end of actionRun

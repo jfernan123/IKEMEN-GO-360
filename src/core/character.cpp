@@ -248,9 +248,16 @@ float Character::constF(const std::string &n, float fallback) const
 	return it == source_->constants_.end() ? fallback : it->second.toF();
 }
 
+void Character::drawSprite(int32_t group, int32_t number, float screenX, float screenY, const SpriteDraw &how) const
+{
+	if (source_->renderer_)
+		source_->renderer_->drawSprite(group, number, screenX, screenY, how);
+}
+
 // Ikemen's resetRound for one character: posReset, clearState, prepareNextRound, selfState 5900.
 void Character::startRound(float px, float py, int face, bool newMatch)
 {
+	receivedHits_ = receivedDmg_ = 0;
 	startX_ = px / localScale;
 	startY_ = py / localScale;
 	startFacing_ = face >= 0 ? 1 : -1;
@@ -909,6 +916,8 @@ void Character::lifeAdd(double add, bool kill, bool absolute)
 	if (add > -1 && add < 0)
 		add = -1;
 	int64_t next = (int64_t)life + (int64_t)std::llround(add);
+	if (add < 0)
+		receivedDmg_ += (int32_t)std::min<int64_t>(life, -std::llround(add));
 	if (!kill && next <= 0)
 		next = std::min<int64_t>(1, life);
 	life = (int32_t)std::clamp<int64_t>(next, 0, lifeMax());
@@ -1522,13 +1531,19 @@ void Character::actionRun()
 
 	// Damage taken last frame lands now, once the get-hit state has begun.
 	if (ghv_.damage != 0) {
-		if (moveType == 'H' || ghv_.keepstate)
+		if (moveType == 'H' || ghv_.keepstate) {
+			if (ghv_.damage > 0)
+				receivedDmg_ += std::min(life, ghv_.damage);
 			life = std::max(0, life - ghv_.damage);
+		}
 		ghv_.damage = 0;
 	}
 	ghv_.keepstate = false;
 	if (!hitPause()) {
 		if (moveType == 'H') {
+			// A guarded hit isn't a combo.
+			if (ghv_.guarded)
+				receivedHits_ = receivedDmg_ = 0;
 			if (ghv_.hitshaketime > 0)
 				ghv_.hitshaketime--;
 			if (ghv_.fallflag)
@@ -1542,6 +1557,7 @@ void Character::actionRun()
 			ghv_.fallcount = 0;
 			ghv_.hitid = ghv_.hitid < 0 ? -1 : 0;
 			ghv_.guardcount = 0;
+			receivedHits_ = receivedDmg_ = 0;
 			ghv_.downRecovertime = liedownTime_;
 			fallDefenseMul_ = 1;
 		}
@@ -2976,6 +2992,10 @@ int Character::hitResultCheck(Character &g)
 		}
 	}
 
+	// The getter's combo for the fight screen: hits that send it into a get-hit state (Ikemen's receivedHits).
+	if (std::abs(result) == 1 && ghvset &&
+		!((hd.airType == HitType::None && g.stateType == 'A') || (g.stateType != 'A' && hd.groundType == HitType::None)))
+		g.receivedHits_ += hd.numhits;
 	// Power for both, on hit or guard.
 	if (result > 0) {
 		powerGain_ += std::abs(result) == 1 ? hd.hitGetPower : hd.guardGetPower;
