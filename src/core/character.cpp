@@ -76,8 +76,16 @@ bool Character::load(const std::string &defPath, int paletteNo, std::string &err
 		error = defPath + " has no [Files] section";
 		return false;
 	}
-	if (!source_->sff_.load(dir + files->text("sprite"), error))
+	if (!source_->sff_.load(dir + files->text("sprite"), error, true))
 		return false;
+	// pal1 .. pal12: .act palette files, the character's palettes 1,n (an SFF v1's only ones; in an SFF v2 they replace
+	// the file's own) (Ikemen's loadPalettes).
+	for (int n = 1; n <= 12; n++) {
+		const std::string act(text::trim(files->text("pal" + std::to_string(n))));
+		Palette pal;
+		if (!act.empty() && readActPalette(findFile(dir, act), pal))
+			source_->sff_.setPalette(1, (uint16_t)n, pal);
+	}
 	if (!source_->anims_.load(dir + files->text("anim"), error))
 		return false;
 	source_->renderer_ = std::make_unique<SpriteRenderer>(source_->sff_);

@@ -65,7 +65,10 @@ void SpriteRenderer::drawSprite(int32_t group, int32_t number, float x, float y,
 	const Sprite *sprite = sff_.get((uint16_t)group, (uint16_t)number);
 	if (!sprite || sprite->isBlank())
 		return;
-	const int palette = how.palette >= 0 ? how.palette : palette_ >= 0 ? palette_ : sprite->palette;
+	// The renderer's palette (a character's chosen one) replaces the sprite's own, except in an SFF v1, where only the
+	// sprites sharing palette 0 take it.
+	const bool chosen = palette_ >= 0 && (!sff_.isV1() || sprite->palette == 0);
+	const int palette = how.palette >= 0 ? how.palette : chosen ? palette_ : sprite->palette;
 	platform::Texture *tex = texture(*sprite, palette, how);
 	if (!tex)
 		return;

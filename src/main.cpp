@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -36,6 +37,7 @@
 #include "core/hud.h"
 #include "core/log.h"
 #include "core/match.h"
+#include "core/select.h"
 #include "core/text.h"
 #include "core/sff.h"
 #include "core/sound.h"
@@ -244,8 +246,9 @@ public:
 			players_[1].traceLabel = "p2";
 		}
 		const std::string characterDefs[2] = { config.player1, config.player2 };
+		const int palettes[2] = { config.p1Palette, config.p2Palette };
 		for (int i = 0; i < 2; i++) {
-			if (!players_[i].load(characterDefs[i], i + 1, error))
+			if (!players_[i].load(characterDefs[i], palettes[i], error))
 				return false;
 			players_[i].playerNo = i;
 			players_[i].setOpponent(&players_[1 - i]);
@@ -312,7 +315,11 @@ public:
 			return;
 		}
 		if (event == Match::Event::MatchOver) {
-			newMatch();
+			// Back to the select screen when there is one; else the next match.
+			if (selectAfterMatch_)
+				finished_ = true;
+			else
+				newMatch();
 			return;
 		}
 		match_.fillWorld(world_);
@@ -543,6 +550,12 @@ private:
 	static constexpr int AI_LEVEL = 8;
 	AiInput ai_;
 	bool forceCpu_ = false;
+	bool selectAfterMatch_ = false, finished_ = false;
+
+public:
+	// After the match, the game goes back to the select screen (finished() turns true) instead of starting another.
+	void returnToSelectAfterMatch() { selectAfterMatch_ = true; }
+	bool finished() const { return finished_; }
 	bool showInfo_ = true;
 	Press lbPress_, ltPress_;
 	std::vector<std::string> lastActive_;
@@ -697,7 +710,7 @@ private:
 	size_t current_ = 0;
 };
 
-enum class Screen { Stage, Animations, Sprites };
+enum class Screen { Select, Stage, Animations, Sprites };
 
 } // namespace
 
@@ -711,7 +724,7 @@ int main(int argc, char **argv)
 	std::map<uint32_t, std::string> shots;
 	uint32_t quitFrame = UINT32_MAX;
 	int32_t testPower = -1;
-	bool trace = false, quickStart = false, cpu = false, show = false;
+	bool trace = false, quickStart = false, cpu = false, show = false, forceSelect = false;
 	for (int i = 1; i < argc; i++) {
 		const std::string arg = argv[i];
 		if (arg == "--input" && i + 1 < argc)
@@ -732,6 +745,8 @@ int main(int argc, char **argv)
 			cpu = true;
 		else if (arg == "--show")
 			show = true;
+		else if (arg == "--select")
+			forceSelect = true;
 		else if (arg == "--power" && i + 1 < argc)
 			testPower = text::atoi(argv[++i]);
 		else if (arg == "--p1" && i + 1 < argc)
@@ -744,7 +759,7 @@ int main(int argc, char **argv)
 	const bool testRun = !inputPath.empty() || !shots.empty() || quitFrame != UINT32_MAX;
 	if (!platform::init(testRun && !show))
 		return 1;
-	logf("mugen360: milestone 7b, projectiles");
+	logf("mugen360: milestone 7, general compatibility");
 	if (!configLoaded)
 		logf("mugen360: %s", configError.c_str());
 	logf("game: p1=%s p2=%s stage=%s", config.player1.c_str(), config.player2.c_str(), config.stage.c_str());
@@ -756,12 +771,33 @@ int main(int argc, char **argv)
 
 	{
 		std::string error;
-		StageDemo stage;
-		const bool stageLoaded = stage.load(config, error, trace, quickStart, cpu);
-		if (stageLoaded && testPower >= 0)
-			stage.setTestPower(testPower);
-		if (!stageLoaded)
+		// With a roster in data/mugen360.ini the game starts at the select screen (test runs skip it unless --select);
+		// else straight into the configured fight.
+		SelectScreen select;
+		const bool useSelect = (!config.characters.empty() && !testRun) || forceSelect;
+		const bool selectLoaded = useSelect && select.load(config, error);
+		if (useSelect && !selectLoaded)
 			logf("mugen360: %s", error.c_str());
+		std::unique_ptr<StageDemo> stage;
+		bool stageLoaded = false;
+		// A fight with these characters and stage.
+		auto startFight = [&](const GameConfig &fight) {
+			stage = std::make_unique<StageDemo>();
+			stageLoaded = stage->load(fight, error, trace, quickStart, cpu);
+			if (stageLoaded && testPower >= 0)
+				stage->setTestPower(testPower);
+			if (!stageLoaded)
+				logf("mugen360: %s", error.c_str());
+			if (selectLoaded)
+				stage->returnToSelectAfterMatch();
+		};
+		Screen screen = Screen::Stage;
+		if (selectLoaded) {
+			select.reset(cpu || !platform::pad(1).connected);
+			screen = Screen::Select;
+		} else {
+			startFight(config);
+		}
 		// The viewers get a Kung Fu Man of their own.
 		Character kfm;
 		const bool kfmLoaded = kfm.load(config.player1, 1, error);
@@ -771,22 +807,34 @@ int main(int argc, char **argv)
 		AnimationViewer animViewer(kfm.anims(), renderer);
 		SpriteViewer spriteViewer(kfm.sff(), renderer);
 		Buttons buttons;
-		Screen screen = Screen::Stage;
 
 		for (uint32_t frame = 0; frame <= quitFrame && platform::beginFrame(BACKGROUND); frame++) {
 			const platform::Pad pad = inputPath.empty() ? platform::pad(0) : script.at(frame);
+			const platform::Pad pad2 = inputPath.empty() ? platform::pad(1) : script2.at(frame);
 			if (buttons.back.update(pad.back))
 				break;
 			if (const auto shot = shots.find(frame); shot != shots.end())
 				platform::requestScreenshot(shot->second.c_str());
+			// The debug screens cycle; from the last one, back to the fight (or the select screen before one).
 			if (buttons.menu.update(pad.menu))
-				screen = screen == Screen::Stage ? Screen::Animations
-					: screen == Screen::Animations ? Screen::Sprites
-					: Screen::Stage;
+				screen = screen == Screen::Stage || screen == Screen::Select ? Screen::Animations
+					: screen == Screen::Animations                         ? Screen::Sprites
+					: stage                                                ? Screen::Stage
+																		   : Screen::Select;
 			platform::Pad gameplayPad = pad;
 			if (pad.menu) {
 				gameplayPad.start = false;
 				gameplayPad.lb = false;
+			}
+			if (screen == Screen::Select) {
+				select.update(gameplayPad, pad2);
+				select.draw();
+				if (select.done()) {
+					startFight(select.fight());
+					screen = Screen::Stage;
+				}
+				platform::endFrame();
+				continue;
 			}
 			const bool loaded = screen == Screen::Stage ? stageLoaded : kfmLoaded;
 			if (!loaded) {
@@ -794,8 +842,14 @@ int main(int argc, char **argv)
 				drawText(error.c_str(), 40, 90, 2, TEXT);
 				drawText("TAB / LB+START: NEXT SCREEN   BACK: QUIT", 40, 680, 2, DIM);
 			} else if (screen == Screen::Stage) {
-				stage.update(buttons, gameplayPad, inputPath.empty() ? platform::pad(1) : script2.at(frame));
-				stage.draw();
+				stage->update(buttons, gameplayPad, pad2);
+				stage->draw();
+				// Match over: back to pick again.
+				if (stage->finished()) {
+					stage.reset();
+					select.reset(cpu || !pad2.connected);
+					screen = Screen::Select;
+				}
 			} else if (screen == Screen::Animations) {
 				animViewer.update(buttons, gameplayPad);
 				animViewer.draw();

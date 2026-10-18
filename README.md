@@ -163,8 +163,18 @@ paths use forward slashes.
      TicksPerSecond, IsHomeTeam, the screen edges and sizes, NumExplod / NumHelper / NumTarget / IsHelper with an
      optional id, NumProjID, and the old ProjHit/ProjContact/ProjGuarded[id] = value[, op time] forms.
      `tests/fixtures/misc` runs them all and only reaches its last state if every one reads back correctly.
-   - 7e legacy characters: SFF v1 and PCX support for WinMUGEN-era content.
-   - 7f game flow: roster/select flow and a fuller per-game configuration.
+   - 7e legacy characters (done): SFF v1 (WinMUGEN) sprite files: the linked list of sprite headers, 8-bit RLE PCX
+     images, shared ("same as previous") palettes, the character's first-sprite palette and linked sprites; .act
+     palette files (pal1 .. pal12 in the .def) become palettes 1,n, and in an SFF v1 the chosen one colours the
+     sprites sharing palette 0, as MUGEN does. WinMUGEN characters (no `mugenversion = 1.x`) take the WinMUGEN
+     hitpause and guard-time rules already in the hit code. `tests/legacy_test.cpp` builds an SFF v1 byte by byte and
+     reads it back. No WinMUGEN character ships with the package, so this is tested on that synthetic file only.
+   - 7f game flow (done): `data/mugen360.ini` takes a `[Characters]` roster and `[Stages]` list in MUGEN select.def
+     style. With a roster the game opens on a select screen: a grid of small portraits (9000,0), each player's big
+     portrait (9000,1, scaled by localcoord, in their chosen colours) and name; a, b, c, x, y, z pick palettes 1-6;
+     player 2 picks with a second controller or the computer picks; then the stage, a VS screen, the fight, and back to
+     the select screen after the match. Without a roster (or in test runs, unless `--select`) the [Game] fight starts
+     at once. KFM720 joins the roster. `tests/inputs/select.txt` plays through it.
 
 Screenpack-driven `fight.def`, polished menus and the remaining stage presentation features are planned after the
 general character-compatibility work.

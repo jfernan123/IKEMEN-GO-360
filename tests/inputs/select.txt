@@ -1,0 +1,10 @@
+# The select screen: player 1 moves to the second character and picks palette 1 (a), the computer picks for player 2,
+# player 1 confirms the stage, then the VS screen and the fight.
+#   build\pc\mugen360.exe --select --cpu --input tests\inputs\select.txt --quit 400 --trace
+20 -
+2 R
+10 -
+2 a
+20 -
+2 a
+200 -

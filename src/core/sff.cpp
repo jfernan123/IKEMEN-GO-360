@@ -1,5 +1,6 @@
 #include "core/sff.h"
 
+#include <algorithm>
 #include <cstring>
 
 #include "core/bytes.h"
@@ -220,18 +221,24 @@ std::vector<Argb> Sprite::toArgb(const Palette &pal, bool mask) const
 	return out;
 }
 
-bool Sff::load(const std::string &path, std::string &error)
+bool Sff::load(const std::string &path, std::string &error, bool character)
 {
-	sprites_.clear();
-	byKey_.clear();
-	palettes_.clear();
-	paletteByKey_.clear();
-
 	std::vector<uint8_t> file;
 	if (!readFile(path, file)) {
 		error = "can't read " + path;
 		return false;
 	}
+	return loadBytes(file, path, error, character);
+}
+
+bool Sff::loadBytes(const std::vector<uint8_t> &file, const std::string &path, std::string &error, bool character)
+{
+	sprites_.clear();
+	byKey_.clear();
+	palettes_.clear();
+	paletteByKey_.clear();
+	v1_ = false;
+
 	ByteReader r(file);
 	char signature[12];
 	if (!r.bytes(signature, sizeof signature) || std::memcmp(signature, "ElecbyteSpr\0", 12) != 0) {
@@ -244,8 +251,10 @@ bool Sff::load(const std::string &path, std::string &error)
 	version[2] = r.u8();
 	version[1] = r.u8();
 	version[0] = r.u8();
+	if (version[0] == 1)
+		return loadV1(file, path, error, character);
 	if (version[0] != 2) {
-		error = path + ": SFF version " + std::to_string(version[0]) + " isn't supported yet (only SFF v2)";
+		error = path + ": SFF version " + std::to_string(version[0]) + " isn't supported";
 		return false;
 	}
 	r.skip(4 + 16);
@@ -369,6 +378,203 @@ bool Sff::load(const std::string &path, std::string &error)
 			byKey_[key(s.group, s.number)] = i;
 	}
 	logf("sff: %s: %u sprites, %u palettes", path.c_str(), spriteCount, paletteCount);
+	return true;
+}
+
+namespace {
+
+// PCX run-length: a byte of 0xC0 or more repeats the next one (its low 6 bits) times; each row is bytesPerLine long,
+// of which the sprite keeps its width (Ikemen's RlePcxDecode).
+std::vector<uint8_t> pcxDecode(const uint8_t *rle, size_t size, int width, int height, int bytesPerLine)
+{
+	std::vector<uint8_t> out((size_t)width * height, 0);
+	if (!rle || size == 0)
+		return out;
+	if (bytesPerLine <= 0) {
+		std::memcpy(out.data(), rle, std::min(size, out.size()));
+		return out;
+	}
+	size_t i = 0, j = 0;
+	int k = 0;
+	// Bounded, so a damaged file can't loop forever on runs of length 0.
+	for (size_t steps = 0; j < out.size() && steps < out.size() * 4 + size; steps++) {
+		int n = 1;
+		uint8_t d = rle[i];
+		if (i < size - 1)
+			i++;
+		if (d >= 0xC0) {
+			n = d & 0x3F;
+			d = rle[i];
+			if (i < size - 1)
+				i++;
+		}
+		for (; n > 0; n--) {
+			if (k < width && j < out.size())
+				out[j++] = d;
+			k++;
+			if (k == bytesPerLine) {
+				k = 0;
+				n = 1;
+			}
+		}
+	}
+	return out;
+}
+
+Palette readV1Palette(const std::vector<uint8_t> &file, size_t offset)
+{
+	Palette pal(256, 0);
+	const uint8_t *rgb = ByteReader(file).at(offset, 768);
+	if (!rgb)
+		return pal;
+	for (int c = 0; c < 256; c++)
+		pal[c] = (c == 0 ? 0u : 0xFF000000u) | (Argb)rgb[c * 3] << 16 | (Argb)rgb[c * 3 + 1] << 8 | rgb[c * 3 + 2];
+	return pal;
+}
+
+} // namespace
+
+// SFF v1: a linked list of 32-byte sprite headers, each followed by a PCX image: a 128-byte header, RLE pixels, then a
+// 0x0C marker and a 256-colour palette unless it shares the previous sprite's (Ikemen's loadSff, Sprite.read).
+bool Sff::loadV1(const std::vector<uint8_t> &file, const std::string &path, std::string &error, bool character)
+{
+	v1_ = true;
+	ByteReader r(file);
+	r.seek(20);
+	const uint32_t spriteCount = r.u32();
+	uint32_t headerOffset = r.u32();
+	if (!r.ok()) {
+		error = path + ": truncated SFF v1 header";
+		return false;
+	}
+	sprites_.resize(spriteCount);
+	int prevPalette = -1;
+	for (uint32_t i = 0; i < spriteCount; i++) {
+		r.seek(headerOffset);
+		const uint32_t next = r.u32(), size = r.u32();
+		Sprite &s = sprites_[i];
+		s.axisX = r.s16();
+		s.axisY = r.s16();
+		s.group = r.u16();
+		s.number = r.u16();
+		const uint16_t link = r.u16();
+		const uint8_t samePalette = r.u8();
+		if (!r.ok()) {
+			error = path + ": truncated sprite header " + std::to_string(i);
+			return false;
+		}
+		const size_t offset = headerOffset + 32;
+		if (size == 0) {
+			// Linked: an earlier sprite's pixels and palette.
+			if (link < i) {
+				const Sprite &src = sprites_[link];
+				s.width = src.width;
+				s.height = src.height;
+				s.indices = src.indices;
+				s.palette = src.palette;
+			}
+		} else {
+			// The PCX header: encoding, bits per pixel (8 only), the image's rectangle, bytes per line.
+			ByteReader pcx(file);
+			pcx.seek(offset + 2);
+			const uint8_t encoding = pcx.u8(), bpp = pcx.u8();
+			const uint16_t x0 = pcx.u16(), y0 = pcx.u16(), x1 = pcx.u16(), y1 = pcx.u16();
+			pcx.seek(offset + 66);
+			const uint16_t bytesPerLine = pcx.u16();
+			if (!pcx.ok() || bpp != 8) {
+				logf("sff: %s: sprite %u,%u: not an 8-bit PCX", path.c_str(), s.group, s.number);
+			} else {
+				s.width = (uint16_t)(x1 - x0 + 1);
+				s.height = (uint16_t)(y1 - y0 + 1);
+				const bool shared = samePalette != 0 && prevPalette >= 0;
+				const bool firstSprite = character && (prevPalette < 0 || (s.group == 0 && s.number == 0));
+				const size_t dataStart = offset + 128;
+				size_t dataEnd = dataStart, paletteOffset = 0;
+				if (firstSprite) {
+					// A character's first sprite: its palette is the block's last 768 bytes.
+					const size_t blockSize = next > offset ? next - offset : size;
+					if (blockSize >= 768 + 128)
+						dataEnd = offset + blockSize - 768;
+					paletteOffset = offset + blockSize - 768;
+				} else {
+					const size_t blockEnd = next > offset ? next : offset + size;
+					if (shared) {
+						dataEnd = blockEnd;
+					} else {
+						// The palette follows a 0x0C marker; search back for it from where it should be.
+						size_t marker = blockEnd >= 769 ? blockEnd - 769 : dataStart;
+						for (size_t pos = marker; pos >= dataStart && pos < file.size(); pos--) {
+							if (file[pos] == 0x0C) {
+								marker = pos;
+								break;
+							}
+						}
+						dataEnd = marker;
+						paletteOffset = marker + 1;
+					}
+				}
+				if (dataEnd < dataStart)
+					dataEnd = dataStart;
+				const uint8_t *rle = ByteReader(file).at(dataStart, dataEnd - dataStart);
+				s.indices = pcxDecode(rle, rle ? dataEnd - dataStart : 0, s.width, s.height,
+					encoding == 1 ? bytesPerLine : 0);
+				if (shared) {
+					s.palette = prevPalette;
+				} else {
+					s.palette = (int)palettes_.size();
+					palettes_.push_back(readV1Palette(file, paletteOffset));
+				}
+				prevPalette = s.palette;
+			}
+		}
+		if (!byKey_.count(key(s.group, s.number)))
+			byKey_[key(s.group, s.number)] = i;
+		if (next == 0 || next >= file.size())
+			break;
+		headerOffset = next;
+	}
+	logf("sff: %s: SFF v1, %u sprites, %zu palettes", path.c_str(), spriteCount, palettes_.size());
+	return true;
+}
+
+int Sff::setPalette(uint16_t group, uint16_t number, const Palette &palette)
+{
+	const auto it = paletteByKey_.find(key(group, number));
+	if (it != paletteByKey_.end()) {
+		palettes_[it->second] = palette;
+		return it->second;
+	}
+	palettes_.push_back(palette);
+	paletteByKey_[key(group, number)] = (int)palettes_.size() - 1;
+	return (int)palettes_.size() - 1;
+}
+
+void Sff::keepOnly(const std::vector<std::pair<uint16_t, uint16_t>> &keys)
+{
+	std::vector<Sprite> kept;
+	std::map<uint32_t, size_t> byKey;
+	for (const auto &[group, number] : keys) {
+		if (const Sprite *sprite = get(group, number)) {
+			byKey[key(group, number)] = kept.size();
+			kept.push_back(*sprite);
+		}
+	}
+	sprites_ = std::move(kept);
+	byKey_ = std::move(byKey);
+}
+
+bool readActPalette(const std::string &path, Palette &out)
+{
+	std::vector<uint8_t> data;
+	if (!readFile(path, data))
+		return false;
+	out.assign(256, 0);
+	const size_t count = std::min<size_t>(data.size() / 3, 256);
+	for (size_t i = 0; i < count; i++) {
+		const size_t dest = 255 - i;
+		out[dest] = (dest == 0 ? 0u : 0xFF000000u) | (Argb)data[i * 3] << 16 | (Argb)data[i * 3 + 1] << 8 |
+			data[i * 3 + 2];
+	}
 	return true;
 }
 
