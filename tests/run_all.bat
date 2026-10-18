@@ -35,6 +35,7 @@ call :select || exit /b 1
 call :title || exit /b 1
 call :arcade || exit /b 1
 call :team || exit /b 1
+call :survival || exit /b 1
 call :run buttons 80 --quickstart || exit /b 1
 call :run commands 260 --quickstart || exit /b 1
 call :run states 330 --quickstart || exit /b 1
@@ -73,6 +74,10 @@ findstr /c:"select: p2 member 2" tests\out\latest_team.log >nul || (echo FAIL: p
 findstr /c:"turns: p1 member 1 of 2 vs p2 member 1 of 2" tests\out\latest_team.log >nul || (echo FAIL: Turns did not start its first pairing & exit /b 1)
 findstr /c:"turns: p1 member 1 of 2 vs p2 member 2 of 2" tests\out\latest_team.log >nul || (echo FAIL: Turns did not advance the losing side's next member & exit /b 1)
 findstr /c:"turns: p1 recovers" tests\out\latest_team.log >nul || (echo FAIL: Turns did not preserve and recover the winning member's life & exit /b 1)
+findstr /c:"select: SURVIVAL" tests\out\latest_survival.log >nul || (echo FAIL: Survival did not open its select screen & exit /b 1)
+findstr /c:"survival: match 1" tests\out\latest_survival.log >nul || (echo FAIL: Survival did not start its first match & exit /b 1)
+findstr /c:"survival: player advances" tests\out\latest_survival.log >nul || (echo FAIL: Survival did not advance after a win & exit /b 1)
+findstr /c:"survival: match 2" tests\out\latest_survival.log >nul || (echo FAIL: Survival did not start its second match & exit /b 1)
 findstr /c:"state 1002 -> 1009" tests\out\latest_misc.log >nul || (echo FAIL: 7d controllers and triggers did not all check out & exit /b 1)
 findstr /c:"helper 88 state 1200" tests\out\latest_helper.log >nul || (echo FAIL: nested Helper was not created & exit /b 1)
 findstr /c:"state 1000 -> 1002" tests\out\latest_helper.log >nul || (echo FAIL: Helper parent/root redirects or NumHelper failed & exit /b 1)
@@ -157,6 +162,12 @@ exit /b 0
 echo     arcade
 "%EXE%" --title --input tests\inputs\arcade.txt --quit 500 --trace %SHOW% >nul || exit /b 1
 copy /y m360.log tests\out\latest_arcade.log >nul
+exit /b 0
+
+:survival
+echo     survival
+"%EXE%" --select --mode survival --noai --input tests\inputs\survival.txt --quickstart --p2life 1 --quit 1400 --trace %SHOW% >nul || exit /b 1
+copy /y m360.log tests\out\latest_survival.log >nul
 exit /b 0
 
 :team

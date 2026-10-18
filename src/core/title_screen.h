@@ -12,7 +12,7 @@
 namespace m360 {
 
 // What the title menu chose.
-enum class TitleChoice : uint8_t { None, Arcade, TeamArcade, Versus, TeamVersus, QuickMatch, Training, Exit };
+enum class TitleChoice : uint8_t { None, Arcade, TeamArcade, Versus, TeamVersus, QuickMatch, Training, Survival, Exit };
 
 // The title screen and main menu, from a screenpack's [Title Info] and TitleBG (Ikemen's main.lua: f_createMenu,
 // f_menuCommonCalc, f_menuCommonDraw, f_menuWindow). The menu comes from the "menu.itemname." keys in file order;

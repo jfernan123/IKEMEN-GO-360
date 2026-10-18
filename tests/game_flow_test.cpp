@@ -41,6 +41,15 @@ int run10aTests()
 	expect(!ladder.advance() && !ladder.active(), "Arcade route completes after its last opponent");
 	ladder.reset(1, 0, 1);
 	expect(ladder.opponent() == 0 && !ladder.advance(), "a one-character roster permits its mirror match");
+	SurvivalLadder survival;
+	survival.reset(2, 0, 9);
+	const int32_t firstSurvivalOpponent = survival.opponent();
+	survival.advance();
+	expect(survival.active() && survival.matchNo() == 2 && survival.wins() == 1,
+		"Survival advances its running match and win counters");
+	survival.advance();
+	expect(survival.active() && survival.matchNo() == 3 && survival.opponent() >= 0 && firstSurvivalOpponent >= 0,
+		"Survival reshuffles after exhausting the roster instead of ending");
 
 	Character p1, p2;
 	p1.life = 37;

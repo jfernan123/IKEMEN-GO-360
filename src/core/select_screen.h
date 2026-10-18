@@ -19,7 +19,7 @@
 namespace m360 {
 
 // The game mode the select screen is for: it decides the title and who picks player 2.
-enum class SelectMode : uint8_t { Versus, QuickMatch, Arcade, Training, TeamVersus, TeamArcade };
+enum class SelectMode : uint8_t { Versus, QuickMatch, Arcade, Training, TeamVersus, TeamArcade, Survival };
 
 // Ikemen's select screen, from a screenpack's [Select Info] and SelectBG (Ikemen's start.lua: the start.t_grid
 // build, getCellOverride, f_cellMovement, f_drawCursor, updateDrawList, f_selectMenu, f_palMenu, f_stageMenu,
@@ -44,6 +44,9 @@ public:
 	GameConfig fight() const;
 	// A won Arcade fight: pick the next route opponent and stage, and enter its VS screen. False completes the route.
 	bool nextArcadeMatch();
+	// A won Survival fight: the next opponent on the same stage, through its VS screen.
+	bool nextSurvivalMatch();
+	int32_t survivalWins() const { return survival_.wins(); }
 	int32_t arcadeMatchNo() const { return arcade_.matchNo(); }
 	int32_t arcadeMatchCount() const { return arcade_.matchCount(); }
 
@@ -165,7 +168,7 @@ private:
 	int32_t randomSwitch_ = 4, palRandomSwitch_ = 4;
 	std::vector<std::pair<std::string, CellOverride>> overrides_;
 	TextLayout title_;
-	std::string titles_[6];
+	std::string titles_[7];
 	int32_t cancelSnd_[2] = { -1, 0 };
 	ScreenFade fadeIn_, fadeOut_;
 	// The stage line.
@@ -197,6 +200,7 @@ private:
 	platform::Pad before_[2];
 	uint32_t random_ = 0x9E3779B9u;
 	ArcadeLadder arcade_;
+	SurvivalLadder survival_;
 };
 
 } // namespace m360

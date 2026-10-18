@@ -1,0 +1,24 @@
+# Stage 10c Survival: pick KFM and palette 1, the computer's first opponent is drawn from the roster, choose stage 1,
+# skip the VS screen, knock out the opponent (test life 1, held idle by --noai), and the run moves to match 2 on the
+# same stage.
+#   build\pc\mugen360.exe --select --mode survival --noai --input tests\inputs\survival.txt --quickstart --p2life 1 --quit 1400 --trace
+# Expect "survival: match 1", "survival: player advances", "survival: match 2".
+30 -
+2 a
+10 -
+2 a
+60 -
+# Stage 1, then skip the VS screen.
+2 R
+10 -
+2 a
+220 -
+2 s
+180 -
+# Knock out the first opponent, whose test life is 1.
+70 R
+5 -
+2 x
+600 -
+2 s
+300 -

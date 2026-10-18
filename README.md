@@ -301,6 +301,12 @@ paths use forward slashes.
      round time remaining (unlimited time grants the full bonus). Incoming members start with full life and empty
      power. Focused tests cover full, half-time, expired and unlimited-time recovery; the team integration trace
      verifies recovery happens before member two enters.
+   - 10d Survival (done): MISSION > SURVIVAL on the title (Ikemen's survival mode settings: one-round matches,
+     persistent life, a stage menu, roster opponents). The player picks a fighter and a stage once; each won match
+     brings the next roster opponent (reshuffled after every full pass, `SurvivalLadder`) on the same stage through a
+     numbered VS screen, with life and power carried over and no recovery; the first loss ends the run and logs its
+     wins. `--noai` keeps player 2 idle in modes against the computer, for test scripts. `tests/inputs/survival.txt`
+     wins match 1 and enters match 2.
    - Next: Simul and Tag teams, then the remaining match-mode screens and rules.
 
 ## Asset notice
