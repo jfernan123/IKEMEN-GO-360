@@ -497,18 +497,15 @@ void MotifSelect::confirmPick(int index)
 	logf("select: p%d %s palette %d", index + 1, roster_[(size_t)side.chosen].name.c_str(), (int)side.palette);
 	if (index == 0 && !sides_[1].active && sides_[1].chosen < 0) {
 		if (mode_ == SelectMode::Arcade) {
-			// Arcade: the opponent is picked at random.
+			// Arcade: make one shuffled route through the real roster, then take its first opponent.
 			std::vector<int32_t> real;
 			for (int32_t i = 0; i < (int32_t)roster_.size(); i++) {
 				if (!roster_[(size_t)i].random)
 					real.push_back(i);
 			}
-			Side &cpu = sides_[1];
-			cpu.chosen = real[(size_t)random((int32_t)real.size())];
-			const Entry &e = roster_[(size_t)cpu.chosen];
-			cpu.palette = e.palettes[(size_t)random((int32_t)e.palettes.size())];
-			cpu.shown = true;
-			confirmPick(1);
+			const auto player = std::find(real.begin(), real.end(), side.chosen);
+			arcade_.reset((int32_t)real.size(), player == real.end() ? -1 : (int32_t)(player - real.begin()), random_);
+			setArcadeOpponent(real);
 		} else {
 			// Against the computer, player 1 picks its character too, starting where player 1's cursor is.
 			sides_[1].active = true;
@@ -635,6 +632,7 @@ void MotifSelect::update(const platform::Pad &pad1, const platform::Pad &pad2)
 			if (mode_ == SelectMode::Arcade) {
 				stage_ = 1 + random((int32_t)stages_.size());
 				logf("select: stage %s", stageNames_[(size_t)stage_ - 1].c_str());
+				logf("arcade: match %d of %d", arcade_.matchNo(), arcade_.matchCount());
 				phase_ = Phase::Versus;
 			} else {
 				phase_ = Phase::Stage;
@@ -701,6 +699,39 @@ void MotifSelect::update(const platform::Pad &pad1, const platform::Pad &pad2)
 		before_[i] = now[i];
 }
 
+void MotifSelect::setArcadeOpponent(const std::vector<int32_t> &real)
+{
+	if (!arcade_.active() || arcade_.opponent() >= (int32_t)real.size())
+		return;
+	Side &cpu = sides_[1];
+	cpu.state = 0;
+	cpu.chosen = real[(size_t)arcade_.opponent()];
+	const Entry &entry = roster_[(size_t)cpu.chosen];
+	cpu.palette = entry.palettes[(size_t)random((int32_t)entry.palettes.size())];
+	cpu.shown = true;
+	confirmPick(1);
+}
+
+bool MotifSelect::nextArcadeMatch()
+{
+	if (mode_ != SelectMode::Arcade || !arcade_.advance())
+		return false;
+	std::vector<int32_t> real;
+	for (int32_t i = 0; i < (int32_t)roster_.size(); i++)
+		if (!roster_[(size_t)i].random)
+			real.push_back(i);
+	setArcadeOpponent(real);
+	stage_ = stages_.empty() ? 0 : 1 + random((int32_t)stages_.size());
+	if (stage_ > 0)
+		logf("select: stage %s", stageNames_[(size_t)stage_ - 1].c_str());
+	logf("arcade: match %d of %d", arcade_.matchNo(), arcade_.matchCount());
+	phase_ = Phase::Versus;
+	versusStarted_ = false;
+	timer_ = 1000;
+	startVersus();
+	return true;
+}
+
 // Hands the picks to the VS screen: each side's character in its palette, the stage, Arcade's match number.
 void MotifSelect::startVersus()
 {
@@ -724,7 +755,7 @@ void MotifSelect::startVersus()
 	stage.number = stage_;
 	stage.renderer = stagePortraits_[s].renderer.get();
 	stage.resFix = stagePortraits_[s].resFix;
-	versus_.start(fighters, stage, mode_ == SelectMode::Arcade ? 1 : 0);
+	versus_.start(fighters, stage, mode_ == SelectMode::Arcade ? arcade_.matchNo() : 0);
 	versusStarted_ = true;
 }
 

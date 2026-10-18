@@ -33,7 +33,7 @@ const char *const TITLE_DEFAULTS[][2] = {
 	{ "footer.info.font", "f-4x6.def, 0, 0, 191, 191, 191, 255" },
 	{ "footer.info.text", "" },
 	{ "footer.version.font", "f-4x6.def, 0, -1, 191, 191, 191, 255" },
-	{ "footer.version.text", "MILESTONE 9" },
+	{ "footer.version.text", "MILESTONE 10A" },
 	{ "footer.overlay.col", "0, 0, 64" },
 	{ "footer.overlay.alpha", "255, 100" },
 };
@@ -269,16 +269,10 @@ void TitleScreen::choose(const Item &item, const std::string &path)
 		notice("OPTIONS COME IN STAGE 11", 120);
 		return;
 	}
-	if (item.name == "arcade" || item.name == "training") {
-		// Not built yet: a versus match against the computer for now, after saying so.
-		pending_ = item.name == "arcade" ? TitleChoice::Arcade : TitleChoice::Training;
-		notice(item.name == "arcade" ? "ARCADE COMES IN STAGE 10: VERSUS THE CPU FOR NOW"
-									  : "TRAINING COMES IN STAGE 11: VERSUS THE CPU FOR NOW",
-			90);
-		fadeAfterNotice_ = true;
-		return;
-	}
-	pending_ = item.name == "freebattle" ? TitleChoice::QuickMatch : TitleChoice::Versus;
+	pending_ = item.name == "arcade" ? TitleChoice::Arcade
+		: item.name == "training"     ? TitleChoice::Training
+		: item.name == "freebattle"   ? TitleChoice::QuickMatch
+										: TitleChoice::Versus;
 	fadeOut_.start(false);
 }
 

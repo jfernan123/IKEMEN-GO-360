@@ -11,7 +11,7 @@ as compatibility grows.
 
 ## Current status
 
-Milestones 1 to 9 are complete; match modes and teams are next. KFM can fight full matches with commands, attacks, guarding, throws, falls, life and
+Milestones 1 to 9 are complete, and 10 (match modes and teams) is under way. KFM can fight full matches with commands, attacks, guarding, throws, falls, life and
 rounds, a CPU opponent, hit effects, Explods, helpers, projectiles, palette effects, pauses, afterimages,
 environmental shake, and sound. The game runs through Ikemen's default screenpack (ikemen1): title menu, select
 screen with the Color menu, VS screen, Ikemen's fight screen, and music for each when songs are added. Both the
@@ -280,6 +280,16 @@ paths use forward slashes.
      known instructions in third-party/library code. The console ZIP was checked to contain neither the Ikemen-GO
      reference tree nor the Pong project.
    - Next: milestone 10 match modes and teams.
+
+10. Match modes and teams (in progress)
+   - 10a Arcade and Training (done): Arcade builds a deterministic shuffled route through every real roster entry.
+     The player selects once, wins advance through new CPU opponents and random stages with the correct "Match N"
+     VS label, and a loss or the last win ends the route. Training keeps the clock at 99, restores both life bars and
+     power every tick, and leaves player 2 as a stationary dummy unless `--cpu` is explicitly used. Quick Match
+     remains a one-off CPU fight and Versus still uses controller 2. Focused tests cover route contents, mirror
+     avoidance, progression, completion, a single-character roster, Training's clock and the title's direct Arcade
+     launch.
+   - Next: team selection and Turns matches.
 
 ## Asset notice
 

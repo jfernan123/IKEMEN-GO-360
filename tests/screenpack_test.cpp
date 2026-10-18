@@ -207,6 +207,17 @@ int run8cTests()
 	title.update(upPad, idle);
 	expect(title.selected() == "exit", "up from the top wraps to the end");
 
+	// Arcade is a real mode now: choosing it fades directly to its select screen, without the old placeholder delay.
+	title.reset();
+	for (int i = 0; i < 15; i++)
+		title.update(idle, idle);
+	platform::Pad confirm;
+	confirm.a = true;
+	title.update(confirm, idle);
+	for (int i = 0; i < 20; i++)
+		title.update(idle, idle);
+	expect(title.result() == TitleChoice::Arcade, "ARCADE starts directly instead of showing the Stage 10 notice");
+
 	std::printf("8c title screen: %d passed, %d failed\n", passed, failed);
 	return failed;
 }
