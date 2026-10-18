@@ -183,7 +183,12 @@ int run8cTests()
 	std::string top;
 	for (const TitleScreen::Item &item : menu)
 		top += item.display + "|";
-	expect(top == "ARCADE|VS MODE|PRACTICE|OPTIONS|EXIT|", "the menu keeps what can run, in order");
+	expect(top == "ARCADE|VS MODE|PRACTICE|MISSION|OPTIONS|EXIT|", "the menu keeps what can run, in order");
+	std::string mission;
+	if (menu.size() > 3)
+		for (const TitleScreen::Item &item : menu[3].children)
+			mission += item.name + "|";
+	expect(mission == "survival|back|", "MISSION keeps Survival");
 	std::string versus;
 	if (menu.size() > 1)
 		for (const TitleScreen::Item &item : menu[1].children)
@@ -196,13 +201,13 @@ int run8cTests()
 	expect(arcade == "arcade|teamarcade|back|", "ARCADE includes single and team routes");
 	expect(menu.size() > 2 && !TitleScreen::singleAction(menu[1]), "VS MODE opens as a submenu");
 
-	// Wait out the fade, then down five times wraps back to the top, and up once goes to the end.
+	// Wait out the fade, then down six times wraps back to the top, and up once goes to the end.
 	platform::Pad idle, downPad, upPad;
 	downPad.down = true;
 	upPad.up = true;
 	for (int i = 0; i < 15; i++)
 		title.update(idle, idle);
-	for (int i = 0; i < 5; i++) {
+	for (int i = 0; i < 6; i++) {
 		title.update(downPad, idle);
 		title.update(idle, idle);
 	}

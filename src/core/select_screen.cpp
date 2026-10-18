@@ -123,8 +123,8 @@ bool MotifSelect::load(Motif &motif, const GameConfig &config, std::string &erro
 	s.ints("portrait.spr", { &portraitSpr_[0], &portraitSpr_[1] });
 	s.readInt("palmenu.random.switchtime", palRandomSwitch_);
 	title_.read("title.", s);
-	const char *modes[6] = { "versus", "freebattle", "arcade", "training", "versus", "arcade" };
-	for (int i = 0; i < 6; i++)
+	const char *modes[7] = { "versus", "freebattle", "arcade", "training", "versus", "arcade", "survival" };
+	for (int i = 0; i < 7; i++)
 		titles_[i] = s.text(std::string("title.") + modes[i] + ".text");
 	// Ikemen's team menu leads to the same select screen, but these labels keep the chosen sub-mode visible.
 	titles_[(int)SelectMode::TeamVersus] = "TEAM VERSUS";
@@ -453,7 +453,7 @@ void MotifSelect::reset(SelectMode mode, bool secondController)
 		side.teamPalettes.clear();
 		const bool humanTeams = mode == SelectMode::Versus || mode == SelectMode::TeamVersus;
 		side.active = i == 0 || (humanTeams && secondController);
-		side.shown = i == 0 || (mode != SelectMode::Arcade && mode != SelectMode::TeamArcade);
+		side.shown = i == 0 || (mode != SelectMode::Arcade && mode != SelectMode::TeamArcade && mode != SelectMode::Survival);
 	}
 	// A button still held from the last screen doesn't count as a press.
 	for (platform::Pad &p : before_) {
@@ -514,7 +514,7 @@ void MotifSelect::confirmPick(int index)
 	setFace(side, side.chosen, true);
 	logf("select: p%d %s palette %d", index + 1, roster_[(size_t)side.chosen].name.c_str(), (int)side.palette);
 	if (index == 0 && !sides_[1].active && sides_[1].chosen < 0) {
-		if (mode_ == SelectMode::Arcade || mode_ == SelectMode::TeamArcade) {
+		if (mode_ == SelectMode::Arcade || mode_ == SelectMode::TeamArcade || mode_ == SelectMode::Survival) {
 			// Arcade: make one shuffled route through the real roster, then take its first opponent.
 			std::vector<int32_t> real;
 			for (int32_t i = 0; i < (int32_t)roster_.size(); i++) {
@@ -522,8 +522,20 @@ void MotifSelect::confirmPick(int index)
 					real.push_back(i);
 			}
 			const auto player = std::find(real.begin(), real.end(), side.chosen);
-			arcade_.reset((int32_t)real.size(), player == real.end() ? -1 : (int32_t)(player - real.begin()), random_);
-			setArcadeOpponent(real);
+			const int32_t playerIndex = player == real.end() ? -1 : (int32_t)(player - real.begin());
+			if (mode_ == SelectMode::Survival) {
+				survival_.reset((int32_t)real.size(), playerIndex, random_);
+				Side &cpu = sides_[1];
+				cpu.state = 0;
+				cpu.chosen = real[(size_t)survival_.opponent()];
+				const Entry &entry = roster_[(size_t)cpu.chosen];
+				cpu.palette = entry.palettes[(size_t)random((int32_t)entry.palettes.size())];
+				cpu.shown = true;
+				confirmPick(1);
+			} else {
+				arcade_.reset((int32_t)real.size(), playerIndex, random_);
+				setArcadeOpponent(real);
+			}
 		} else {
 			// Against the computer, player 1 picks its character too, starting where player 1's cursor is.
 			sides_[1].active = true;
@@ -647,7 +659,7 @@ void MotifSelect::update(const platform::Pad &pad1, const platform::Pad &pad2)
 		if (cancelled_)
 			break;
 		if (sides_[0].state == 3 && sides_[1].state == 3) {
-			// Arcade picks its stage; the other modes choose one.
+			// Arcade picks its stage; the other modes, Survival included (Ikemen's stageMenu), choose one.
 			if (mode_ == SelectMode::Arcade || mode_ == SelectMode::TeamArcade) {
 				stage_ = 1 + random((int32_t)stages_.size());
 				logf("select: stage %s", stageNames_[(size_t)stage_ - 1].c_str());
@@ -682,6 +694,8 @@ void MotifSelect::update(const platform::Pad &pad1, const platform::Pad &pad2)
 			if (stage_ == 0)
 				stage_ = 1 + random(count);
 			logf("select: stage %s", stageNames_[(size_t)stage_ - 1].c_str());
+			if (mode_ == SelectMode::Survival)
+				logf("survival: match %d", survival_.matchNo());
 			phase_ = Phase::Versus;
 			timer_ = 0;
 		} else if (pressed(p.back, b.back)) {
@@ -757,6 +771,33 @@ bool MotifSelect::nextArcadeMatch()
 	return true;
 }
 
+bool MotifSelect::nextSurvivalMatch()
+{
+	if (mode_ != SelectMode::Survival || !survival_.active())
+		return false;
+	survival_.advance();
+	std::vector<int32_t> real;
+	for (int32_t i = 0; i < (int32_t)roster_.size(); i++)
+		if (!roster_[(size_t)i].random)
+			real.push_back(i);
+	Side &cpu = sides_[1];
+	cpu.teamChosen.clear();
+	cpu.teamPalettes.clear();
+	cpu.state = 0;
+	cpu.chosen = real[(size_t)survival_.opponent()];
+	const Entry &entry = roster_[(size_t)cpu.chosen];
+	cpu.palette = entry.palettes[(size_t)random((int32_t)entry.palettes.size())];
+	cpu.shown = true;
+	confirmPick(1);
+	// The stage chosen at the start stays for the whole run (Ikemen's survival keeps stageListNo).
+	logf("survival: match %d", survival_.matchNo());
+	phase_ = Phase::Versus;
+	versusStarted_ = false;
+	timer_ = 1000;
+	startVersus();
+	return true;
+}
+
 // Hands the picks to the VS screen: each side's character in its palette, the stage, Arcade's match number.
 void MotifSelect::startVersus()
 {
@@ -782,8 +823,10 @@ void MotifSelect::startVersus()
 	stage.number = stage_;
 	stage.renderer = stagePortraits_[s].renderer.get();
 	stage.resFix = stagePortraits_[s].resFix;
-	versus_.start(fighters, stage,
-		mode_ == SelectMode::Arcade || mode_ == SelectMode::TeamArcade ? arcade_.matchNo() : 0);
+	const int32_t matchNo = mode_ == SelectMode::Survival ? survival_.matchNo()
+		: mode_ == SelectMode::Arcade || mode_ == SelectMode::TeamArcade ? arcade_.matchNo()
+																					 : 0;
+	versus_.start(fighters, stage, matchNo);
 	versusStarted_ = true;
 }
 

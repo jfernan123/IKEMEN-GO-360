@@ -47,7 +47,7 @@ const char *const DEFAULT_ITEMS[][2] = {
 
 // What mugen360 can run from the menu so far; other modes are left out.
 const std::set<std::string> SUPPORTED = { "arcade", "teamarcade", "versus", "teamversus", "freebattle", "training",
-	"options", "exit", "back" };
+	"survival", "options", "exit", "back" };
 
 // Ikemen's f_tweenStep: a factor of the way to the target, snapping once within a pixel.
 float tweenStep(float value, float target, float factor)
@@ -274,6 +274,7 @@ void TitleScreen::choose(const Item &item, const std::string &path)
 		: item.name == "teamarcade"    ? TitleChoice::TeamArcade
 		: item.name == "teamversus"    ? TitleChoice::TeamVersus
 		: item.name == "training"     ? TitleChoice::Training
+		: item.name == "survival"     ? TitleChoice::Survival
 		: item.name == "freebattle"   ? TitleChoice::QuickMatch
 										: TitleChoice::Versus;
 	fadeOut_.start(false);

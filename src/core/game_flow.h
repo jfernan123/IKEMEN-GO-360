@@ -24,6 +24,22 @@ private:
 	int32_t index_ = 0;
 };
 
+// Survival repeats shuffled roster passes until the player loses while keeping one running match number.
+class SurvivalLadder {
+public:
+	void reset(int32_t fighters, int32_t player, uint32_t seed);
+	void advance();
+	bool active() const { return ladder_.active(); }
+	int32_t opponent() const { return ladder_.opponent(); }
+	int32_t matchNo() const { return wins_ + 1; }
+	int32_t wins() const { return wins_; }
+
+private:
+	ArcadeLadder ladder_;
+	int32_t fighters_ = 0, player_ = -1, wins_ = 0;
+	uint32_t seed_ = 1;
+};
+
 // Which member is active in a Turns team match. A lost fight removes that side's active member; the series ends
 // when one side has no member left.
 class TurnsSeries {

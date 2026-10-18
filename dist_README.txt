@@ -1,5 +1,9 @@
-MUGEN360 - milestone 10c: Turns Persistence (homebrew test build)
-================================================================
+MUGEN360 - milestone 10d: Survival (homebrew test build)
+========================================================
+
+New: SURVIVAL, under MISSION on the title menu. Pick a fighter and a stage,
+then fight one-round matches against the roster for as long as you can last.
+Your life and power carry over between matches; the first loss ends the run.
 
 New: TEAM VERSUS and TEAM ARCADE use two-character Turns teams. Pick two
 fighters and colours for each side. A bout is one round; when a fighter loses,

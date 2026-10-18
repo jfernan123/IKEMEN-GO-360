@@ -277,7 +277,8 @@ public:
 		const std::string &fightError = assets_.fightError;
 		if (assets_.fightScreenLoaded) {
 			RoundTimings timings = fightScreen_.timings();
-			if (config.mode == "turns")
+			// Turns bouts and Survival matches are one round each (Ikemen's matchWins.single = 1 for them).
+			if (config.mode == "turns" || config.mode == "survival")
 				timings.matchWins = 1;
 			match_.setTimings(timings);
 			const View area = stage_.view(0, 0);
@@ -861,6 +862,8 @@ int main(int argc, char **argv)
 	std::map<uint32_t, std::string> shots;
 	uint32_t quitFrame = UINT32_MAX;
 	int32_t testPower = -1, testP2Life = -1;
+	// --noai: player 2 stays idle even in modes against the computer, so a test script's hits land the same way.
+	bool noAi = false;
 	bool trace = false, quickStart = false, cpu = false, show = false, forceSelect = false, forceTitle = false;
 	for (int i = 1; i < argc; i++) {
 		const std::string arg = argv[i];
@@ -880,6 +883,8 @@ int main(int argc, char **argv)
 			quickStart = true;
 		else if (arg == "--cpu")
 			cpu = true;
+		else if (arg == "--noai")
+			noAi = true;
 		else if (arg == "--mode" && i + 1 < argc)
 			forcedMode = text::toLower(argv[++i]);
 		else if (arg == "--show")
@@ -902,7 +907,7 @@ int main(int argc, char **argv)
 	const bool testRun = !inputPath.empty() || !shots.empty() || quitFrame != UINT32_MAX;
 	if (!platform::init(testRun && !show))
 		return 1;
-	logf("mugen360: milestone 10c, Turns persistence");
+	logf("mugen360: milestone 10d, Survival");
 	if (!configLoaded)
 		logf("mugen360: %s", configError.c_str());
 	logf("game: p1=%s p2=%s stage=%s", config.player1.c_str(), config.player2.c_str(), config.stage.c_str());
@@ -948,6 +953,8 @@ int main(int argc, char **argv)
 			mode = SelectMode::TeamArcade, modeCpu = true;
 		else if (forcedMode == "teamversus" || forcedMode == "turns")
 			mode = SelectMode::TeamVersus;
+		else if (forcedMode == "survival")
+			mode = SelectMode::Survival, modeCpu = true;
 		// A new character selection, on whichever select screen there is.
 		auto resetSelect = [&](bool secondController) {
 			if (motifSelectLoaded)
@@ -971,6 +978,7 @@ int main(int argc, char **argv)
 				: mode == SelectMode::Arcade            ? "arcade"
 				: mode == SelectMode::Training          ? "training"
 				: mode == SelectMode::TeamVersus || mode == SelectMode::TeamArcade ? "turns"
+				: mode == SelectMode::Survival                                      ? "survival"
 														: "versus";
 			if (fight.mode == "turns" && !fight.team1.empty() && !fight.team2.empty()) {
 				const GameConfig::Fighter &p1 = fight.team1[(size_t)turns.active(0)];
@@ -985,8 +993,9 @@ int main(int argc, char **argv)
 			fight.winCount[0] = winCounts[0];
 			fight.winCount[1] = winCounts[1];
 			stage = std::make_unique<StageDemo>(fightAssets);
-			stageLoaded = stage->load(fight, error, trace, quickStart, cpu || modeCpu);
-			if (stageLoaded && fight.mode == "turns")
+			stageLoaded = stage->load(fight, error, trace, quickStart, (cpu || modeCpu) && !noAi);
+			// Turns winners and the Survival player keep their life and power (Ikemen's persistLife).
+			if (stageLoaded && (fight.mode == "turns" || fight.mode == "survival"))
 				for (int side = 0; side < 2; side++)
 					if (turnsLife[side] >= 0)
 						stage->setFighterStats(side, turnsLife[side], turnsPower[side]);
@@ -1115,12 +1124,13 @@ int main(int argc, char **argv)
 				if (choice != TitleChoice::None) {
 					// Arcade and Quick Match force a CPU opponent. Training leaves player 2 as a stationary dummy.
 					modeCpu = choice == TitleChoice::Arcade || choice == TitleChoice::TeamArcade ||
-						choice == TitleChoice::QuickMatch;
+						choice == TitleChoice::QuickMatch || choice == TitleChoice::Survival;
 					mode = choice == TitleChoice::QuickMatch ? SelectMode::QuickMatch
 						: choice == TitleChoice::Arcade      ? SelectMode::Arcade
 						: choice == TitleChoice::TeamArcade  ? SelectMode::TeamArcade
 						: choice == TitleChoice::TeamVersus  ? SelectMode::TeamVersus
 						: choice == TitleChoice::Training    ? SelectMode::Training
+						: choice == TitleChoice::Survival    ? SelectMode::Survival
 															 : SelectMode::Versus;
 					resetSelect(secondController);
 					screen = gameScreen = Screen::Select;
@@ -1199,8 +1209,23 @@ int main(int argc, char **argv)
 						}
 					}
 					const bool arcadeMode = mode == SelectMode::Arcade || mode == SelectMode::TeamArcade;
+					bool nextSurvival = false;
+					if (mode == SelectMode::Survival) {
+						// The player carries their life and power into the next opponent; the first loss ends the run.
+						turnsLife[0] = turnsLife[1] = -1;
+						if (winner == 0 && life[0] > 0) {
+							turnsLife[0] = life[0];
+							turnsPower[0] = power[0];
+							nextSurvival = motifSelectLoaded && motifSelect.nextSurvivalMatch();
+						}
+						if (!nextSurvival)
+							logf("survival: run over after %d wins", motifSelectLoaded ? motifSelect.survivalWins() : 0);
+					}
 					if (nextTurn) {
 						screen = gameScreen = Screen::Stage;
+					} else if (nextSurvival) {
+						logf("survival: player advances");
+						screen = gameScreen = Screen::Select;
 					} else if (arcadeMode && winner == 0 && motifSelectLoaded && motifSelect.nextArcadeMatch()) {
 						logf("arcade: player advances");
 						screen = gameScreen = Screen::Select;

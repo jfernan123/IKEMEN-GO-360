@@ -35,6 +35,26 @@ bool ArcadeLadder::advance()
 	return active();
 }
 
+void SurvivalLadder::reset(int32_t fighters, int32_t player, uint32_t seed)
+{
+	fighters_ = fighters;
+	player_ = player;
+	seed_ = seed;
+	wins_ = 0;
+	ladder_.reset(fighters_, player_, seed_);
+}
+
+void SurvivalLadder::advance()
+{
+	if (!ladder_.active())
+		return;
+	wins_++;
+	if (!ladder_.advance()) {
+		seed_ = seed_ * 1664525u + 1013904223u;
+		ladder_.reset(fighters_, player_, seed_);
+	}
+}
+
 void TurnsSeries::reset(int32_t team1, int32_t team2)
 {
 	size_[0] = std::max(1, team1);
