@@ -1,25 +1,27 @@
 MUGEN360 XBOX UPDATER
 =====================
 
-Puts the newest mugen360 build on your Xbox over your home network, no USB.
+Keeps the Xbox on the newest mugen360 build over your home network, no USB,
+no GitHub account. Runs on this PC: unzip this folder anywhere and keep it.
 
 ONE-TIME SETUP
-1. On the Xbox, in Aurora: Settings > Network (or General) > turn on the FTP
-   server. Note the console's IP address and the FTP login (default
-   xboxftp / xboxftp).
-2. Open update_xbox.ps1 in Notepad and set the four lines at the top:
-   ConsoleIp, FtpUser, FtpPass, and GameDir (the folder on the console where
-   mugen360's default.xex is, e.g. Hdd1/Homebrew/mugen360).
-3. Accept Juan's invite to the GitHub repo (it's private), using the GitHub
-   account you'll log in with in the next step.
+1. On the Xbox, in Aurora: Settings > FTP Server > tick Enabled
+   (port 21, login xboxftp / xboxftp: the updater already uses those).
+2. Double-click update_xbox.bat. The first time it asks for:
+   - the Xbox's IP address (Aurora shows it in Settings > Network),
+   - the folder on the Xbox for mugen360 (just press Enter for
+     Hdd1/Homebrew/mugen360).
+   It remembers them in settings.txt (delete that file to change them).
+3. In Aurora, add Hdd1/Homebrew as a scan path once so mugen360 shows up.
 
-EACH UPDATE
-- Have the Xbox on, in Aurora, on the same network as this PC.
-- Double-click update_xbox.bat. The first time it installs the GitHub CLI and
-  asks you to log in to GitHub.
-- It grabs default.log from your last play session and shares it as a private
-  link (copied to your clipboard: paste it to Juan), then downloads the
-  newest build and uploads it to the console. Launch mugen360 from Aurora.
+USING IT
+- Double-click update_xbox.bat and leave the window open.
+- Every few minutes it checks GitHub. When Juan posts a new build and the
+  Xbox is on (in Aurora), it downloads it and copies it to the console.
+  If the Xbox is off, it waits and does it once the console is back.
+- Before each install it saves default.log from your last play session in
+  the logs folder here. Send the newest one to Juan.
+- To reinstall the current build, delete installed_build.txt.
 
-Keep Aurora's FTP on your home network only: don't port-forward it, the
-default login is public knowledge and FTP isn't encrypted.
+Keep Aurora's FTP on your home network only: don't port-forward it. FTP
+isn't encrypted and the default login is public knowledge.

@@ -8,5 +8,7 @@ for /f %%c in ('git rev-parse --short HEAD') do set "COMMIT=%%c"
 for /f %%b in ('git branch --show-current') do set "BRANCH=%%b"
 for /f %%d in ('powershell -NoProfile -Command "Get-Date -Format yyyy.MM.dd-HHmm"') do set "STAMP=%%d"
 set "TAG=xbox-%STAMP%"
-gh release create "%TAG%" dist\mugen360_360.zip --title "Xbox build %STAMP%" --notes "Built from %BRANCH% at %COMMIT%. On the PC next to the console, run xbox_updater\update_xbox.bat to install it." || exit /b 1
+rem The updater rides along so the console's PC can grab it from the same page.
+powershell -NoProfile -Command "Compress-Archive -Path xbox_updater\update_xbox.bat, xbox_updater\update_xbox.ps1, xbox_updater\README.txt -DestinationPath dist\mugen360_xbox_updater.zip -Force" || exit /b 1
+gh release create "%TAG%" dist\mugen360_360.zip dist\mugen360_xbox_updater.zip --title "Xbox build %STAMP%" --notes "Built from %BRANCH% at %COMMIT%. On the PC next to the console, leave update_xbox.bat (in mugen360_xbox_updater.zip) running: it installs each new build over Aurora's FTP. Or copy mugen360_360.zip's mugen360 folder to the console by hand." || exit /b 1
 echo Published %TAG%: the console's PC can run update_xbox.bat now.
