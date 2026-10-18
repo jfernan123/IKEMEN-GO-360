@@ -162,8 +162,45 @@ void Character::shareLoadedData(Character &from)
 void Character::setOpponent(Character *opponent)
 {
 	p2_ = opponent;
+	if (!root_) {
+		enemies_.clear();
+		if (opponent)
+			enemies_.push_back(opponent);
+	}
 	for (auto &helper : helpers_)
 		helper->setOpponent(opponent);
+}
+
+void Character::setTeam(const std::vector<Character *> &enemies, const std::vector<Character *> &partners)
+{
+	enemies_ = enemies;
+	partners_ = partners;
+	chooseP2();
+}
+
+std::vector<Character *> Character::enemiesByDistance() const
+{
+	std::vector<Character *> sorted = enemies();
+	std::stable_sort(sorted.begin(), sorted.end(), [this](const Character *a, const Character *b) {
+		return std::fabs(a->worldX() - worldX()) < std::fabs(b->worldX() - worldX());
+	});
+	return sorted;
+}
+
+// Ikemen's p2: the nearest enemy that isn't down and out (over_ko); with none, the last one stays.
+void Character::chooseP2()
+{
+	Character *nearest = nullptr;
+	for (Character *e : enemiesByDistance()) {
+		if (!e->overKo()) {
+			nearest = e;
+			break;
+		}
+	}
+	if (nearest && nearest != p2_)
+		setOpponent(nearest);
+	else if (!p2_ && !enemies().empty())
+		setOpponent(enemies().front());
 }
 
 void Character::setWorld(const FightWorld *world)
@@ -284,6 +321,7 @@ void Character::startRound(float px, float py, int face, bool newMatch)
 	stchtmp_ = false;
 	minus_ = 0;
 	hitdef_ = HitDef{};
+	hitdefTargets_.clear();
 	projectiles_.clear();
 	helpers_.clear();
 	destroyed_ = false;
@@ -454,6 +492,7 @@ void Character::initStateDef(const StateDef &def)
 		moveContactTime_ = 0;
 	if (!keeps(def.hitdefpersist)) {
 		hitdef_ = HitDef{};
+		hitdefTargets_.clear();
 		hitdef_.guardDist[0] = attackDist_[0];
 		hitdef_.guardDist[1] = attackDist_[1];
 	}
@@ -1246,8 +1285,10 @@ void Character::runGlobalPalFX(const StateController &sc, bool all)
 	if (all) {
 		// MUGEN's AllPalFX also changes both root players; the shared effect supplies the stage and Explods.
 		runPalFX(sc);
-		if (p2_)
-			p2_->palfx_ = palfx_;
+		for (Character *c : enemies())
+			c->palfx_ = palfx_;
+		for (Character *c : (root_ ? root_ : this)->partners_)
+			c->palfx_ = palfx_;
 		world_->effects->setAllPalFX(effect);
 	} else {
 		world_->effects->setBgPalFX(effect);
@@ -2248,6 +2289,7 @@ void Character::runHitDef(const StateController &sc)
 	hd.active = true;
 	hd.finalize(mugen1_);
 	hitdef_ = hd;
+	hitdefTargets_.clear();
 }
 
 // ReversalDef is a HitDef whose attack boxes catch matching enemy attack boxes. KFM uses only the original MUGEN
@@ -2273,6 +2315,7 @@ void Character::runReversalDef(const StateController &sc)
 	hd.active = hd.reversalAttrAttack != 0;
 	hd.finalize(mugen1_);
 	hitdef_ = hd;
+	hitdefTargets_.clear();
 	if (!traceLabel.empty())
 		logf("%s frame %u: state %d reversal %s", traceLabel.c_str(), world_ ? world_->gameTime : 0, stateNo,
 			hd.active ? "armed" : "cleared");
@@ -2511,9 +2554,11 @@ void Character::runProjectile(const StateController &sc)
 	}
 
 	const HitDef previous = hitdef_;
+	const std::vector<const Character *> previousTargets = hitdefTargets_;
 	runHitDef(sc);
 	projectile.hitdef = hitdef_;
 	hitdef_ = previous;
+	hitdefTargets_ = previousTargets;
 	projectile.hitdef.hitOpponent = false;
 	projectiles_.push_back(std::move(projectile));
 	if (!traceLabel.empty())
@@ -2671,12 +2716,16 @@ void Character::hitDetectProjectiles(Character &getter)
 		if (!projectile.active || projectile.removing || projectile.missLeft > 0 || projectile.hits <= 0 ||
 			!projectile.hitdef.active || !projectileClsnHits(projectile, getter))
 			continue;
+		// The projectile's HitDef stands in for the character's while it checks; the character's targets stay its own.
 		const HitDef previous = hitdef_;
+		const std::vector<const Character *> previousTargets = hitdefTargets_;
 		hitdef_ = projectile.hitdef;
 		hitdef_.hitOpponent = false;
+		hitdefTargets_.clear();
 		if (!getter.hittableBy(*this)) {
 			projectile.hitdef = hitdef_;
 			hitdef_ = previous;
+			hitdefTargets_ = previousTargets;
 			continue;
 		}
 		const int result = hitResultCheck(getter);
@@ -2701,6 +2750,7 @@ void Character::hitDetectProjectiles(Character &getter)
 		projectile.hitdef = hitdef_;
 		projectile.hitdef.hitOpponent = false;
 		hitdef_ = previous;
+		hitdefTargets_ = previousTargets;
 	}
 }
 
@@ -2909,6 +2959,7 @@ int Character::hitResultCheck(Character &g)
 		p2s = true;
 	}
 	hitdef_.hitOpponent = true;
+	hitdefTargets_.push_back(&g);
 
 	const bool ghvset = !g.gotHit_ || !g.stchtmp_ || p2s;
 	GetHitVars &v = g.ghv_;
@@ -3142,6 +3193,7 @@ bool Character::resolveReversal(Character &attacker)
 	moveContactTime_ = -1;
 	hitdefContact_ = true;
 	attacker.hitdef_.hitOpponent = true;
+	attacker.hitdefTargets_.push_back(this);
 	if (!traceLabel.empty())
 		logf("%s frame %u: state %d reverses p%d state %d", traceLabel.c_str(), world_ ? world_->gameTime : 0,
 			stateNo, attacker.playerNo + 1, attacker.stateNo);
@@ -3206,11 +3258,21 @@ void Character::beginHitDetection()
 
 void Character::hitDetection()
 {
-	Character *g = p2_;
-	if (!g)
-		return;
 	for (auto &helper : helpers_)
 		helper->hitDetection();
+	// Every enemy, in Simul both (Ikemen checks each attacker against each opponent).
+	if (enemies().empty()) {
+		if (p2_)
+			hitDetectionAgainst(*p2_);
+		return;
+	}
+	for (Character *g : enemies())
+		hitDetectionAgainst(*g);
+}
+
+void Character::hitDetectionAgainst(Character &target)
+{
+	Character *g = &target;
 	tradeProjectiles(*g);
 	hitDetectProjectiles(*g);
 	if (moveType == 'I')
@@ -3222,7 +3284,8 @@ void Character::hitDetection()
 			g->inGuardDist_ = true;
 	}
 	// Only a live HitDef hits, and a fall can only be juggled while juggle points last (MUGEN: once it's a target).
-	if (!hitdef_.active || hitdef_.hitonce < 0 || hitdef_.hitOpponent)
+	if (!hitdef_.active || hitdef_.hitonce < 0 ||
+		std::find(hitdefTargets_.begin(), hitdefTargets_.end(), g) != hitdefTargets_.end())
 		return;
 	// ReversalDef gets first claim on an incoming attack and checks attack boxes against attack boxes.
 	if (g->resolveReversal(*this))
@@ -3487,7 +3550,7 @@ Value Character::trigger(Trig t, Value arg)
 		const Character *tgt = target();
 		return Value::I(tgt && (arg.toI() < 0 || tgt->ghv_.hitid == arg.toI()) ? 1 : 0);
 	}
-	case Trig::NumPartner: return Value::I(0);
+	case Trig::NumPartner: return Value::I((int32_t)(root_ ? root_ : this)->partners_.size());
 	case Trig::NumProjID: {
 		int32_t count = 0;
 		for (const Projectile &projectile : projectiles_)
@@ -3516,7 +3579,7 @@ Value Character::trigger(Trig t, Value arg)
 	case Trig::GameWidth: return Value::F(halfW * 2);
 	case Trig::ScreenHeight:
 	case Trig::GameHeight: return Value::F(240 / localScale);
-	case Trig::NumEnemy: return Value::I(p2_ ? 1 : 0);
+	case Trig::NumEnemy: return Value::I(enemies().empty() ? (p2_ ? 1 : 0) : (int32_t)enemies().size());
 	case Trig::NumProj: {
 		int32_t count = 0;
 		for (const Projectile &projectile : projectiles_)
@@ -3720,9 +3783,23 @@ std::string Character::text(TextTrig t)
 ExprContext *Character::redirect(Redirect r, int32_t arg)
 {
 	switch (r) {
-	case Redirect::P2:
-	case Redirect::Enemy:
-	case Redirect::EnemyNear: return p2_;
+	case Redirect::P2: return p2_;
+	case Redirect::Enemy: {
+		const std::vector<Character *> &list = enemies();
+		if (list.empty())
+			return arg <= 0 ? p2_ : nullptr;
+		return arg >= 0 && arg < (int32_t)list.size() ? list[(size_t)arg] : nullptr;
+	}
+	case Redirect::EnemyNear: {
+		const std::vector<Character *> sorted = enemiesByDistance();
+		if (sorted.empty())
+			return arg <= 0 ? p2_ : nullptr;
+		return arg >= 0 && arg < (int32_t)sorted.size() ? sorted[(size_t)arg] : nullptr;
+	}
+	case Redirect::Partner: {
+		const std::vector<Character *> &list = (root_ ? root_ : this)->partners_;
+		return arg >= 0 && arg < (int32_t)list.size() ? list[(size_t)arg] : nullptr;
+	}
 	case Redirect::Parent: return parent_;
 	case Redirect::Root: return root_ ? root_ : this;
 	case Redirect::Helper: return (root_ ? root_ : this)->findHelper(arg);

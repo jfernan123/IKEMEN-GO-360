@@ -44,10 +44,12 @@ public:
 	float gameWidth = 320, localScale = 1;
 	// Where the ground is, in stage units from the top.
 	int32_t zoffset = 200;
+	// How far behind its leader a Simul partner starts ([PlayerInfo] partnerspacing).
+	int32_t partnerspacing = 25;
 	StageCamera camera;
 	struct Start {
 		int32_t x = 0, y = 0, facing = 1;
-	} p[2];
+	} p[4];
 	float leftbound = -1000, rightbound = 1000;
 	int32_t screenleft = 15, screenright = 15;
 	struct Shadow {

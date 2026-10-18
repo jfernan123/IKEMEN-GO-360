@@ -36,6 +36,7 @@ call :title || exit /b 1
 call :arcade || exit /b 1
 call :team || exit /b 1
 call :survival || exit /b 1
+call :simul || exit /b 1
 call :run buttons 80 --quickstart || exit /b 1
 call :run commands 260 --quickstart || exit /b 1
 call :run states 330 --quickstart || exit /b 1
@@ -78,6 +79,10 @@ findstr /c:"select: SURVIVAL" tests\out\latest_survival.log >nul || (echo FAIL: 
 findstr /c:"survival: match 1" tests\out\latest_survival.log >nul || (echo FAIL: Survival did not start its first match & exit /b 1)
 findstr /c:"survival: player advances" tests\out\latest_survival.log >nul || (echo FAIL: Survival did not advance after a win & exit /b 1)
 findstr /c:"survival: match 2" tests\out\latest_survival.log >nul || (echo FAIL: Survival did not start its second match & exit /b 1)
+findstr /c:"simul: " tests\out\latest_simul.log >nul || (echo FAIL: Simul did not load four fighters & exit /b 1)
+findstr /r /c:"^p2 frame .*: KO" tests\out\latest_simul.log >nul || (echo FAIL: Simul player 2 was not knocked out & exit /b 1)
+findstr /r /c:"^p4 frame .*: KO" tests\out\latest_simul.log >nul || (echo FAIL: Simul player 4 was not knocked out & exit /b 1)
+findstr /c:"round 1: KO, wins 1-0" tests\out\latest_simul.log >nul || (echo FAIL: Simul did not end the round when the whole team was KO & exit /b 1)
 findstr /c:"state 1002 -> 1009" tests\out\latest_misc.log >nul || (echo FAIL: 7d controllers and triggers did not all check out & exit /b 1)
 findstr /c:"helper 88 state 1200" tests\out\latest_helper.log >nul || (echo FAIL: nested Helper was not created & exit /b 1)
 findstr /c:"state 1000 -> 1002" tests\out\latest_helper.log >nul || (echo FAIL: Helper parent/root redirects or NumHelper failed & exit /b 1)
@@ -162,6 +167,12 @@ exit /b 0
 echo     arcade
 "%EXE%" --title --input tests\inputs\arcade.txt --quit 500 --trace %SHOW% >nul || exit /b 1
 copy /y m360.log tests\out\latest_arcade.log >nul
+exit /b 0
+
+:simul
+echo     simul
+"%EXE%" --select --mode simul --input tests\inputs\simul.txt --input2 tests\inputs\simul_p2.txt --quickstart --p2life 1 --quit 1700 --trace %SHOW% >nul || exit /b 1
+copy /y m360.log tests\out\latest_simul.log >nul
 exit /b 0
 
 :survival
