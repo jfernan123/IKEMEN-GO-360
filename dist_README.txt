@@ -1,10 +1,11 @@
-MUGEN360 - milestone 8d: select screen (homebrew test build)
-============================================================
+MUGEN360 - milestone 8e: VS screen (homebrew test build)
+========================================================
 
-New: Ikemen's select screen (tilted 3D grid, big portraits, Color menu), and
-a memory fix: the last build ran out of memory on a real console (missing
-letters and portraits, then a crash in the fight). The skin's sprites now
-stay compressed until drawn, and textures are kept under a budget.
+New: Ikemen's VS screen between select and the fight (both fighters in their
+colours, names, the next stage and its picture, "Match 1" in Arcade). It
+lasts about 7 seconds; any attack button or Start skips it.
+Also: less disk loading and texture stutter (it ran slow, worst from the
+hard drive), and a perf line in default.log every 10 seconds.
 
 The game opens on Ikemen's title screen and main menu. VS MODE > 1P VS 2P
 is a match against controller 2 (or the computer without one); QUICK MATCH,
@@ -16,9 +17,10 @@ portraits, names, clock, combo counter, win icons, and the "Round 1",
 "Fight!", "K.O." and "Winner!" calls with their sounds.
 
 From the menu you get the character select screen: pick Kung Fu Man or the
-high-resolution Kung Fu Man 720 (the attack button you pick with chooses his
-colours), the computer picks for player 2 unless controller 2 is plugged in,
-then the stage, then the fight. After the match it goes back to select.
+high-resolution Kung Fu Man 720, then his colour in the Color menu; you pick
+for the computer too unless controller 2 is plugged in (Arcade picks a random
+opponent); then the stage, the VS screen, and the fight. After the match it
+goes back to select.
 
 Each Kung Fu Man is run by his own MUGEN state
 files (kfm.cns, kfm.cmd, common1.cns). A real match: intros, "Round 1",
@@ -67,6 +69,9 @@ CONTROLS (select screen)
   D-pad (Color menu) next / previous colour;  Start: random colour
   Back               out of the Color menu; else back to the title menu
   Against the computer you pick its character after yours.
+
+CONTROLS (VS screen)
+  A B RT X Y RB Start  skip to the fight
 
 CONTROLS (stage)
   D-pad              walk, jump, crouch (controller 2 plays player 2)

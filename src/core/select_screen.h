@@ -12,6 +12,7 @@
 #include "core/motif.h"
 #include "core/sff.h"
 #include "core/sprite_renderer.h"
+#include "core/versus_screen.h"
 #include "platform/platform.h"
 
 namespace m360 {
@@ -25,6 +26,7 @@ enum class SelectMode : uint8_t { Versus, QuickMatch, Arcade, Training };
 // overrides), each side's cursor, its big portraits (the character's own stance animation and 9000,1), its name, the
 // palette menu after a pick, then the stage line. Not yet: team modes, the select timer, hidden / unlock flags,
 // several characters in one slot, per-character select sounds, the record text, loading portraits, stage portraits.
+// After the picks and the select screen's fade out, Ikemen's VS screen (VersusScreen).
 class MotifSelect {
 public:
 	bool load(Motif &motif, const GameConfig &config, std::string &error);
@@ -61,8 +63,8 @@ private:
 		float resFix = 1, sizeScaleX = 1, sizeScaleY = 1;
 		std::unique_ptr<Sff> sff;
 		std::unique_ptr<SpriteRenderer> renderer;
-		Animation stance, done;
-		bool hasStance = false, hasDone = false;
+		Animation stance, done, versus;
+		bool hasStance = false, hasDone = false, hasVersus = false;
 		// The palettes 1,n it has.
 		std::vector<int32_t> palettes;
 	};
@@ -130,6 +132,7 @@ private:
 	void drawFaces(int index);
 	void drawPalMenu(int index);
 	void drawStage();
+	void startVersus();
 	int32_t random(int32_t n);
 	// Elements on layerno 0 draw behind SelectBG's layer 1, those on 1 and 2 in front (as Ikemen layers its sprites).
 	bool inPass(int32_t layer) const { return (layer >= 1) == front_; }
@@ -171,6 +174,8 @@ private:
 	Layout stagePortrait_;
 	int32_t stagePortraitSpr_[2] = { 9000, 1 };
 	Side sides_[2];
+	VersusScreen versus_;
+	bool versusStarted_ = false;
 
 	SelectMode mode_ = SelectMode::Versus;
 	bool secondController_ = false;
