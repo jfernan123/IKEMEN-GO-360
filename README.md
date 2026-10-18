@@ -289,7 +289,14 @@ paths use forward slashes.
      remains a one-off CPU fight and Versus still uses controller 2. Focused tests cover route contents, mirror
      avoidance, progression, completion, a single-character roster, Training's clock and the title's direct Arcade
      launch.
-   - Next: team selection and Turns matches.
+   - 10b Turns teams (done): TEAM VERSUS and TEAM ARCADE are active in the title menu. Each side selects two
+     characters and palettes; two connected controllers select at the same time, while one controller selects the
+     CPU side after player 1. Each bout needs one round, the losing side advances to its next member, and the series
+     ends when a team runs out. Team Arcade repeats that series across the Arcade route. `--mode teamversus` and
+     `--mode teamarcade` open these modes directly. Focused tests cover wins, losses, draws, completion and invalid
+     team sizes; `tests/inputs/team.txt` drives both controllers through selection, knocks out the first opposing
+     member and verifies the next pairing starts.
+   - Next: Simul and Tag teams, then the remaining match-mode screens and rules.
 
 ## Asset notice
 

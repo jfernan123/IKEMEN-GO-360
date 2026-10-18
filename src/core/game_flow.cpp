@@ -34,4 +34,26 @@ bool ArcadeLadder::advance()
 	return active();
 }
 
+void TurnsSeries::reset(int32_t team1, int32_t team2)
+{
+	size_[0] = std::max(1, team1);
+	size_[1] = std::max(1, team2);
+	active_[0] = active_[1] = 0;
+}
+
+bool TurnsSeries::result(int winner)
+{
+	if (over())
+		return false;
+	if (winner == 0)
+		active_[1]++;
+	else if (winner == 1)
+		active_[0]++;
+	else {
+		active_[0]++;
+		active_[1]++;
+	}
+	return !over();
+}
+
 } // namespace m360

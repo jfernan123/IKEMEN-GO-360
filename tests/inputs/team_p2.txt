@@ -1,0 +1,16 @@
+# Player 2 selects two team members alongside player 1, then stands still in both fights.
+# This is paired with team.txt; its initial wait covers the title menu and select fade.
+86 -
+# Member 1.
+2 a
+10 -
+2 a
+10 -
+# Member 2.
+2 a
+10 -
+2 a
+10 -
+# An extra confirm is harmless after completion and keeps the script stable across the select fade boundary.
+2 a
+1400 -

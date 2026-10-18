@@ -58,6 +58,22 @@ int run10aTests()
 	expect(match.timeLeft() == Match::ROUND_TIME && match.finish() == Match::Finish::None,
 		"Training keeps the clock at 99 and does not decide the round");
 
-	std::printf("10a modes and Arcade flow: %d passed, %d failed\n", passed, failed);
+	TurnsSeries turns;
+	turns.reset(2, 3);
+	expect(turns.active(0) == 0 && turns.active(1) == 0 && !turns.over(), "Turns opens with each team's first member");
+	expect(turns.result(0) && turns.active(1) == 1, "a Turns loss advances the losing side");
+	expect(turns.result(1) && turns.active(0) == 1, "the other side advances after its loss");
+	expect(turns.result(-1) == false && turns.over() && turns.winner() == 1,
+		"a Turns draw removes both active members and can end the series");
+	turns.reset(2, 2);
+	expect(turns.result(0) && !turns.result(0) && turns.winner() == 0,
+		"eliminating every member reports player 1 as the team winner");
+	expect(!turns.result(0) && turns.active(1) == 2, "a completed Turns series ignores later results");
+	turns.reset(1, 1);
+	expect(!turns.result(-1) && turns.winner() == -1, "a final draw eliminates both teams without inventing a winner");
+	turns.reset(0, -2);
+	expect(turns.size(0) == 1 && turns.size(1) == 1, "Turns keeps both team sizes valid");
+
+	std::printf("10a/10b modes and team flow: %d passed, %d failed\n", passed, failed);
 	return failed;
 }

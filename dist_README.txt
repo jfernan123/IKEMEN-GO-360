@@ -1,5 +1,10 @@
-MUGEN360 - milestone 10a: Arcade and Training (homebrew test build)
-==================================================================
+MUGEN360 - milestone 10b: Turns Teams (homebrew test build)
+==========================================================
+
+New: TEAM VERSUS and TEAM ARCADE use two-character Turns teams. Pick two
+fighters and colours for each side. A bout is one round; when a fighter loses,
+that side's next member enters. The last team with a fighter wins the series.
+With two controllers, both sides choose at the same time.
 
 New: Arcade is a full route through the installed roster. Pick your fighter
 once; each win advances to the next CPU opponent and a new random stage.
@@ -36,10 +41,9 @@ Ikemen release has none). To add some, put them at:
 Also: less disk loading and texture stutter (it ran slow, worst from the
 hard drive), and a perf line in default.log every 10 seconds.
 
-The game opens on Ikemen's title screen and main menu. VS MODE > 1P VS 2P
-is a match against controller 2 (or the computer without one); QUICK MATCH,
-ARCADE and PRACTICE are a match against the computer for now (the real
-arcade and training modes come later). OPTIONS isn't there yet. EXIT quits.
+The game opens on Ikemen's title screen and main menu. VS MODE has 1P VS 2P,
+TEAM VERSUS and QUICK MATCH. ARCADE has SINGLE MODE and TEAM ARCADE. PRACTICE
+starts Training with a refilling dummy. OPTIONS isn't there yet. EXIT quits.
 
 The fight looks like Ikemen: its default skin's lifebars, power bars,
 portraits, names, clock, combo counter, win icons, and the "Round 1",
@@ -98,6 +102,7 @@ CONTROLS (select screen)
   D-pad (Color menu) next / previous colour;  Start: random colour
   Back               out of the Color menu; else back to the title menu
   Against the computer you pick its character after yours.
+  In a TEAM mode, repeat the character and colour pick for member 2.
 
 CONTROLS (VS screen)
   A B RT X Y RB Start  skip to the fight

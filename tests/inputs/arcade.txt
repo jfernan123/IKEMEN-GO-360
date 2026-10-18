@@ -4,6 +4,8 @@
 # Expect: "title: ARCADE > SINGLE MODE", "arcade: match 1 of 2", a VS screen and "match: round 1".
 30 -
 2 a
+10 -
+2 a
 40 -
 2 a
 10 -
