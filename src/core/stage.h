@@ -21,6 +21,8 @@ namespace m360 {
 class Stage {
 public:
 	bool load(const std::string &defPath, std::string &error);
+	// Logs what the stage's .def sets that isn't read yet.
+	static void logUnread(const std::vector<IniSection> &sections, const std::string &defPath);
 	// Moves the backgrounds one tick: velocity and animations.
 	void update();
 	// Draws the elements of one layer (0 behind the players, 1 in front).
@@ -30,6 +32,10 @@ public:
 
 	std::string name;
 	int32_t localWidth = 320, localHeight = 240;
+	// The fight's game space follows the stage's shape (Ikemen's applyFightAspect): 240 high and as wide as the stage's
+	// aspect makes it, 320 for 4:3, 426.7 for 16:9. localScale converts the .def's stage units to it (Ikemen's stage
+	// localscl): every position and distance below is in stage units, the views and the camera in game units.
+	float gameWidth = 320, localScale = 1;
 	// Where the ground is, in stage units from the top.
 	int32_t zoffset = 200;
 	StageCamera camera;

@@ -118,8 +118,12 @@ public:
 	int32_t animNo = -1;
 	Animation anim;
 	int32_t life = 1000, power = 0, sprPriority = 0;
-	// Stage units per character unit: 1 for localcoord 320, 0.25 for localcoord 1280.
+	// Game units per character unit (Ikemen's localscl): 1 for localcoord 320, 0.25 for localcoord 1280, both times the
+	// fight's game width over 320 (see setGameWidth).
 	float localScale = 1;
+	// The fight's game width (Stage::gameWidth): a 16:9 stage's 426.7 makes a character 4/3 as big in game units, as
+	// Ikemen's setGameAspect does.
+	void setGameWidth(float gameWidth) { localScale = coords::scaleForWidth(localcoordWidth_) * gameWidth / 320.0f; }
 	float worldX() const { return coords::toWorld(x, localScale); }
 	float worldY() const { return coords::toWorld(y, localScale); }
 	void setWorldX(float value) { x = coords::toLocal(value, localScale); }
@@ -165,6 +169,8 @@ public:
 	std::string text(TextTrig t) override;
 
 private:
+	// [Info] localcoord's width.
+	int32_t localcoordWidth_ = 320;
 	void loadConstants(const std::string &cnsPath);
 	float constF(const std::string &name, float fallback) const;
 

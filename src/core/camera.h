@@ -40,11 +40,13 @@ struct StageCamera {
 // stage's bounds, y rises toward the highest player by verticalfollow. Simplified from Ikemen-GO's Camera.action.
 class Camera {
 public:
-	void reset(const StageCamera &cam)
+	// scale: game units per stage unit (Ikemen's stage localscl), which the [Camera] values are in.
+	void reset(const StageCamera &cam, float scale = 1)
 	{
 		cam_ = cam;
-		x = (float)cam.startx;
-		y = (float)cam.starty;
+		scale_ = scale;
+		x = (float)cam.startx * scale;
+		y = (float)cam.starty * scale;
 	}
 
 	// leftest / rightest: the players' outermost x; highest: the smallest (highest) y, 0 on the ground. edge: how far
@@ -55,22 +57,23 @@ public:
 		// The camera positions that keep both players at least tension from the screen's sides. Moving only as far as
 		// needed to get into that range keeps the camera still while they're well inside it; when they're too far
 		// apart for any position to do it, it centres between them rather than chasing one side then the other.
-		const float tension = std::clamp((float)cam_.tension, 0.0f, halfWidth);
+		const float tension = std::clamp((float)cam_.tension * scale_, 0.0f, halfWidth);
 		const float lowest = rightest - halfWidth + tension;
 		const float highest_x = leftest + halfWidth - tension;
 		x = lowest <= highest_x ? std::clamp(x, lowest, highest_x) : (leftest + rightest) / 2;
-		x = std::clamp(x, (float)cam_.boundleft, (float)cam_.boundright);
+		x = std::clamp(x, (float)cam_.boundleft * scale_, (float)cam_.boundright * scale_);
 		// Keep both players within reach of the screen's edges: the one behind holds the camera back.
 		if (rightest - leftest <= 2 * edge)
 			x = std::clamp(x, rightest - edge, leftest + edge);
-		const float targetY = std::min(0.0f, highest + (float)cam_.floortension) * cam_.verticalfollow;
-		y = std::clamp(targetY, (float)cam_.boundhigh, (float)cam_.boundlow);
+		const float targetY = std::min(0.0f, highest + (float)cam_.floortension * scale_) * cam_.verticalfollow;
+		y = std::clamp(targetY, (float)cam_.boundhigh * scale_, (float)cam_.boundlow * scale_);
 	}
 
 	float x = 0, y = 0;
 
 private:
 	StageCamera cam_;
+	float scale_ = 1;
 };
 
 } // namespace m360

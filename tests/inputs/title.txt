@@ -1,10 +1,10 @@
 # The title menu: down to VS MODE, open it, pick 1P VS 2P; then Ikemen's select screen: player 1 moves to the second
 # character, picks it and confirms palette 1 in the Color menu; with no second controller player 1 then picks player 2's
-# character the same way (down a palette to 2 first); then confirms the stage, Ikemen's VS screen shows, the skip key
-# (Start) cuts it short, and the fight starts.
+# character the same way (down a palette to 2 first); then picks stage 1 (Mountainside Temple; 0 is random), Ikemen's
+# VS screen shows, the skip key (Start) cuts it short, and the fight starts.
 #   build\pc\mugen360.exe --title --cpu --input tests\inputs\title.txt --quit 600 --trace
 # Expect in m360.log: "title: VS MODE > 1P VS 2P", "select: p1 Kung Fu Man palette 1",
-# "select: p2 Kung Fu Man palette 2", "select: stage", "versus: Kung Fu Man vs Kung Fu Man", "match: round 1".
+# "select: p2 Kung Fu Man palette 2", "select: stage Mountainside Temple", "versus: Kung Fu Man vs Kung Fu Man", "match: round 1".
 30 -
 2 D
 10 -
@@ -24,6 +24,8 @@
 10 -
 2 a
 20 -
+2 R
+10 -
 2 a
 200 -
 2 s

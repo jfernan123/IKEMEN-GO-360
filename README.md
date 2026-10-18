@@ -11,7 +11,7 @@ as compatibility grows.
 
 ## Current status
 
-Milestones 1 to 8 are complete. KFM can fight full matches with commands, attacks, guarding, throws, falls, life and
+Milestones 1 to 8 are complete, and 9 (stages and rendering) is under way. KFM can fight full matches with commands, attacks, guarding, throws, falls, life and
 rounds, a CPU opponent, hit effects, Explods, helpers, projectiles, palette effects, pauses, afterimages,
 environmental shake, and sound. The game runs through Ikemen's default screenpack (ikemen1): title menu, select
 screen with the Color menu, VS screen, Ikemen's fight screen, and music for each when songs are added. Both the
@@ -243,8 +243,19 @@ paths use forward slashes.
      `[Reflection]` mirrors the fighters on the floor; the debug text starts hidden (Q / LB).
    - 8g wiring and docs (done): the title footer, version line and READMEs say milestone 8; `AGENTS.md` (outside the
      repository) has the screens, music, 360 disk / memory notes and the publish scripts.
-   - Next (9 onward, not planned in detail): options, the real arcade ladder and training mode, victory / continue /
-     results screens, team modes, storyboards, MIDI and round / victory music.
+
+9. Stages and rendering (in progress): the stage features the Ikemen release's stages use.
+   - 9a stages (done): stage0, stage0-720, stage1, stageZ and interactivestage from the Ikemen release are in
+     `data/stages/` and the stage menu. A stage's shape now sets the fight's game space as Ikemen's does: 240 units
+     high and 240 x aspect wide (320 for 4:3, 426.7 for 16:9); the stage's own units convert by its localscl
+     (game width / localcoord width) everywhere they're used (camera, start positions, bounds, screen edges, zoffset,
+     shadow fade), and characters are scaled by game width / 320 on top of their localcoord, so on the 1280x720
+     stage0-720 Kung Fu Man is drawn 4/3 as big as on a 4:3 stage. Each stage logs the keys it sets that aren't read
+     yet ("not read yet: ..."), the list for 9b-9d. The select screen reads a stage's portraitscale from
+     [StageInfo], as Ikemen does. Not included: the 3D stages (glTF models) and interactivestage's attached
+     character (a ZSS script).
+   - Next: 9b camera zoom, 9c windows / parallax width / BG controllers, 9d the stage's palette effects (SuperPause
+     darkening, BGPalFX, AllPalFX).
 
 ## Asset notice
 

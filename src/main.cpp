@@ -294,6 +294,7 @@ public:
 		for (int i = 0; i < 2; i++) {
 			if (!players_[i].load(characterDefs[i], palettes[i], error))
 				return false;
+			players_[i].setGameWidth(stage_.gameWidth);
 			players_[i].playerNo = i;
 			players_[i].setOpponent(&players_[1 - i]);
 			players_[i].setWorld(&world_);
@@ -326,10 +327,11 @@ public:
 		hud_.reset();
 		fightScreen_.reset();
 		effects_.clear();
-		camera_.reset(stage_.camera);
+		camera_.reset(stage_.camera, stage_.localScale);
 		updateWorld();
 		for (int i = 0; i < 2; i++)
-			players_[i].startRound((float)stage_.p[i].x, (float)stage_.p[i].y, stage_.p[i].facing, newMatch);
+			players_[i].startRound((float)stage_.p[i].x * stage_.localScale, (float)stage_.p[i].y * stage_.localScale,
+				stage_.p[i].facing, newMatch);
 		if (quickStart_) {
 			match_.skipIntro();
 			fightScreen_.skipIntro();
@@ -436,17 +438,18 @@ public:
 		// Ikemen's order: the fight screen's layer -1 and 0 behind the characters, 1 and 2 in front.
 		stage_.draw(0, view);
 		fightScreen_.draw(-1, match_, players_[0], players_[1]);
-		effects_.draw(view, (float)stage_.zoffset, -1);
+		effects_.draw(view, (float)stage_.zoffset * stage_.localScale, -1);
 		fightScreen_.draw(0, match_, players_[0], players_[1]);
 		// Player 1 in front.
 		for (int i = 1; i >= 0; i--)
-			players_[i].draw(view, (float)stage_.zoffset, shadowFor(players_[i]), stage_.shadow.yscale, stage_.reflection);
-		effects_.draw(view, (float)stage_.zoffset, 0);
+			players_[i].draw(view, (float)stage_.zoffset * stage_.localScale, shadowFor(players_[i]), stage_.shadow.yscale,
+				stage_.reflection);
+		effects_.draw(view, (float)stage_.zoffset * stage_.localScale, 0);
 		stage_.draw(1, view);
 		if (effects_.superPaused())
 			platform::fillRect(view.originX, 0, view.width, platform::SCREEN_HEIGHT, 0x70000000);
 		fightScreen_.draw(1, match_, players_[0], players_[1]);
-		effects_.draw(view, (float)stage_.zoffset, 1);
+		effects_.draw(view, (float)stage_.zoffset * stage_.localScale, 1);
 		// A pillarboxed stage: black at the sides, over whatever of the stage and the fighters reached past it.
 		if (view.originX > 0) {
 			platform::fillRect(0, 0, view.originX, platform::SCREEN_HEIGHT, 0xFF000000);
@@ -461,7 +464,7 @@ public:
 			drawTextf(platform::SCREEN_WIDTH - 40 - 6 * 2 * 9, 176, 2, 0xFFFFD040, "CPU LV %d", players_[1].aiLevel);
 		if (showInfo_) {
 			for (const Character &c : players_)
-				c.drawBoxes(view, (float)stage_.zoffset);
+				c.drawBoxes(view, (float)stage_.zoffset * stage_.localScale);
 			drawTextf(30, 200, 2, DIM, "%s   CAMERA %.1f,%.1f   FRAME %u   ROUNDSTATE %d", stage_.name.c_str(), camera_.x,
 				camera_.y, world_.gameTime, (int)match_.roundState());
 			drawStateInfo(players_[0], "P1", 30, 224);
@@ -479,9 +482,9 @@ private:
 		world_.camX = camera_.x;
 		world_.camY = camera_.y;
 		world_.halfWidth = stage_.view(camera_.x, camera_.y).halfWidth();
-		world_.screenEdge = world_.halfWidth - (float)std::max(stage_.screenleft, stage_.screenright);
-		world_.leftBound = stage_.leftbound;
-		world_.rightBound = stage_.rightbound;
+		world_.screenEdge = world_.halfWidth - (float)std::max(stage_.screenleft, stage_.screenright) * stage_.localScale;
+		world_.leftBound = stage_.leftbound * stage_.localScale;
+		world_.rightBound = stage_.rightbound * stage_.localScale;
 	}
 
 	// A player's state, like Ikemen's debug display (Ctrl+D): state, animation, control, time, types, motion.
@@ -549,10 +552,11 @@ private:
 	void limits(int i, float edge, float &lo, float &hi) const
 	{
 		const float other = players_[1 - i].worldX();
-		const float camMin = std::max((float)stage_.camera.boundleft, other - edge);
-		const float camMax = std::min((float)stage_.camera.boundright, other + edge);
-		lo = std::max(stage_.leftbound, camMin - edge);
-		hi = std::min(stage_.rightbound, camMax + edge);
+		const float scale = stage_.localScale;
+		const float camMin = std::max((float)stage_.camera.boundleft * scale, other - edge);
+		const float camMax = std::min((float)stage_.camera.boundright * scale, other + edge);
+		lo = std::max(stage_.leftbound * scale, camMin - edge);
+		hi = std::min(stage_.rightbound * scale, camMax + edge);
 	}
 
 	void keepInBounds(int i, float edge)
@@ -597,11 +601,12 @@ private:
 	{
 		const Stage::Shadow &s = stage_.shadow;
 		float k = 1;
-		if (s.fadeBegin != s.fadeEnd) {
-			if (c.worldY() <= (float)s.fadeEnd)
+		const float fadeEnd = (float)s.fadeEnd * stage_.localScale, fadeBegin = (float)s.fadeBegin * stage_.localScale;
+		if (fadeBegin != fadeEnd) {
+			if (c.worldY() <= fadeEnd)
 				k = 0;
-			else if (c.worldY() < (float)s.fadeBegin)
-				k = (c.worldY() - s.fadeEnd) / (float)(s.fadeBegin - s.fadeEnd);
+			else if (c.worldY() < fadeBegin)
+				k = (c.worldY() - fadeEnd) / (fadeBegin - fadeEnd);
 		}
 		return (int)(s.intensity * k);
 	}
@@ -838,7 +843,7 @@ int main(int argc, char **argv)
 	const bool testRun = !inputPath.empty() || !shots.empty() || quitFrame != UINT32_MAX;
 	if (!platform::init(testRun && !show))
 		return 1;
-	logf("mugen360: milestone 8, screenpack, menus and music");
+	logf("mugen360: milestone 9a, the release stages");
 	if (!configLoaded)
 		logf("mugen360: %s", configError.c_str());
 	logf("game: p1=%s p2=%s stage=%s", config.player1.c_str(), config.player2.c_str(), config.stage.c_str());
