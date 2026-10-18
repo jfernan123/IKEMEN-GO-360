@@ -10,9 +10,9 @@ ONE-TIME SETUP
 2. Double-click update_xbox.bat. The first time it asks for:
    - the Xbox's IP address (Aurora shows it in Settings > Network),
    - the folder on the Xbox for mugen360 (just press Enter for
-     Hdd1/Homebrew/mugen360).
+     Hdd1/mugen360).
    It remembers them in settings.txt (delete that file to change them).
-3. In Aurora, add Hdd1/Homebrew as a scan path once so mugen360 shows up.
+3. In Aurora, add Hdd1/mugen360 as a scan path once so mugen360 shows up.
 
 USING IT
 - Double-click update_xbox.bat and leave the window open.

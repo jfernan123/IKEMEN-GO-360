@@ -29,8 +29,8 @@ if (Test-Path $settingsFile) {
 	Write-Host 'First run: tell me where the Xbox is.' -ForegroundColor Cyan
 	do { $ConsoleIp = (Read-Host "The Xbox's IP address (Aurora: Settings > Network, e.g. 192.168.1.50)").Trim() }
 	until ($ConsoleIp -match '^\d{1,3}(\.\d{1,3}){3}$')
-	$GameDir = (Read-Host 'Folder on the Xbox for mugen360 (press Enter for Hdd1/Homebrew/mugen360)').Trim().Trim('/').Replace('\', '/')
-	if (-not $GameDir) { $GameDir = 'Hdd1/Homebrew/mugen360' }
+	$GameDir = (Read-Host 'Folder on the Xbox for mugen360 (press Enter for Hdd1/mugen360)').Trim().Trim('/').Replace('\', '/')
+	if (-not $GameDir) { $GameDir = 'Hdd1/mugen360' }
 	Set-Content -Path $settingsFile -Value "ConsoleIp=$ConsoleIp`r`nGameDir=$GameDir" -Encoding ascii
 	Write-Host "Saved to $settingsFile" -ForegroundColor Green
 }
