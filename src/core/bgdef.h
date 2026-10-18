@@ -8,6 +8,7 @@
 #include "core/air.h"
 #include "core/camera.h"
 #include "core/ini.h"
+#include "core/layout.h"
 #include "core/sff.h"
 #include "core/sprite_renderer.h"
 
@@ -55,19 +56,20 @@ struct BgElement {
 	// What a BGCtrl PosSet / VelSet / SinX started from, for reset.
 	float startVelocityX = 0, startVelocityY = 0, startSinRadius[2] = { 0, 0 };
 	int32_t startSinPeriod[2] = { 0, 0 };
+	PalFX palfx;
 };
 
 // A background controller ("[BGCtrl ...]" under a "[BGCtrlDef ...]"): over a time range, it acts on the elements
-// with its ctrlid (Ikemen's bgCtrl: read, bgCtrlAction, runBgCtrl). PalFX comes with 9d; RemapPal and ShaderSet aren't
-// supported.
+// with its ctrlid (Ikemen's bgCtrl: read, bgCtrlAction, runBgCtrl). RemapPal and ShaderSet aren't supported.
 struct BgCtrl {
-	enum class Type { Null, Anim, Visible, Enable, PosSet, PosAdd, SinX, SinY, VelSet, VelAdd };
+	enum class Type { Null, Anim, Visible, Enable, PosSet, PosAdd, SinX, SinY, VelSet, VelAdd, PalFX };
 	Type type = Type::Null;
 	// "time = start, end, loop": active from start to end, again every loop ticks (-1 never).
 	int32_t start = 0, end = 0, loop = -1;
 	bool hasX = false, hasY = false;
 	float x = 0, y = 0;
 	int32_t value[3] = { 0, 0, 0 };
+	PalFX palfx;
 	std::vector<size_t> targets;
 };
 
@@ -97,7 +99,7 @@ public:
 	// Back to where they started.
 	void reset();
 	// Draws the elements of one layer (0 behind the players, 1 in front).
-	void draw(int32_t layer, const View &view);
+	void draw(int32_t layer, const View &view, const PalFX *globalPalFX = nullptr, float brightness = 1);
 	size_t size() const { return bgs_.size(); }
 	const BgElement &element(size_t i) const { return bgs_[i]; }
 	// Geometry helpers exposed for the stage compatibility tests and debug tooling.
@@ -106,7 +108,7 @@ public:
 		float topScale, float bottomScale, float drawScaleX);
 
 private:
-	void drawElement(const BgElement &bg, const View &view);
+	void drawElement(const BgElement &bg, const View &view, const PalFX *globalPalFX, float brightness);
 	bool windowRect(const BgElement &bg, const View &cameraView, const View &view, ClipRect &out) const;
 	void loadControllers(const std::vector<IniSection> &sections, const std::string &defPath);
 	void runController(BgCtrl &ctrl);

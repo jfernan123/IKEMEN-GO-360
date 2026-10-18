@@ -269,7 +269,13 @@ paths use forward slashes.
      PosSet/Add, VelSet/Add and SinX/Y, including target IDs, loop times and resetbg. Ikemen-only layer -1 draws on
      stages that declare an Ikemen version. Focused tests cover the window rectangle, floor convergence, controller
      timing, disabled motion and round reset.
-   - Next: 9d the stage's palette effects (SuperPause darkening, BGPalFX, AllPalFX).
+   - 9d stage palette effects (done): SuperPause darkens only the stage on MUGEN's next-frame timing, leaving the
+     fighters and fight screen bright; `darken` and `brightness` select its strength. BGPalFX changes the stage,
+     AllPalFX changes both fighters, effects and the stage, and an active AllPalFX takes precedence over BGPalFX.
+     Stage BGCtrl PalFX applies per-element add, multiply, sinadd and sinmul effects. Palette effects stack in
+     Ikemen's order and retain the renderer's texture-cache rounding. Tests cover timing, expiry, precedence,
+     stacking and round reset.
+   - Next: 9e milestone documentation and packaging checks.
 
 ## Asset notice
 

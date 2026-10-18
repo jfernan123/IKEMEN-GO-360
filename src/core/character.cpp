@@ -1134,10 +1134,10 @@ bool Character::runMiscController(const StateController &sc)
 		return true;
 	case CtrlType::ModifyExplod: runModifyExplod(sc); return true;
 	case CtrlType::AllPalFX:
-		// Both players take the palette effect (the stage's colours aren't changed yet).
-		runPalFX(sc);
-		if (p2_)
-			p2_->palfx_ = palfx_;
+		runGlobalPalFX(sc, true);
+		return true;
+	case CtrlType::BGPalFX:
+		runGlobalPalFX(sc, false);
 		return true;
 	// Accepted with nothing to do here: rumble, the winner's quote and sound panning.
 	case CtrlType::ForceFeedback:
@@ -1207,7 +1207,9 @@ void Character::runMakeDust(const StateController &sc)
 void Character::runPalFX(const StateController &sc)
 {
 	palfx_ = PaletteEffect{};
+	palfx_.time = 1;
 	paramI(sc, "time", 0, palfx_.time);
+	palfx_.enabled = palfx_.time != 0;
 	for (int k = 0; k < 3; k++) {
 		paramI(sc, "add", k, palfx_.add[k]);
 		paramI(sc, "mul", k, palfx_.mul[k]);
@@ -1217,6 +1219,39 @@ void Character::runPalFX(const StateController &sc)
 	palfx_.cycle = std::abs(palfx_.cycle);
 	if (!traceLabel.empty())
 		logf("%s frame %u: palfx %d ticks", traceLabel.c_str(), world_ ? world_->gameTime : 0, palfx_.time);
+}
+
+void Character::runGlobalPalFX(const StateController &sc, bool all)
+{
+	if (!world_ || !world_->effects)
+		return;
+	PalFX effect;
+	effect.time = 1;
+	paramI(sc, "time", 0, effect.time);
+	effect.startTime = effect.time;
+	for (int k = 0; k < 3; k++) {
+		paramI(sc, "add", k, effect.add[k]);
+		paramI(sc, "mul", k, effect.mul[k]);
+		paramI(sc, "sinadd", k, effect.sinAdd[k]);
+		paramI(sc, "sinmul", k, effect.sinMul[k]);
+	}
+	for (int k = 0; k < 2; k++) {
+		int32_t period = 0;
+		paramI(sc, k == 0 ? "sinadd" : "sinmul", 3, period);
+		int32_t *amplitude = k == 0 ? effect.sinAdd : effect.sinMul;
+		if (period < 0)
+			for (int i = 0; i < 3; i++) amplitude[i] = -amplitude[i];
+		effect.cycle[k] = std::abs(period);
+	}
+	if (all) {
+		// MUGEN's AllPalFX also changes both root players; the shared effect supplies the stage and Explods.
+		runPalFX(sc);
+		if (p2_)
+			p2_->palfx_ = palfx_;
+		world_->effects->setAllPalFX(effect);
+	} else {
+		world_->effects->setBgPalFX(effect);
+	}
 }
 
 void Character::runAfterImage(const StateController &sc)
@@ -1252,7 +1287,15 @@ void Character::runPause(const StateController &sc, bool superPause)
 	paramI(sc, "time", 0, time);
 	paramI(sc, "movetime", 0, moveTime);
 	paramI(sc, "pausebg", 0, pauseBackground);
-	world_->effects->startPause(playerNo, time, moveTime, pauseBackground != 0, superPause);
+	int32_t brightness = 256;
+	if (superPause) {
+		int32_t darken = 1;
+		paramI(sc, "darken", 0, darken);
+		brightness = darken ? 128 : 256;
+		paramI(sc, "brightness", 0, brightness);
+	}
+	world_->effects->startPause(playerNo, time, moveTime, pauseBackground != 0, superPause,
+		(float)std::clamp(brightness, 0, 256) / 256);
 	if (!traceLabel.empty())
 		logf("%s frame %u: %spause %d ticks", traceLabel.c_str(), world_ ? world_->gameTime : 0,
 			superPause ? "super" : "", time);
@@ -1673,8 +1716,10 @@ void Character::tick()
 	if (projectileContactTime_ >= 0)
 		projectileContactTime_++;
 	makeDustSpacing_++;
-	if (palfx_.time > 0) {
-		palfx_.time--;
+	palfx_.enabled = palfx_.time != 0;
+	if (palfx_.enabled) {
+		if (palfx_.time > 0)
+			palfx_.time--;
 		palfx_.elapsed++;
 	}
 	if (afterImage_.time != 0) {
@@ -1861,7 +1906,7 @@ void Character::draw(const View &view, float groundY, int shadowIntensity, float
 		}
 	}
 	SpriteDraw colour;
-	if (palfx_.time > 0) {
+	if (palfx_.enabled) {
 		const float wave = palfx_.cycle > 0
 			? std::sin(6.28318530718f * palfx_.elapsed / palfx_.cycle)
 			: 0;

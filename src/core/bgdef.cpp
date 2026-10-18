@@ -43,6 +43,7 @@ void BgDef::load(const std::vector<IniSection> &sections, const std::string &pre
 		if (!text::startsWith(s.lower, start))
 			continue;
 		BgElement bg;
+		bg.palfx.time = bg.palfx.startTime = 0;
 		bg.name = s.name.substr(start.size());
 		const std::string type = text::toLower(s.get("type"));
 		if (type.empty())
@@ -236,7 +237,8 @@ void BgDef::loadControllers(const std::vector<IniSection> &sections, const std::
 		static const std::pair<const char *, BgCtrl::Type> TYPES[] = { { "null", BgCtrl::Type::Null },
 			{ "anim", BgCtrl::Type::Anim }, { "visible", BgCtrl::Type::Visible }, { "enable", BgCtrl::Type::Enable },
 			{ "posset", BgCtrl::Type::PosSet }, { "posadd", BgCtrl::Type::PosAdd }, { "sinx", BgCtrl::Type::SinX },
-			{ "siny", BgCtrl::Type::SinY }, { "velset", BgCtrl::Type::VelSet }, { "veladd", BgCtrl::Type::VelAdd } };
+			{ "siny", BgCtrl::Type::SinY }, { "velset", BgCtrl::Type::VelSet }, { "veladd", BgCtrl::Type::VelAdd },
+			{ "palfx", BgCtrl::Type::PalFX } };
 		bool known = false;
 		for (const auto &[name, value] : TYPES) {
 			if (type == name) {
@@ -256,6 +258,20 @@ void BgDef::loadControllers(const std::vector<IniSection> &sections, const std::
 		if (xy) {
 			ctrl.hasX = s.readFloat("x", ctrl.x);
 			ctrl.hasY = s.readFloat("y", ctrl.y);
+		} else if (ctrl.type == BgCtrl::Type::PalFX) {
+			ctrl.palfx.time = ctrl.palfx.startTime = 1;
+			s.ints("add", { &ctrl.palfx.add[0], &ctrl.palfx.add[1], &ctrl.palfx.add[2] });
+			s.ints("mul", { &ctrl.palfx.mul[0], &ctrl.palfx.mul[1], &ctrl.palfx.mul[2] });
+			for (int k = 0; k < 2; k++) {
+				int32_t wave[4] = { 0, 0, 0, 0 };
+				if (!s.ints(k == 0 ? "sinadd" : "sinmul", { &wave[0], &wave[1], &wave[2], &wave[3] }))
+					continue;
+				int32_t *amplitude = k == 0 ? ctrl.palfx.sinAdd : ctrl.palfx.sinMul;
+				const int32_t sign = wave[3] < 0 ? -1 : 1;
+				for (int i = 0; i < 3; i++)
+					amplitude[i] = wave[i] * sign;
+				ctrl.palfx.cycle[k] = wave[3] * sign;
+			}
 		} else if (s.readFloat("value", ctrl.x)) {
 			s.ints("value", { &ctrl.value[0], &ctrl.value[1], &ctrl.value[2] });
 		}
@@ -302,6 +318,9 @@ void BgDef::runController(BgCtrl &ctrl)
 			if (ctrl.hasY)
 				bg.velocityY += ctrl.y;
 			break;
+		case BgCtrl::Type::PalFX:
+			bg.palfx = ctrl.palfx;
+			break;
 		case BgCtrl::Type::SinX:
 		case BgCtrl::Type::SinY: {
 			// The last value is a time offset into the swing, not a phase as in sin.x.
@@ -340,6 +359,8 @@ void BgDef::reset()
 		}
 		if (bg.actionNo >= 0)
 			bg.anim.reset();
+		bg.palfx = PalFX{};
+		bg.palfx.time = bg.palfx.startTime = 0;
 	}
 }
 
@@ -383,19 +404,20 @@ void BgDef::update()
 		}
 		if (bg.actionNo >= 0 && bg.enabled)
 			bg.anim.action();
+		bg.palfx.step();
 	}
 	time_++;
 }
 
-void BgDef::draw(int32_t layer, const View &view)
+void BgDef::draw(int32_t layer, const View &view, const PalFX *globalPalFX, float brightness)
 {
 	for (const BgElement &bg : bgs_) {
 		if (bg.layer == layer && bg.type != BgElement::Type::Dummy && bg.visible && bg.enabled)
-			drawElement(bg, view);
+			drawElement(bg, view, globalPalFX, brightness);
 	}
 }
 
-void BgDef::drawElement(const BgElement &bg, const View &cameraView)
+void BgDef::drawElement(const BgElement &bg, const View &cameraView, const PalFX *globalPalFX, float brightness)
 {
 	// The camera's zoom, softened by the element's delta: an element that doesn't scroll doesn't zoom either
 	// (Ikemen's drawTransformed without zoomdelta).
@@ -432,6 +454,12 @@ void BgDef::drawElement(const BgElement &bg, const View &cameraView)
 			}
 		}
 	}
+	bg.palfx.apply(how);
+	if (globalPalFX)
+		globalPalFX->stack(how);
+	how.mulR = (uint16_t)std::clamp((int32_t)std::lround(how.mulR * brightness), 0, 1024);
+	how.mulG = (uint16_t)std::clamp((int32_t)std::lround(how.mulG * brightness), 0, 1024);
+	how.mulB = (uint16_t)std::clamp((int32_t)std::lround(how.mulB * brightness), 0, 1024);
 
 	// The element's own scale: scalestart, plus scaledelta times how far the camera has scrolled it, and a parallax
 	// element's yscalestart / yscaledelta as a reciprocal of the camera's height (Ikemen's drawTransformed).

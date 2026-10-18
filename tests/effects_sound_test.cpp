@@ -126,6 +126,33 @@ int run6dTests()
 	expect(!effects.paused(), "Pause timer expires");
 	effects.startPause(1, 2, 0, true, true);
 	expect(effects.superPaused() && effects.backgroundPaused(), "SuperPause flags");
+	expect(std::fabs(effects.superBrightness() - 1) < .001f, "SuperPause default brightness argument leaves stage bright");
+	effects.startPause(1, 2, 0, true, true, .5f);
+	expect(effects.superBrightness() == 1, "SuperPause darkening waits until the next frame");
+	effects.tickPause();
+	expect(effects.superBrightness() == 1, "SuperPause creation tick leaves the stage bright");
+	effects.tickPause();
+	expect(effects.superBrightness() == 1, "SuperPause brightness resets when it expires");
+	effects.startPause(1, 3, 0, true, true, .5f);
+	effects.tickPause(); effects.tickPause();
+	expect(std::fabs(effects.superBrightness() - .5f) < .001f, "SuperPause carries stage-only brightness after its delay");
+	effects.tickPause();
+	PalFX bgEffect;
+	bgEffect.time = bgEffect.startTime = 2;
+	bgEffect.add[0] = 16;
+	effects.setBgPalFX(bgEffect);
+	effects.tick();
+	expect(effects.stagePalFX() == &effects.bgPalFX() && effects.bgPalFX().enabled && effects.bgPalFX().effectAdd[0] == 16,
+		"BGPalFX advances and supplies the stage effect");
+	PalFX allEffect;
+	allEffect.time = allEffect.startTime = 1;
+	allEffect.mul[0] = 128;
+	effects.setAllPalFX(allEffect);
+	effects.tick();
+	expect(effects.stagePalFX() == &effects.allPalFX() && effects.allPalFX().effectMul[0] == 128,
+		"AllPalFX takes precedence over BGPalFX for the stage");
+	effects.tick();
+	expect(effects.stagePalFX() == nullptr, "global palette effects expire on their exact timers");
 	std::printf("%d milestone 6d tests passed, %d failed\n", passed, failed);
 	return failed;
 }

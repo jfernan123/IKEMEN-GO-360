@@ -53,3 +53,11 @@ value = 1
 type = VelSet
 time = 3
 x = 3
+
+[BGCtrl Tint]
+type = PalFX
+time = 2
+add = 16,24,32
+mul = 128,192,256
+sinadd = 8,0,-8,4
+sinmul = 0,16,0,6

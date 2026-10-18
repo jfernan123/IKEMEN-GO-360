@@ -82,6 +82,9 @@ struct PalFX {
 	void restart() { time = startTime; }
 	// Puts this tick's add and multiply into a draw.
 	void apply(SpriteDraw &how) const;
+	// Applies this effect after colour values already in a draw. This is Ikemen's stacked PalFX: the existing add is
+	// multiplied by this effect before this effect's add is added.
+	void stack(SpriteDraw &how) const;
 };
 
 // A rectangle draws are clipped to, in screen pixels.

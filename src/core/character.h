@@ -190,6 +190,7 @@ private:
 	void runEnvShake(const StateController &sc);
 	void runMakeDust(const StateController &sc);
 	void runPalFX(const StateController &sc);
+	void runGlobalPalFX(const StateController &sc, bool all);
 	void runAfterImage(const StateController &sc);
 	void runPause(const StateController &sc, bool superPause);
 	void runReversalDef(const StateController &sc);
@@ -283,6 +284,7 @@ private:
 	struct PaletteEffect {
 		int32_t time = 0, elapsed = 0, add[3] = { 0, 0, 0 }, sinAdd[3] = { 0, 0, 0 }, cycle = 0;
 		int32_t mul[3] = { 256, 256, 256 };
+		bool enabled = false;
 	} palfx_;
 	struct AfterImageFrame { Animation anim; float x = 0, y = 0; int facing = 1; };
 	struct AfterImageState {
