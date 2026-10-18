@@ -296,6 +296,11 @@ paths use forward slashes.
      `--mode teamarcade` open these modes directly. Focused tests cover wins, losses, draws, completion and invalid
      team sizes; `tests/inputs/team.txt` drives both controllers through selection, knocks out the first opposing
      member and verifies the next pairing starts.
+   - 10c Turns persistence (done): the winning member carries life and power into the next pairing. During the
+     result period it receives Ikemen's default life recovery: 27.5% of maximum life scaled by the fraction of
+     round time remaining (unlimited time grants the full bonus). Incoming members start with full life and empty
+     power. Focused tests cover full, half-time, expired and unlimited-time recovery; the team integration trace
+     verifies recovery happens before member two enters.
    - Next: Simul and Tag teams, then the remaining match-mode screens and rules.
 
 ## Asset notice

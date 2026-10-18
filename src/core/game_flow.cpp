@@ -1,6 +1,7 @@
 #include "core/game_flow.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace m360 {
 
@@ -54,6 +55,16 @@ bool TurnsSeries::result(int winner)
 		active_[1]++;
 	}
 	return !over();
+}
+
+int32_t turnsRecovery(int32_t lifeMax, int32_t timeRemaining, int32_t roundTime, float basePercent, float bonusPercent)
+{
+	if (lifeMax <= 0)
+		return 0;
+	const float ratio = timeRemaining < 0 ? 1.0f
+		: roundTime > 0                         ? (float)std::clamp(timeRemaining, 0, roundTime) / (float)roundTime
+														 : 0.0f;
+	return std::max(0, (int32_t)std::lround((float)lifeMax * (basePercent + bonusPercent * ratio) / 100.0f));
 }
 
 } // namespace m360

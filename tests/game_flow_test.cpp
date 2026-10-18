@@ -73,7 +73,13 @@ int run10aTests()
 	expect(!turns.result(-1) && turns.winner() == -1, "a final draw eliminates both teams without inventing a winner");
 	turns.reset(0, -2);
 	expect(turns.size(0) == 1 && turns.size(1) == 1, "Turns keeps both team sizes valid");
+	expect(turnsRecovery(1000, Match::ROUND_TIME, Match::ROUND_TIME) == 275,
+		"Turns grants Ikemen's full default recovery bonus when no time elapsed");
+	expect(turnsRecovery(1000, Match::ROUND_TIME / 2, Match::ROUND_TIME) == 138,
+		"Turns recovery scales with the remaining round time");
+	expect(turnsRecovery(1000, 0, Match::ROUND_TIME) == 0 && turnsRecovery(1000, -1, Match::ROUND_TIME) == 275,
+		"Turns recovery handles an expired or unlimited clock");
 
-	std::printf("10a/10b modes and team flow: %d passed, %d failed\n", passed, failed);
+	std::printf("10a-10c modes and team flow: %d passed, %d failed\n", passed, failed);
 	return failed;
 }

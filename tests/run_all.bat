@@ -72,6 +72,7 @@ findstr /c:"select: p1 member 2" tests\out\latest_team.log >nul || (echo FAIL: p
 findstr /c:"select: p2 member 2" tests\out\latest_team.log >nul || (echo FAIL: player 2 did not select two team members & exit /b 1)
 findstr /c:"turns: p1 member 1 of 2 vs p2 member 1 of 2" tests\out\latest_team.log >nul || (echo FAIL: Turns did not start its first pairing & exit /b 1)
 findstr /c:"turns: p1 member 1 of 2 vs p2 member 2 of 2" tests\out\latest_team.log >nul || (echo FAIL: Turns did not advance the losing side's next member & exit /b 1)
+findstr /c:"turns: p1 recovers" tests\out\latest_team.log >nul || (echo FAIL: Turns did not preserve and recover the winning member's life & exit /b 1)
 findstr /c:"state 1002 -> 1009" tests\out\latest_misc.log >nul || (echo FAIL: 7d controllers and triggers did not all check out & exit /b 1)
 findstr /c:"helper 88 state 1200" tests\out\latest_helper.log >nul || (echo FAIL: nested Helper was not created & exit /b 1)
 findstr /c:"state 1000 -> 1002" tests\out\latest_helper.log >nul || (echo FAIL: Helper parent/root redirects or NumHelper failed & exit /b 1)

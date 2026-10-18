@@ -45,4 +45,8 @@ private:
 	int32_t active_[2] = { 0, 0 };
 };
 
+// Ikemen's default Turns recovery (data/system.zss): a base percentage plus a bonus scaled by remaining time.
+int32_t turnsRecovery(int32_t lifeMax, int32_t timeRemaining, int32_t roundTime, float basePercent = 0.0f,
+	float bonusPercent = 27.5f);
+
 } // namespace m360
