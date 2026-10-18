@@ -1,0 +1,60 @@
+# Builds the PC version and runs every test (unit tests and the scripted fights, hidden and unpaced) on each pull
+# request and each push to main. The same suite as tests\run_all.bat locally.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  pc-tests:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      SDL_VERSION: 3.4.18
+      # The runner has no GPU: SDL draws in software, which the hidden test runs don't mind.
+      SDL_RENDER_DRIVER: software
+    steps:
+      - uses: actions/checkout@v4
+
+      # SDL3 lives outside the repo locally (..\tools\sdl3); CI downloads the same release.
+      - name: Cache SDL3
+        id: sdl
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/sdl3
+          key: sdl3-${{ env.SDL_VERSION }}-vc
+      - name: Download SDL3
+        if: steps.sdl.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $zip = "$env:RUNNER_TEMP\sdl3.zip"
+          Invoke-WebRequest "https://github.com/libsdl-org/SDL/releases/download/release-$env:SDL_VERSION/SDL3-devel-$env:SDL_VERSION-VC.zip" -OutFile $zip
+          Expand-Archive $zip -DestinationPath "$env:RUNNER_TEMP\sdl3"
+
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Install Ninja
+        run: pip install ninja
+
+      - name: Build
+        shell: cmd
+        run: |
+          cmake -S . -B build\ci -G Ninja -DCMAKE_BUILD_TYPE=Debug -DSDL3_DIR="%RUNNER_TEMP%\sdl3\SDL3-%SDL_VERSION%\cmake" || exit /b 1
+          cmake --build build\ci || exit /b 1
+
+      - name: Test
+        shell: cmd
+        env:
+          MUGEN360_BUILD: ci
+        run: tests\run_all.bat
+
+      # On a failure, the logs and screenshots of every test, to see what changed.
+      - name: Upload test output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-output
+          path: |
+            tests/out/
+            m360.log
