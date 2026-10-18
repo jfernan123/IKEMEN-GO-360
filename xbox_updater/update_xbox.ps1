@@ -50,9 +50,15 @@ function Get-NewestBuild {
 	return $null
 }
 
+# Aurora's FTP server doesn't answer EPSV (curl's first choice of passive mode), so every FTP call uses plain PASV.
+$ftpOptions = @('--disable-epsv', '--ftp-pasv')
+
+# $null when the console's FTP answers, otherwise curl's reason.
 function Test-Console {
-	curl.exe -s --connect-timeout 5 --max-time 15 --list-only --user $login "ftp://${ConsoleIp}:$FtpPort/" -o NUL
-	return $LASTEXITCODE -eq 0
+	$ErrorActionPreference = 'Continue'   # curl writing its reason to stderr isn't a script error here
+	$reason = curl.exe -s -S @ftpOptions --connect-timeout 5 --max-time 20 --list-only --user $login "ftp://${ConsoleIp}:$FtpPort/" -o NUL 2>&1
+	if ($LASTEXITCODE -eq 0) { return $null }
+	return "$reason".Trim()
 }
 
 function Install-Build($build) {
@@ -62,7 +68,7 @@ function Install-Build($build) {
 
 	# The last session's log, before the new build overwrites it.
 	$log = Join-Path $work 'default.log'
-	curl.exe -s --connect-timeout 5 --user $login "$ftp/default.log" -o $log
+	curl.exe -s @ftpOptions --connect-timeout 5 --user $login "$ftp/default.log" -o $log
 	if ($LASTEXITCODE -eq 0 -and (Test-Path $log) -and (Get-Item $log).Length -gt 0) {
 		New-Item -ItemType Directory -Force -Path $logsDir | Out-Null
 		$saved = Join-Path $logsDir "default_$(Get-Date -Format 'yyyy-MM-dd_HHmm').log"
@@ -84,7 +90,7 @@ function Install-Build($build) {
 		$i++
 		$relative = $file.FullName.Substring($root.Length + 1).Replace('\', '/')
 		Write-Progress -Activity 'Uploading to the Xbox' -Status $relative -PercentComplete ($i * 100 / $files.Count)
-		curl.exe -s -S --connect-timeout 10 --ftp-create-dirs --user $login -T $file.FullName "$ftp/$relative"
+		curl.exe -s -S @ftpOptions --connect-timeout 10 --ftp-create-dirs --user $login -T $file.FullName "$ftp/$relative"
 		if ($LASTEXITCODE -ne 0) { Write-Progress -Activity 'Uploading to the Xbox' -Completed; throw "Upload failed at $relative." }
 	}
 	Write-Progress -Activity 'Uploading to the Xbox' -Completed
@@ -102,7 +108,7 @@ while ($true) {
 		$build = Get-NewestBuild
 		if (-not $build) { $note = 'No Xbox build on GitHub yet.' }
 		elseif ($build.Tag -eq $installed) { $note = "Up to date ($installed)." }
-		elseif (-not (Test-Console)) { $note = "New build $($build.Tag) is waiting: turn the Xbox on, open Aurora, check FTP is enabled." }
+		elseif ($reason = Test-Console) { $note = "New build $($build.Tag) is waiting: can't reach the Xbox at ${ConsoleIp}:$FtpPort ($reason). Is it on, in Aurora, FTP enabled, same network, right IP?" }
 		else { Install-Build $build; $note = '' }
 	} catch {
 		$note = "Problem: $($_.Exception.Message) Trying again in $CheckMinutes min."
