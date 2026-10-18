@@ -329,6 +329,17 @@ public:
 		if (side >= 0 && side < 2)
 			players_[side].life = std::clamp(value, 1, players_[side].lifeMax());
 	}
+	void setFighterStats(int side, int32_t life, int32_t power)
+	{
+		if (side < 0 || side >= 2)
+			return;
+		players_[side].life = std::clamp(life, 1, players_[side].lifeMax());
+		players_[side].power = std::clamp(power, 0, players_[side].powerMax());
+	}
+	int32_t fighterLife(int side) const { return players_[side].life; }
+	int32_t fighterLifeMax(int side) const { return players_[side].lifeMax(); }
+	int32_t fighterPower(int side) const { return players_[side].power; }
+	int32_t timeLeft() const { return match_.timeLeft(); }
 
 	// A round begins: camera, stage and characters back to the start (Ikemen's resetRound).
 	void startRound(bool newMatch)
@@ -891,7 +902,7 @@ int main(int argc, char **argv)
 	const bool testRun = !inputPath.empty() || !shots.empty() || quitFrame != UINT32_MAX;
 	if (!platform::init(testRun && !show))
 		return 1;
-	logf("mugen360: milestone 10b, Turns teams");
+	logf("mugen360: milestone 10c, Turns persistence");
 	if (!configLoaded)
 		logf("mugen360: %s", configError.c_str());
 	logf("game: p1=%s p2=%s stage=%s", config.player1.c_str(), config.player2.c_str(), config.stage.c_str());
@@ -951,6 +962,7 @@ int main(int argc, char **argv)
 		int winCounts[2] = { 0, 0 };
 		GameConfig selectedFight;
 		TurnsSeries turns;
+		int32_t turnsLife[2] = { -1, -1 }, turnsPower[2] = { 0, 0 };
 		// Loaded with the first fight, then reused.
 		FightAssets fightAssets;
 		auto startFight = [&](const GameConfig &picked) {
@@ -974,6 +986,10 @@ int main(int argc, char **argv)
 			fight.winCount[1] = winCounts[1];
 			stage = std::make_unique<StageDemo>(fightAssets);
 			stageLoaded = stage->load(fight, error, trace, quickStart, cpu || modeCpu);
+			if (stageLoaded && fight.mode == "turns")
+				for (int side = 0; side < 2; side++)
+					if (turnsLife[side] >= 0)
+						stage->setFighterStats(side, turnsLife[side], turnsPower[side]);
 			if (stageLoaded && testPower >= 0)
 				stage->setTestPower(testPower);
 			if (stageLoaded && testP2Life >= 0)
@@ -1117,8 +1133,11 @@ int main(int argc, char **argv)
 				finishFrame();
 				if (motifSelect.done()) {
 					selectedFight = motifSelect.fight();
-					if (mode == SelectMode::TeamVersus || mode == SelectMode::TeamArcade)
+					if (mode == SelectMode::TeamVersus || mode == SelectMode::TeamArcade) {
 						turns.reset((int32_t)selectedFight.team1.size(), (int32_t)selectedFight.team2.size());
+						turnsLife[0] = turnsLife[1] = -1;
+						turnsPower[0] = turnsPower[1] = 0;
+					}
 					startFight(selectedFight);
 					screen = gameScreen = Screen::Stage;
 				} else if (motifSelect.cancelled()) {
@@ -1152,9 +1171,21 @@ int main(int argc, char **argv)
 					int winner = stage->winner();
 					winCounts[0] = stage->winCount(0);
 					winCounts[1] = stage->winCount(1);
+					int32_t life[2] = { stage->fighterLife(0), stage->fighterLife(1) };
+					const int32_t lifeMax[2] = { stage->fighterLifeMax(0), stage->fighterLifeMax(1) };
+					const int32_t power[2] = { stage->fighterPower(0), stage->fighterPower(1) };
+					const int32_t timeLeft = stage->timeLeft();
 					stage.reset();
 					bool nextTurn = false;
 					if (mode == SelectMode::TeamVersus || mode == SelectMode::TeamArcade) {
+						turnsLife[0] = turnsLife[1] = -1;
+						if (winner >= 0) {
+							const int recovery = turnsRecovery(lifeMax[winner], timeLeft, Match::ROUND_TIME);
+							turnsLife[winner] = std::min(lifeMax[winner], life[winner] + recovery);
+							turnsPower[winner] = power[winner];
+							logf("turns: p%d recovers %d life to %d", winner + 1, turnsLife[winner] - life[winner],
+								turnsLife[winner]);
+						}
 						nextTurn = turns.result(winner);
 						if (nextTurn) {
 							startFight(selectedFight);

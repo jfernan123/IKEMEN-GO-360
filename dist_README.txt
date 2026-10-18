@@ -1,10 +1,12 @@
-MUGEN360 - milestone 10b: Turns Teams (homebrew test build)
-==========================================================
+MUGEN360 - milestone 10c: Turns Persistence (homebrew test build)
+================================================================
 
 New: TEAM VERSUS and TEAM ARCADE use two-character Turns teams. Pick two
 fighters and colours for each side. A bout is one round; when a fighter loses,
 that side's next member enters. The last team with a fighter wins the series.
 With two controllers, both sides choose at the same time.
+The winner carries life and power forward and recovers some life based on the
+time left, following Ikemen's default Turns recovery rule.
 
 New: Arcade is a full route through the installed roster. Pick your fighter
 once; each win advances to the next CPU opponent and a new random stage.
