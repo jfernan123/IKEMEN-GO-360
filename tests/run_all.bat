@@ -66,6 +66,10 @@ findstr /c:"p1 command: QCF_x" tests\out\latest_commands.log >nul || (echo FAIL:
 findstr /c:"-> 40" tests\out\latest_states.log >nul || (echo FAIL: jump state test changed & exit /b 1)
 findstr /c:"time over, wins 1-0" tests\out\latest_timeover.log >nul || (echo FAIL: time-over result changed & exit /b 1)
 findstr /c:"round 2: KO, wins 2-0" tests\out\latest_match.log >nul || (echo FAIL: full match result changed & exit /b 1)
+findstr /c:"fightscreen: data/fight.def" tests\out\latest_match.log >nul || (echo FAIL: the fight.def fight screen did not load & exit /b 1)
+findstr /c:"round 1 call, fight call" tests\out\latest_match.log >nul || (echo FAIL: the round and fight calls did not run & exit /b 1)
+findstr /c:"fightscreen: KO call" tests\out\latest_match.log >nul || (echo FAIL: the KO call did not run & exit /b 1)
+findstr /c:"fightscreen: TO call" tests\out\latest_timeover.log >nul || (echo FAIL: the time over call did not run & exit /b 1)
 
 echo PASS: all unit and scripted integration tests passed.
 exit /b 0

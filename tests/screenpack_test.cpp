@@ -10,6 +10,7 @@
 #include "core/file.h"
 #include "core/font.h"
 #include "core/ini.h"
+#include "core/fight_screen.h"
 #include "core/layout.h"
 #include "core/sff.h"
 
@@ -92,5 +93,51 @@ int run8aTests()
 	expect(name.layout.offsetX == 10 && name.layout.offsetY == -4, "text layout offset");
 
 	std::printf("8a screenpack foundations: %d passed, %d failed\n", passed, failed);
+	return failed;
+}
+
+// Milestone 8b: the fight screen. fight.def's [Round] timings, the layouts' colour pulse, and how long a call shows.
+int run8bTests()
+{
+	passed = failed = 0;
+	std::string error;
+
+	FightScreen fight;
+	expect(fight.load("data/fight.def", error), "fight.def loads as a fight screen");
+	const RoundTimings &t = fight.timings();
+	expect(t.ctrlTime == 50 && t.overTime == 300 && t.startWait == 30, "[Round] ctrl.time 50, over.time 300");
+	expect(t.slowTime == 60 && t.slowFade == 45 && t.slowSpeed == 0.25f, "[Round] KO slowdown");
+	expect(t.overHit == 10 && t.overWait == 45 && t.overWin == 45 && t.forceWin == 900, "[Round] over.* times");
+	expect(t.matchWins == 2 && t.fadeOutTime == 30 && t.roundOverTime() == 300, "[Round] match.wins and fade-out");
+
+	// "palfx.mul = 200,200,200" with "sinmul = 32,32,32,5": 200 at the start of the wave, then 200 + 32 sin(72 deg).
+	IniSection section;
+	section.values["p1.mid.palfx.mul"] = "200, 200, 200";
+	section.values["p1.mid.palfx.sinmul"] = "32, 32, 32, 5";
+	PalFX pulse;
+	pulse.read("p1.mid.palfx.", section);
+	expect(pulse.time == -1 && pulse.cycle[1] == 5, "palfx lasts forever with a period of 5");
+	pulse.step();
+	expect(pulse.effectMul[0] == 200, "palfx starts at its multiply");
+	pulse.step();
+	expect(pulse.effectMul[0] == 230, "palfx sinmul swings it up");
+	SpriteDraw how;
+	pulse.apply(how);
+	expect(how.mulR == 232, "palfx is drawn in steps of 8");
+	for (int i = 0; i < 5; i++)
+		pulse.step();
+	expect(pulse.effectMul[0] == 230, "palfx repeats every period");
+
+	// A call shown for displaytime 55 is done on its 55th tick.
+	IniSection round;
+	round.values["round.default.displaytime"] = "55";
+	AnimTextSnd call;
+	AnimationTable none;
+	call.read("round.default.", round, none, 2);
+	expect(!call.end(54, true) && call.end(55, true), "displaytime ends a call");
+	AnimTextSnd empty;
+	expect(empty.end(1, true), "a call with nothing to show is done at once");
+
+	std::printf("8b fight screen: %d passed, %d failed\n", passed, failed);
 	return failed;
 }

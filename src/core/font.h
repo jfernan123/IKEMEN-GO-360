@@ -27,9 +27,10 @@ public:
 	int32_t charWidth(uint32_t c, int32_t bank) const;
 	int32_t textWidth(const std::string &text, int32_t bank) const;
 	// Draws a line with its baseline at screen (x, y), scale screen pixels per font pixel. align: 1 left (x is the
-	// start), 0 centred, -1 right (x is the end). colour multiplies the glyphs (0xAARRGGBB, white for none).
+	// start), 0 centred, -1 right (x is the end). colour multiplies the glyphs (0xAARRGGBB, white for none); the
+	// add and multiply in effects (a screenpack's palfx) apply too.
 	void draw(const std::string &text, float x, float y, float scaleX, float scaleY, int32_t bank, int align,
-		uint32_t colour = 0xFFFFFFFF) const;
+		uint32_t colour = 0xFFFFFFFF, const SpriteDraw &effects = SpriteDraw()) const;
 
 	int32_t width() const { return sizeX_; }
 	int32_t height() const { return sizeY_; }

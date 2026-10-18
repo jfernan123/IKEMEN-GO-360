@@ -66,7 +66,8 @@ void FightHud::update(const Character &p1, const Character &p2)
 	}
 }
 
-void FightHud::draw(const Match &match, const Character &p1, const Character &p2) const
+void FightHud::draw(const Match &match, const Character &p1, const Character &p2, bool roundCalled,
+	bool fightCalled) const
 {
 	const Character *p[2] = { &p1, &p2 };
 	if (!p1.asserts(Special::NoBarDisplay) && !p2.asserts(Special::NoBarDisplay)) {
@@ -112,11 +113,10 @@ void FightHud::draw(const Match &match, const Character &p1, const Character &p2
 	}
 
 	// Announcements.
-	const int32_t a = match.announceTime();
-	if (match.roundState() == 1 && a >= 0) {
+	if (match.roundState() == 1 && roundCalled) {
 		char r[32];
 		std::snprintf(r, sizeof r, "ROUND %d", (int)match.roundNo());
-		if (a < 60)
+		if (!fightCalled)
 			banner(r, 280, 10, TEXT);
 		else
 			banner("FIGHT!", 280, 12, 0xFFFFD040);
@@ -126,7 +126,7 @@ void FightHud::draw(const Match &match, const Character &p1, const Character &p2
 		const char *what = match.finish() == Match::Finish::KO ? "K.O."
 			: match.finish() == Match::Finish::DoubleKO      ? "DOUBLE K.O."
 															  : "TIME OVER";
-		if (over < Match::OVER_WAIT + Match::OVER_WIN) {
+		if (over < match.timings().overWait + match.timings().overWin) {
 			banner(what, 280, 12, 0xFFFF4030);
 		} else {
 			char who[64];

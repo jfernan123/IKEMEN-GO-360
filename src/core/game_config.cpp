@@ -55,6 +55,7 @@ bool GameConfig::load(const std::string &path, std::string &error)
 	readPath("p1", player1);
 	readPath("p2", player2);
 	readPath("stage", stage);
+	readPath("fight", fight);
 	if (player1.empty() || player2.empty() || stage.empty()) {
 		error = path + " has an empty p1, p2, or stage path";
 		return false;

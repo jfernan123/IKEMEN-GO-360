@@ -96,14 +96,25 @@ void audio_callback(const uint32_t *)
 
 // A frame is recorded on the CPU, then at endFrame its vertices go to GPU memory at once and its draws are queued.
 // That keeps every vertex write ahead of the cache invalidate and every draw behind it.
+struct Clip {
+	int x, y, width, height; // width < 0: the whole screen
+};
 struct Draw {
 	Texture *texture; // null for a run of colour rectangles
 	Blend blend;
 	uint32_t first_float;
 	uint32_t vertices;
+	Clip clip;
 };
 std::vector<float> frame_floats;
 std::vector<Draw> frame_draws;
+// The clip rectangle draws are recorded with (setClip).
+Clip current_clip = { 0, 0, -1, -1 };
+
+bool same_clip(const Clip &a, const Clip &b)
+{
+	return a.x == b.x && a.y == b.y && a.width == b.width && a.height == b.height;
+}
 
 float ndc_x(float x)
 {
@@ -120,8 +131,8 @@ void record(Texture *texture, Blend blend, const float *floats, uint32_t count)
 {
 	if ((frame_floats.size() + count) * 4 > ARENA_BYTES)
 		return;
-	if (texture || frame_draws.empty() || frame_draws.back().texture)
-		frame_draws.push_back(Draw{ texture, blend, (uint32_t)frame_floats.size(), 0 });
+	if (texture || frame_draws.empty() || frame_draws.back().texture || !same_clip(frame_draws.back().clip, current_clip))
+		frame_draws.push_back(Draw{ texture, blend, (uint32_t)frame_floats.size(), 0, current_clip });
 	frame_draws.back().vertices += QUAD_VERTICES;
 	frame_floats.insert(frame_floats.end(), floats, floats + count);
 }
@@ -286,6 +297,7 @@ bool beginFrame(uint32_t clear_argb)
 	}
 	frame_floats.clear();
 	frame_draws.clear();
+	current_clip = Clip{ 0, 0, -1, -1 };
 	clear_color = clear_argb;
 	// eDRAM still holds whatever the last resolve cleared it to; a full-screen rectangle sets this frame's colour.
 	fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, clear_argb | 0xFF000000);
@@ -301,8 +313,22 @@ void endFrame()
 	xsdk_gpu_set_target(frame_width, frame_height);
 	Blend current = Blend::Over;
 	xsdk_gpu_set_blend(&blend_over);
+	Clip scissor = { 0, 0, -1, -1 };
 	for (const Draw &d : frame_draws) {
 		const uint32_t floats = d.texture ? TEXTURE_FLOATS : COLOR_FLOATS;
+		if (!same_clip(d.clip, scissor)) {
+			scissor = d.clip;
+			// Screen pixels to the target's, which may be larger than 1280x720 on a console.
+			if (scissor.width < 0) {
+				xsdk_gpu_set_scissor(0, 0, frame_width, frame_height);
+			} else {
+				const uint32_t x0 = (uint32_t)std::clamp(scissor.x, 0, SCREEN_WIDTH) * frame_width / SCREEN_WIDTH;
+				const uint32_t y0 = (uint32_t)std::clamp(scissor.y, 0, SCREEN_HEIGHT) * frame_height / SCREEN_HEIGHT;
+				const uint32_t x1 = (uint32_t)std::clamp(scissor.x + scissor.width, 0, SCREEN_WIDTH) * frame_width / SCREEN_WIDTH;
+				const uint32_t y1 = (uint32_t)std::clamp(scissor.y + scissor.height, 0, SCREEN_HEIGHT) * frame_height / SCREEN_HEIGHT;
+				xsdk_gpu_set_scissor(x0, y0, x1 > x0 ? x1 - x0 : 0, y1 > y0 ? y1 - y0 : 0);
+			}
+		}
 		if (d.blend != current) {
 			current = d.blend;
 			xsdk_gpu_set_blend(current == Blend::Subtract ? &blend_subtract : &blend_over);
@@ -376,6 +402,16 @@ void drawTexture(Texture *texture, float x, float y, float width, float height, 
 		{ x + width, y + height, 1, 1 },
 	};
 	drawQuad(texture, corners, blend);
+}
+
+void setClip(int x, int y, int width, int height)
+{
+	current_clip = Clip{ x, y, width > 0 ? width : 0, height > 0 ? height : 0 };
+}
+
+void clearClip()
+{
+	current_clip = Clip{ 0, 0, -1, -1 };
 }
 
 void fillRect(float x, float y, float width, float height, uint32_t argb)

@@ -11,6 +11,8 @@ struct GameConfig {
 	std::string player1 = "data/chars/kfm/kfm.def";
 	std::string player2 = "data/chars/kfm/kfm.def";
 	std::string stage = "data/stages/kfm.def";
+	// The screenpack's fight screen (lifebars, round calls); missing or unreadable: the plain built-in one.
+	std::string fight = "data/fight.def";
 	// Palettes 1-12 for each player (the select screen's pick; 1 and 2 by default).
 	int p1Palette = 1, p2Palette = 2;
 	// The select screen's roster and stages ([Characters] and [Stages], one per line as in MUGEN's select.def: "kfm",
