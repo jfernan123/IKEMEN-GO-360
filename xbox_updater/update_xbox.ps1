@@ -99,22 +99,44 @@ function Install-Build($build) {
 	Say "Installed $($build.Tag): $($files.Count) files. Launch mugen360 from Aurora." Green
 }
 
+# Waits $seconds, or less if a key is pressed: returns 'check', 'force' or 'timeout'.
+function Wait-ForNextCheck($seconds) {
+	$until = (Get-Date).AddSeconds($seconds)
+	# Without a real console window (input redirected) there are no keys: just wait.
+	try { $null = [Console]::KeyAvailable } catch { Start-Sleep -Seconds $seconds; return 'timeout' }
+	while ((Get-Date) -lt $until) {
+		while ([Console]::KeyAvailable) {
+			switch ([Console]::ReadKey($true).Key) {
+				'C' { return 'check' }
+				'F' { return 'force' }
+			}
+		}
+		Start-Sleep -Milliseconds 250
+	}
+	return 'timeout'
+}
+
 Say "Watching github.com/$Repo for new Xbox builds (every $CheckMinutes min). Console: ${ConsoleIp}:$FtpPort, folder $GameDir" Cyan
-Say 'Leave this window open. Close it to stop.'
+Say 'Leave this window open. Keys: C = check now, F = force reinstall the newest build. Close the window to stop.'
 $lastNote = ''
+$force = $false
 while ($true) {
 	try {
 		$installed = if (Test-Path $stateFile) { (Get-Content $stateFile -Raw).Trim() } else { '' }
 		$build = Get-NewestBuild
 		if (-not $build) { $note = 'No Xbox build on GitHub yet.' }
-		elseif ($build.Tag -eq $installed) { $note = "Up to date ($installed)." }
-		elseif ($reason = Test-Console) { $note = "New build $($build.Tag) is waiting: can't reach the Xbox at ${ConsoleIp}:$FtpPort ($reason). Is it on, in Aurora, FTP enabled, same network, right IP?" }
+		elseif ($build.Tag -eq $installed -and -not $force) { $note = "Up to date ($installed)." }
+		elseif ($reason = Test-Console) { $note = "Build $($build.Tag) is waiting: can't reach the Xbox at ${ConsoleIp}:$FtpPort ($reason). Is it on, in Aurora, FTP enabled, same network, right IP?" }
 		else { Install-Build $build; $note = '' }
 	} catch {
 		$note = "Problem: $($_.Exception.Message) Trying again in $CheckMinutes min."
 	}
-	# Only print a status when it changes, so the window stays readable.
-	if ($note -and $note -ne $lastNote) { Say $note Yellow }
+	# Only print a status when it changes (or was asked for), so the window stays readable.
+	if ($note -and ($note -ne $lastNote -or $asked)) { Say $note Yellow }
 	$lastNote = $note
-	Start-Sleep -Seconds ($CheckMinutes * 60)
+	$next = Wait-ForNextCheck ($CheckMinutes * 60)
+	$asked = $next -ne 'timeout'
+	$force = $next -eq 'force'
+	if ($next -eq 'check') { Say 'Checking now...' Cyan }
+	if ($next -eq 'force') { Say 'Forcing a reinstall of the newest build...' Cyan }
 }

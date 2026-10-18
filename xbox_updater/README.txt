@@ -22,7 +22,8 @@ USING IT
   If the Xbox is off, it waits and does it once the console is back.
 - Before each install it saves default.log from your last play session in
   the logs folder here. Send the newest one to Juan.
-- To reinstall the current build, delete installed_build.txt.
+- Keys in the window: C checks GitHub right now instead of waiting,
+  F reinstalls the newest build even if the Xbox already has it.
 
 Keep Aurora's FTP on your home network only: don't port-forward it. FTP
 isn't encrypted and the default login is public knowledge.
