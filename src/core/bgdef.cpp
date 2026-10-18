@@ -209,8 +209,14 @@ void BgDef::draw(int32_t layer, const View &view)
 	}
 }
 
-void BgDef::drawElement(const BgElement &bg, const View &view)
+void BgDef::drawElement(const BgElement &bg, const View &cameraView)
 {
+	// The camera's zoom, softened by the element's delta: an element that doesn't scroll doesn't zoom either
+	// (Ikemen's drawTransformed without zoomdelta).
+	View view = cameraView;
+	const float zoom = cameraView.zoomX;
+	view.zoomX = std::max(0.0f, zoom + (1 - zoom) * (1 - std::max(0.0f, bg.deltaX)));
+	view.zoomY = std::max(0.0f, zoom + (1 - zoom) * (1 - std::max(0.0f, bg.deltaY)));
 	// The element's position in stage units, relative to the screen's centre column and the stage's top.
 	const float x = bg.startX + bg.offsetX + bg.sinOffset[0] - view.camX * bg.deltaX;
 	const float y = bg.startY + bg.offsetY + bg.sinOffset[1] - view.camY * bg.deltaY;
@@ -225,7 +231,8 @@ void BgDef::drawElement(const BgElement &bg, const View &view)
 		return;
 
 	SpriteDraw how;
-	how.scaleX = how.scaleY = view.scale;
+	how.scaleX = view.drawScaleX();
+	how.scaleY = view.drawScaleY();
 	how.mask = bg.mask;
 	how.trans = bg.trans;
 	how.srcAlpha = bg.srcAlpha;
@@ -249,11 +256,11 @@ void BgDef::drawElement(const BgElement &bg, const View &view)
 		if (bg.yscalestart * ysdelta < 0)
 			ysdelta = -ysdelta;
 		const float ys = ysdelta != 0 ? 100.0f / ysdelta : 1.0f;
-		how.scaleY = view.scale * ys;
+		how.scaleY = view.drawScaleY() * ys;
 		if (bg.widthTop != 0 || bg.widthBottom != 0) {
 			// "width": a trapezoid from widthTop to widthBottom, in strips so the texture doesn't bend.
 			// TODO: draw these as strips; for now the average width, unsheared.
-			how.scaleX = view.scale * (bg.widthTop + bg.widthBottom) / 2.0f / sprite->width;
+			how.scaleX = view.drawScaleX() * (bg.widthTop + bg.widthBottom) / 2.0f / sprite->width;
 		} else if (bg.rasterTop != 0) {
 			// "xscale": the bottom row scrolls rasterBottom / rasterTop as fast as the top, a shear that grows with
 			// how far the camera has moved it.
@@ -266,7 +273,10 @@ void BgDef::drawElement(const BgElement &bg, const View &view)
 	const float spanX = bg.spacingX > 0 ? (float)bg.spacingX : 0.0f;
 	const float spanY = bg.spacingY > 0 ? (float)bg.spacingY : 0.0f;
 	const float halfW = view.halfWidth();
-	const float visibleTop = view.topCut, visibleBottom = view.topCut + platform::SCREEN_HEIGHT / view.scale;
+	// The rows on screen, before the zoom about the ground line.
+	const float zoomY = view.zoomY > 0 ? view.zoomY : 1;
+	const float visibleTop = view.ground + (view.topCut - view.ground) / zoomY;
+	const float visibleBottom = view.ground + (view.topCut + platform::SCREEN_HEIGHT / view.scale - view.ground) / zoomY;
 
 	int32_t firstX = 0, lastX = 0, firstY = 0, lastY = 0;
 	if (bg.tileX && spanX > 0) {

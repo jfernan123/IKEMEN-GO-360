@@ -1,5 +1,9 @@
-MUGEN360 - milestone 9a: more stages (homebrew test build)
+MUGEN360 - milestone 9b: camera zoom (homebrew test build)
 ==========================================================
+
+New: the camera works like Ikemen's: it glides after the fighters instead of
+snapping, and Training Stage Z and the Interactive Training Stage zoom out as
+the fighters move apart.
 
 New: five more stages from Ikemen on the stage screen (Training Room, Training
 Room 720, Training Stage, Training Stage Z, Interactive Training Stage). The

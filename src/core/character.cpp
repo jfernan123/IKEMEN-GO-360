@@ -1794,9 +1794,9 @@ void Character::draw(const View &view, float groundY, int shadowIntensity, float
 		how.scaleY = projectile.scaleY;
 		if (projectile.shared) {
 			if (world_ && world_->effects)
-				world_->effects->drawSharedAnimation(projectile.anim, sx, sy, view.scale, projectile.facing, how);
+				world_->effects->drawSharedAnimation(projectile.anim, sx, sy, view.drawScaleX(), projectile.facing, how);
 		} else if (source_->renderer_) {
-			source_->renderer_->drawAnimation(projectile.anim, sx, sy, view.scale * projectile.localScale,
+			source_->renderer_->drawAnimation(projectile.anim, sx, sy, view.drawScaleX() * projectile.localScale,
 				projectile.facing, how);
 		}
 	}
@@ -1809,9 +1809,9 @@ void Character::draw(const View &view, float groundY, int shadowIntensity, float
 	auto drawAnim = [&](float px, float py, SpriteDraw how = {}) {
 		if (animShared_) {
 			if (world_ && world_->effects)
-				world_->effects->drawSharedAnimation(anim, px, py, view.scale, facing, how);
+				world_->effects->drawSharedAnimation(anim, px, py, view.drawScaleX(), facing, how);
 		} else {
-			source_->renderer_->drawAnimation(anim, px, py, view.scale * localScale, facing, how);
+			source_->renderer_->drawAnimation(anim, px, py, view.drawScaleX() * localScale, facing, how);
 		}
 	};
 	// Shaking from a hit: a pixel back every other frame.
@@ -1856,7 +1856,7 @@ void Character::draw(const View &view, float groundY, int shadowIntensity, float
 			}
 			const float oldX = view.screenX(old.x * localScale - view.camX);
 			const float oldY = view.screenY(groundY + old.y * localScale - view.camY);
-			source_->renderer_->drawAnimation(old.anim, oldX, oldY, view.scale * localScale, old.facing, how);
+			source_->renderer_->drawAnimation(old.anim, oldX, oldY, view.drawScaleX() * localScale, old.facing, how);
 			visible++;
 		}
 	}
@@ -1881,7 +1881,7 @@ void Character::draw(const View &view, float groundY, int shadowIntensity, float
 		colour.scaleX = angleScale_[0];
 		colour.scaleY = angleScale_[1];
 	}
-	drawAnim(sx + drawOffsetX_ * localScale * view.scale,
+	drawAnim(sx + drawOffsetX_ * localScale * view.drawScaleX(),
 		view.screenY(groundY + worldY() + drawOffsetY_ * localScale - view.camY), colour);
 	drawProjectiles(true);
 }
