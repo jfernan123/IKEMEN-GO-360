@@ -76,8 +76,8 @@ public:
 	int playerNo = 0;
 	// The computer's level (1-8) while it plays this character, 0 for a person (the AILevel trigger).
 	int aiLevel = 0;
-	void setOpponent(Character *opponent) { p2_ = opponent; }
-	void setWorld(const FightWorld *world) { world_ = world; }
+	void setOpponent(Character *opponent);
+	void setWorld(const FightWorld *world);
 
 	// One frame, in order: turnAndInput, actionPrepare, actionRun (for both players, each phase before the next),
 	// then the game pushes players apart and bounds them, then hit detection (beginHitDetection for both, then
@@ -125,9 +125,9 @@ public:
 	// When set, every state change is logged with this label ("p1"), for comparing runs frame by frame.
 	std::string traceLabel;
 
-	const Sff &sff() const { return sff_; }
-	const AnimationTable &anims() const { return anims_; }
-	const StateTable &states() const { return states_; }
+	const Sff &sff() const { return source_->sff_; }
+	const AnimationTable &anims() const { return source_->anims_; }
+	const StateTable &states() const { return source_->states_; }
 	const HitDef &hitDef() const { return hitdef_; }
 	const GetHitVars &getHitVars() const { return ghv_; }
 	// Frozen by a hit: the attacker's pausetime (states, physics and animation stop).
@@ -142,6 +142,7 @@ public:
 	const Character *stateOwner() const { return stateOwner_; }
 	// Controller types met that don't do anything yet, with how often they ran; for the debug screen.
 	const std::map<std::string, int> &unsupportedRuns() const { return unsupported_; }
+	int32_t helperCount(int32_t id = -1) const;
 
 	// ExprContext
 	Value trigger(Trig t, Value arg) override;
@@ -153,6 +154,7 @@ public:
 	void setVar(VarKind kind, int32_t index, Value v) override;
 	bool hitDefAttr(int32_t stateTypes, int32_t attacks) override;
 	ExprContext *redirect(Redirect r, int32_t arg) override;
+	std::string text(TextTrig t) override;
 
 private:
 	void loadConstants(const std::string &cnsPath);
@@ -179,6 +181,10 @@ private:
 	void runReversalDef(const StateController &sc);
 	void runHitOverride(const StateController &sc);
 	void runProjectile(const StateController &sc);
+	void runHelper(const StateController &sc);
+	void runRedirectedVar(const StateController &sc, Character *target, bool add);
+	void runBindController(const StateController &sc, Character *target);
+	Character *findHelper(int32_t id);
 	void updateProjectiles();
 	void hitDetectProjectiles(Character &getter);
 	bool projectileClsnHits(const Projectile &projectile, const Character &getter) const;
@@ -228,12 +234,35 @@ private:
 	bool paramF(const StateController &sc, const char *name, size_t index, float &out);
 	bool paramI(const StateController &sc, const char *name, size_t index, int32_t &out);
 
+	// What load() reads from disk. A helper loads nothing: source_ points at its root, whose files it shares
+	// (sprites, animations, states, constants, sounds and the renderer, with its palette).
 	Sff sff_;
 	AnimationTable anims_;
 	StateTable states_;
 	std::map<std::string, Value> constants_;
+	std::string defPath_;
 	std::unique_ptr<SpriteRenderer> renderer_;
 	SoundBank sound_;
+	Character *source_ = this;
+	// [Info] name and author, for the Name and AuthorName triggers (name above is the display name).
+	std::string infoName_, author_;
+	// Drawing set by Offset, Trans and AngleDraw, reset each frame (AngleSet's angle itself persists).
+	float drawOffsetX_ = 0, drawOffsetY_ = 0;
+	bool transSet_ = false;
+	Trans trans_ = Trans::None;
+	uint8_t transSrc_ = 255, transDst_ = 0;
+	bool angleDraw_ = false;
+	float angle_ = 0, angleScale_[2] = { 1, 1 };
+	// AttackMulSet: multiplies the damage this character's hits do.
+	float attackMul_ = 1;
+	// Life change from LifeAdd, through defence and kill (Ikemen's lifeAdd).
+	void lifeAdd(double add, bool kill, bool absolute);
+	// The 7d controllers: life, power, drawing, angles, explods and screen effects.
+	bool runMiscController(const StateController &sc);
+	void runModifyExplod(const StateController &sc);
+	bool keyCtrl_ = true;           // a helper reads the root's commands and runs states -1, -2, -3
+	// Takes the loaded files and the values derived from them from another character (a helper's root).
+	void shareLoadedData(Character &from);
 	int palette_ = -1;
 	bool animShared_ = false;
 	int32_t makeDustSpacing_ = 0;
@@ -297,6 +326,10 @@ private:
 	HitBySlot hitBy_[2];
 	HitOverride hitOverride_[8];
 	std::vector<Projectile> projectiles_;
+	std::vector<std::unique_ptr<Character>> helpers_;
+	Character *parent_ = nullptr, *root_ = nullptr;
+	int32_t helperId_ = 0;
+	bool destroyed_ = false;
 	int32_t projectileContactTime_ = -1, projectileContactId_ = -1;
 	char projectileContactType_ = 0;
 	uint32_t special_ = 0;          // AssertSpecial flags, cleared each frame

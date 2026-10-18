@@ -1,0 +1,169 @@
+[Data]
+life = 1000
+power = 3000
+attack = 100
+defence = 100
+
+[Size]
+ground.back = 15
+ground.front = 16
+air.back = 12
+air.front = 12
+height = 60
+
+[Velocity]
+walk.fwd = 2.4, 0
+walk.back = -2.2, 0
+jump.neu = 0, -8.4
+
+[Movement]
+yaccel = .44
+stand.friction = .85
+crouch.friction = .82
+
+; Milestone 7d: each state runs some of MUGEN's remaining controllers, then moves on only if the triggers read
+; back what they did. Reaching state 1009 means every check passed.
+[Statedef 1000]
+type = S
+movetype = I
+physics = S
+anim = 0
+ctrl = 0
+
+[State 1000, life]
+type = LifeSet
+trigger1 = time = 0
+value = 500
+
+[State 1000, hurt]
+type = LifeAdd
+trigger1 = time = 0
+value = -100
+absolute = 1
+
+[State 1000, heal]
+type = LifeAdd
+trigger1 = time = 0
+value = 50
+
+[State 1000, power]
+type = PowerSet
+trigger1 = time = 0
+value = 100
+
+[State 1000, more power]
+type = PowerAdd
+trigger1 = time = 0
+value = 50
+
+[State 1000, random]
+type = VarRandom
+trigger1 = time = 0
+v = 3
+range = 5, 5
+
+[State 1000, drawing]
+type = Offset
+trigger1 = 1
+x = 5
+
+[State 1000, trans]
+type = Trans
+trigger1 = 1
+trans = addalpha
+alpha = 128, 128
+
+[State 1000, angle]
+type = AngleDraw
+trigger1 = 1
+value = 30
+
+[State 1000, attack]
+type = AttackMulSet
+trigger1 = time = 0
+value = 2
+
+[State 1000, explod]
+type = Explod
+trigger1 = time = 0
+anim = 0
+id = 42
+postype = p1
+pos = 30, -40
+removetime = -1
+bindtime = -1
+
+[State 1000, modify]
+type = ModifyExplod
+trigger1 = time = 1
+id = 42
+scale = 2, 2
+trans = add
+
+[State 1000, checks]
+type = ChangeState
+value = 1001
+trigger1 = time = 2
+trigger1 = life = 450 && power = 150 && var(3) = 5
+trigger1 = numexplod(42) = 1 && numexplod = 1 && numexplod(7) = 0
+trigger1 = hitpausetime = 0 && ishelper = 0 && numhelper(5) = 0
+trigger1 = name = "Misc Test" && p2name = "kung fu man" && p2name != "Someone Else"
+trigger1 = authorname != "nobody" && teammode = single
+trigger1 = p2life = 1000 && p2stateno = 0 && p2ctrl
+trigger1 = leftedge < rightedge && screenwidth > 0 && gameheight = 240 && tickspersecond = 60
+
+[Statedef 1001]
+type = S
+movetype = I
+physics = S
+anim = 0
+ctrl = 0
+
+[State 1001, remove]
+type = RemoveExplod
+trigger1 = time = 0
+id = 42
+
+[State 1001, flash]
+type = EnvColor
+trigger1 = time = 0
+value = 255, 0, 0
+time = 3
+
+[State 1001, game anim]
+type = GameMakeAnim
+trigger1 = time = 0
+value = 0
+pos = 20, -50
+
+[State 1001, checks]
+type = ChangeState
+value = 1002
+trigger1 = time = 1
+trigger1 = numexplod(42) = 0
+
+[Statedef 1002]
+type = S
+movetype = I
+physics = S
+anim = 0
+ctrl = 0
+
+[State 1002, old projectile triggers]
+type = ChangeState
+value = 1009
+trigger1 = time = 0
+trigger1 = projcontact1234 = 0 && projhit = 0
+trigger1 = !(projguarded1234 = 1, < 10)
+
+[Statedef 1009]
+type = S
+movetype = I
+physics = S
+anim = 0
+ctrl = 0
+
+[State 1009, done]
+type = ChangeState
+value = 0
+trigger1 = time = 10

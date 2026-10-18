@@ -12,7 +12,7 @@ namespace m360 {
 
 enum class NodeKind : uint8_t {
 	Num, Neg, Not, BitNot, Binary, AndAlso, OrElse, Range, Command, FlagIs, FlagValue, AnimElem, TimeMod,
-	HitDefAttr, Const, GetHitVar, Var, VarSet, Trigger, Math1, Math2, IfElse, Redirect
+	HitDefAttr, Const, GetHitVar, Var, VarSet, Trigger, Math1, Math2, IfElse, Redirect, TextIs, ProjFlag
 };
 
 enum class Op : uint8_t { Add, Sub, Mul, Div, Mod, Pow, Eq, Ne, Lt, Le, Gt, Ge, BitAnd, BitOr, BitXor, BoolXor };
@@ -33,6 +33,7 @@ struct ExprNode {
 	MathFn fn = MathFn::Abs;                       // Math1 / Math2
 	Redirect redirect = Redirect::P2;              // Redirect
 	bool hasCompare = false;                       // AnimElem with ", op t"
+	TextTrig text = TextTrig::Name;                // TextIs (name in name)
 	std::vector<std::unique_ptr<ExprNode>> kids;
 };
 
@@ -122,7 +123,8 @@ bool tokenize(const std::string &s, std::vector<Token> &out, std::string &error)
 
 // --- Names -----------------------------------------------------------------------------------------------------------
 
-enum class Shape { Plain, Axis, OneArg };
+// OptArg: "numhelper" or "numhelper(1000)" (without the argument, -1: any).
+enum class Shape { Plain, Axis, OneArg, OptArg };
 
 struct TrigInfo {
 	Trig trig;
@@ -148,10 +150,10 @@ const std::map<std::string, TrigInfo> &triggers()
 		{ "matchover", { Trig::MatchOver, Shape::Plain } }, { "palno", { Trig::PalNo, Shape::Plain } },
 		{ "isbound", { Trig::IsBound, Shape::Plain } }, { "gametime", { Trig::GameTime, Shape::Plain } },
 		{ "teamside", { Trig::TeamSide, Shape::Plain } }, { "numproj", { Trig::NumProj, Shape::Plain } },
-		{ "numhelper", { Trig::NumHelper, Shape::Plain } }, { "numtarget", { Trig::NumTarget, Shape::Plain } },
-		{ "numexplod", { Trig::NumExplod, Shape::Plain } }, { "random", { Trig::Random, Shape::Plain } },
+		{ "numhelper", { Trig::NumHelper, Shape::OptArg } }, { "numtarget", { Trig::NumTarget, Shape::OptArg } },
+		{ "numexplod", { Trig::NumExplod, Shape::OptArg } }, { "random", { Trig::Random, Shape::Plain } },
 		{ "win", { Trig::Win, Shape::Plain } }, { "lose", { Trig::Lose, Shape::Plain } },
-		{ "drawgame", { Trig::DrawGame, Shape::Plain } }, { "ishelper", { Trig::IsHelper, Shape::Plain } },
+		{ "drawgame", { Trig::DrawGame, Shape::Plain } }, { "ishelper", { Trig::IsHelper, Shape::OptArg } },
 		{ "ailevel", { Trig::AiLevel, Shape::Plain } }, { "numenemy", { Trig::NumEnemy, Shape::Plain } },
 		{ "numpartner", { Trig::NumPartner, Shape::Plain } },
 		{ "frontedgebodydist", { Trig::FrontEdgeBodyDist, Shape::Plain } },
@@ -160,6 +162,7 @@ const std::map<std::string, TrigInfo> &triggers()
 		{ "backedgedist", { Trig::BackEdgeDist, Shape::Plain } }, { "statetime", { Trig::StateTime, Shape::Plain } },
 		{ "vel", { Trig::Vel, Shape::Axis } }, { "pos", { Trig::Pos, Shape::Axis } },
 		{ "p2dist", { Trig::P2Dist, Shape::Axis } }, { "p2bodydist", { Trig::P2BodyDist, Shape::Axis } },
+		{ "parentdist", { Trig::ParentDist, Shape::Axis } }, { "rootdist", { Trig::RootDist, Shape::Axis } },
 		{ "screenpos", { Trig::ScreenPos, Shape::Axis } }, { "camerapos", { Trig::CameraPos, Shape::Axis } },
 		{ "hitvel", { Trig::HitVel, Shape::Axis } },
 		{ "animelemtime", { Trig::AnimElemTime, Shape::OneArg } }, { "animelemno", { Trig::AnimElemNo, Shape::OneArg } },
@@ -167,6 +170,17 @@ const std::map<std::string, TrigInfo> &triggers()
 		{ "const720p", { Trig::Const720p, Shape::OneArg } }, { "projhittime", { Trig::ProjHitTime, Shape::OneArg } },
 		{ "projcontacttime", { Trig::ProjContactTime, Shape::OneArg } },
 		{ "projguardedtime", { Trig::ProjGuardedTime, Shape::OneArg } },
+		{ "hitpausetime", { Trig::HitPauseTime, Shape::Plain } }, { "id", { Trig::ID, Shape::Plain } },
+		{ "matchno", { Trig::MatchNo, Shape::Plain } }, { "tickspersecond", { Trig::TicksPerSecond, Shape::Plain } },
+		{ "ishometeam", { Trig::IsHomeTeam, Shape::Plain } }, { "p2life", { Trig::P2Life, Shape::Plain } },
+		{ "p2stateno", { Trig::P2StateNo, Shape::Plain } }, { "p2ctrl", { Trig::P2Ctrl, Shape::Plain } },
+		{ "leftedge", { Trig::LeftEdge, Shape::Plain } }, { "rightedge", { Trig::RightEdge, Shape::Plain } },
+		{ "topedge", { Trig::TopEdge, Shape::Plain } }, { "bottomedge", { Trig::BottomEdge, Shape::Plain } },
+		{ "frontedge", { Trig::FrontEdge, Shape::Plain } }, { "backedge", { Trig::BackEdge, Shape::Plain } },
+		{ "screenwidth", { Trig::ScreenWidth, Shape::Plain } }, { "screenheight", { Trig::ScreenHeight, Shape::Plain } },
+		{ "gamewidth", { Trig::GameWidth, Shape::Plain } }, { "gameheight", { Trig::GameHeight, Shape::Plain } },
+		{ "numprojid", { Trig::NumProjID, Shape::OneArg } }, { "projcanceltime", { Trig::ProjCancelTime, Shape::OneArg } },
+		{ "playeridexist", { Trig::PlayerIDExist, Shape::OneArg } },
 	};
 	return t;
 }
@@ -507,6 +521,41 @@ private:
 			}
 			return n;
 		}
+		static const std::map<std::string, TextTrig> texts = { { "name", TextTrig::Name },
+			{ "p1name", TextTrig::P1Name }, { "p2name", TextTrig::P2Name }, { "p3name", TextTrig::P3Name },
+			{ "p4name", TextTrig::P4Name }, { "authorname", TextTrig::AuthorName }, { "teammode", TextTrig::TeamMode } };
+		if (const auto tt = texts.find(name); tt != texts.end()) {
+			// "P2Name = \"Kung Fu Man\"", "TeamMode = single": compared without case.
+			Node n = make(NodeKind::TextIs);
+			n->text = tt->second;
+			n->negate = equality();
+			n->name = text::toLower(peek().kind == Token::Str ? t_[pos_++].text : ident());
+			return n;
+		}
+		// Old projectile triggers with the id in the name: "ProjHit1200 = 1", "ProjContact = 1, < 15" (Ikemen turns
+		// them into Proj*Time(id)). The first form is true on the tick of contact; 0 negates it.
+		for (const auto &[prefix, trig] : { std::pair{ "projhit", Trig::ProjHitTime },
+				 std::pair{ "projcontact", Trig::ProjContactTime }, std::pair{ "projguarded", Trig::ProjGuardedTime } }) {
+			const std::string p(prefix);
+			if (name.compare(0, p.size(), p) != 0 || name.size() > p.size() + 9 ||
+				name.find_first_not_of("0123456789", p.size()) != std::string::npos || name.find("time") != std::string::npos)
+				continue;
+			Node n = make(NodeKind::ProjFlag);
+			n->trig = trig;
+			n->a = name.size() > p.size() ? text::atoi(name.substr(p.size())) : -1;
+			n->negate = equality();
+			if (integer() == 0)
+				n->negate = !n->negate;
+			if (isSym(",") && peek(1).kind == Token::Sym) {
+				pos_++;
+				const std::string op = t_[pos_++].text;
+				n->op = op == "=" ? Op::Eq : op == "!=" ? Op::Ne : op == "<" ? Op::Lt : op == ">" ? Op::Gt
+					: op == "<=" ? Op::Le : Op::Ge;
+				n->b = integer();
+				n->hasCompare = true;
+			}
+			return n;
+		}
 		if (name == "timemod") {
 			// Old style: "TimeMod = 4, 0" is time % 4 = 0.
 			Node n = make(NodeKind::TimeMod);
@@ -625,6 +674,14 @@ private:
 				n->kids.push_back(std::move(a));
 			} else if (ti->second.shape == Shape::OneArg) {
 				n->kids.push_back(arg());
+			} else if (ti->second.shape == Shape::OptArg) {
+				if (isSym("(")) {
+					n->kids.push_back(arg());
+				} else {
+					Node any = make(NodeKind::Num);
+					any->value = Value::I(-1);
+					n->kids.push_back(std::move(any));
+				}
 			}
 			return n;
 		}
@@ -731,6 +788,12 @@ Value evalNode(const ExprNode *n, ExprContext &ctx)
 		return Value::B(r != n->negate);
 	}
 	case NodeKind::HitDefAttr: return Value::B(ctx.hitDefAttr(n->a, n->b) != n->negate);
+	case NodeKind::TextIs: return Value::B((text::toLower(ctx.text(n->text)) == n->name) != n->negate);
+	case NodeKind::ProjFlag: {
+		const int32_t t = ctx.trigger(n->trig, Value::I(n->a)).toI();
+		const bool r = n->hasCompare ? t >= 0 && arith(n->op, Value::I(t), Value::I(n->b)).i != 0 : t == 0;
+		return Value::B(r != n->negate);
+	}
 	case NodeKind::Const: {
 		Value v;
 		return ctx.constant(n->name, v) ? v : Value::I(0);

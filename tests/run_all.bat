@@ -1,14 +1,19 @@
 @echo off
 setlocal
+rem "run_all.bat show" plays every test in a visible window instead of hidden.
+set "SHOW="
+if /i "%~1"=="show" set "SHOW=--show"
 cd /d "%~dp0\.."
-set "EXE=build\pc\mugen360.exe"
+rem MUGEN360_BUILD=pc_test runs the second copy (build_pc_test.bat) while build\pc\mugen360.exe is open.
+if not defined MUGEN360_BUILD set "MUGEN360_BUILD=pc"
+set "EXE=build\%MUGEN360_BUILD%\mugen360.exe"
 if not exist "%EXE%" (
   echo FAIL: %EXE% is missing. Run build_pc.bat first.
   exit /b 1
 )
 
 echo === Core and milestone unit tests ===
-build\pc\mugen360_tests.exe || exit /b 1
+build\%MUGEN360_BUILD%\mugen360_tests.exe || exit /b 1
 
 echo === Scripted gameplay integration tests ===
 call :run attacks 1000 --quickstart || exit /b 1
@@ -22,6 +27,8 @@ call :run cornerpush 400 --quickstart || exit /b 1
 call :run taunt 100 --quickstart || exit /b 1
 call :projectile || exit /b 1
 call :projectile_clash || exit /b 1
+call :helper || exit /b 1
+call :misc || exit /b 1
 call :run buttons 80 --quickstart || exit /b 1
 call :run commands 260 --quickstart || exit /b 1
 call :run states 330 --quickstart || exit /b 1
@@ -36,6 +43,10 @@ findstr /c:"reverses p2 state 200" tests\out\latest_reversal.log >nul || (echo F
 findstr /c:"cornerpush" tests\out\latest_cornerpush.log >nul || (echo FAIL: corner push was not applied & exit /b 1)
 findstr /c:"-> 195" tests\out\latest_taunt.log >nul || (echo FAIL: Start did not reach KFM's taunt state & exit /b 1)
 findstr /c:"projectile 7 hits for 50 damage" tests\out\latest_projectile.log >nul || (echo FAIL: Projectile did not hit P2 & exit /b 1)
+findstr /c:"state 1002 -> 1009" tests\out\latest_misc.log >nul || (echo FAIL: 7d controllers and triggers did not all check out & exit /b 1)
+findstr /c:"helper 88 state 1200" tests\out\latest_helper.log >nul || (echo FAIL: nested Helper was not created & exit /b 1)
+findstr /c:"state 1000 -> 1002" tests\out\latest_helper.log >nul || (echo FAIL: Helper parent/root redirects or NumHelper failed & exit /b 1)
+findstr /c:"helper 77 destroyed" tests\out\latest_helper.log >nul || (echo FAIL: DestroySelf did not remove the helper & exit /b 1)
 findstr /c:"projectile 8 clashes with p2 projectile 8" tests\out\latest_projectile_clash.log >nul || (echo FAIL: Projectiles did not cancel each other & exit /b 1)
 for %%S in (200 210 230 240 400 410 430 440 600 610 630 640) do findstr /c:"-> %%S" tests\out\latest_attacks.log >nul || (echo FAIL: attack state %%S did not run & exit /b 1)
 for %%S in (100 105 1000 1400 1100 800 810 820 821) do findstr /c:"-> %%S" tests\out\latest_specials.log >nul || (echo FAIL: special state %%S did not run & exit /b 1)
@@ -56,30 +67,42 @@ exit /b 0
 
 :run
 echo     %1
-"%EXE%" --input "tests\inputs\%1.txt" --quit %2 --trace %3 %4 %5 >nul || exit /b 1
+"%EXE%" --input "tests\inputs\%1.txt" --quit %2 --trace %SHOW% %3 %4 %5 >nul || exit /b 1
 copy /y m360.log "tests\out\latest_%1.log" >nul
 exit /b 0
 
 :guard
 echo     guard
-"%EXE%" --input tests\inputs\guard.txt --input2 tests\inputs\guard_p2.txt --quickstart --quit 460 --trace >nul || exit /b 1
+"%EXE%" --input tests\inputs\guard.txt --input2 tests\inputs\guard_p2.txt --quickstart --quit 460 --trace %SHOW% >nul || exit /b 1
 copy /y m360.log tests\out\latest_guard.log >nul
 exit /b 0
 
 :reversal
 echo     reversal
-"%EXE%" --input tests\inputs\reversal.txt --input2 tests\inputs\reversal_p2.txt --quickstart --quit 180 --trace >nul || exit /b 1
+"%EXE%" --input tests\inputs\reversal.txt --input2 tests\inputs\reversal_p2.txt --quickstart --quit 180 --trace %SHOW% >nul || exit /b 1
 copy /y m360.log tests\out\latest_reversal.log >nul
 exit /b 0
 
 :projectile
 echo     projectile
-"%EXE%" --p1 tests/fixtures/projectile/projectile.def --input tests/inputs/projectile.txt --quickstart --quit 120 --trace >nul || exit /b 1
+"%EXE%" --p1 tests/fixtures/projectile/projectile.def --input tests/inputs/projectile.txt --quickstart --quit 120 --trace %SHOW% >nul || exit /b 1
 copy /y m360.log tests\out\latest_projectile.log >nul
 exit /b 0
 
 :projectile_clash
 echo     projectile clash
-"%EXE%" --p1 tests/fixtures/projectile/projectile.def --p2 tests/fixtures/projectile/projectile.def --input tests/inputs/projectile_clash.txt --input2 tests/inputs/projectile_p2.txt --quickstart --quit 120 --trace >nul || exit /b 1
+"%EXE%" --p1 tests/fixtures/projectile/projectile.def --p2 tests/fixtures/projectile/projectile.def --input tests/inputs/projectile_clash.txt --input2 tests/inputs/projectile_p2.txt --quickstart --quit 120 --trace %SHOW% >nul || exit /b 1
 copy /y m360.log tests\out\latest_projectile_clash.log >nul
+exit /b 0
+
+:helper
+echo     helper
+"%EXE%" --p1 tests/fixtures/helper/helper.def --input tests/inputs/helper.txt --quickstart --quit 140 --trace %SHOW% >nul || exit /b 1
+copy /y m360.log tests\out\latest_helper.log >nul
+exit /b 0
+
+:misc
+echo     misc controllers
+"%EXE%" --p1 tests/fixtures/misc/misc.def --input tests/inputs/misc.txt --quickstart --quit 60 --trace %SHOW% >nul || exit /b 1
+copy /y m360.log tests\out\latest_misc.log >nul
 exit /b 0

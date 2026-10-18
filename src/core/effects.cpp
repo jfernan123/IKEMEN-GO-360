@@ -18,6 +18,7 @@ void FightEffects::clear()
 	effects_.clear();
 	shakeTime_ = shakeLeft_ = 0;
 	shakeOffsetX_ = shakeOffsetY_ = 0;
+	envColorTime_ = 0;
 	pauseOwner_ = -1;
 	pauseLeft_ = pauseMoveLeft_ = 0;
 	superPause_ = false;
@@ -98,8 +99,110 @@ bool FightEffects::spawnExplod(const Spawn &spawn)
 	effect.layer = spawn.layer;
 	effect.screen = spawn.screen;
 	effect.explod = true;
+	effect.ownerKey = spawn.ownerKey;
+	effect.id = spawn.id;
+	effect.bindKey = spawn.bindKey;
+	effect.bindTime = spawn.bindTime;
+	effect.bindX = spawn.bindX;
+	effect.bindY = spawn.bindY;
+	effect.removeOnGetHit = spawn.removeOnGetHit;
+	effect.vfacing = spawn.vfacing < 0 ? -1 : 1;
+	effect.trans = spawn.trans;
+	effect.srcAlpha = spawn.srcAlpha;
+	effect.dstAlpha = spawn.dstAlpha;
 	effects_.push_back(effect);
 	return true;
+}
+
+int32_t FightEffects::countExplods(const void *ownerKey, int32_t id) const
+{
+	return (int32_t)std::count_if(effects_.begin(), effects_.end(), [&](const Effect &effect) {
+		return effect.explod && effect.ownerKey == ownerKey && (id < 0 || effect.id == id);
+	});
+}
+
+void FightEffects::removeExplods(const void *ownerKey, int32_t id)
+{
+	effects_.erase(std::remove_if(effects_.begin(), effects_.end(),
+		[&](const Effect &effect) {
+			return effect.explod && effect.ownerKey == ownerKey && (id < 0 || effect.id == id);
+		}), effects_.end());
+}
+
+void FightEffects::modifyExplods(const void *ownerKey, int32_t id, const ExplodChange &change)
+{
+	for (Effect &e : effects_) {
+		if (!e.explod || e.ownerKey != ownerKey || (id >= 0 && e.id != id))
+			continue;
+		if (change.hasScale) {
+			e.scaleX = change.scaleX;
+			e.scaleY = change.scaleY;
+		}
+		if (change.hasVelocity) {
+			e.velocityX = change.velocityX;
+			e.velocityY = change.velocityY;
+		}
+		if (change.hasAccel) {
+			e.accelX = change.accelX;
+			e.accelY = change.accelY;
+		}
+		if (change.hasRemoveTime)
+			e.removeTime = change.removeTime;
+		if (change.hasPriority)
+			e.priority = change.priority;
+		if (change.hasBindTime)
+			e.bindTime = change.bindTime;
+		if (change.hasPos) {
+			e.bindX = change.bindX;
+			e.bindY = change.bindY;
+		}
+		if (change.hasTrans) {
+			e.trans = change.trans;
+			e.srcAlpha = change.srcAlpha;
+			e.dstAlpha = change.dstAlpha;
+		}
+	}
+}
+
+void FightEffects::setExplodBindTime(const void *ownerKey, int32_t id, int32_t time)
+{
+	for (Effect &e : effects_) {
+		if (e.explod && e.ownerKey == ownerKey && (id < 0 || e.id == id))
+			e.bindTime = time;
+	}
+}
+
+void FightEffects::followBinder(const void *bindKey, float x, float y)
+{
+	for (Effect &e : effects_) {
+		if (!e.explod || e.bindKey != bindKey || e.bindTime == 0)
+			continue;
+		e.x = x + e.bindX;
+		e.y = y + e.bindY;
+		if (e.bindTime > 0)
+			e.bindTime--;
+	}
+}
+
+void FightEffects::ownerHit(const void *ownerKey)
+{
+	effects_.erase(std::remove_if(effects_.begin(), effects_.end(),
+		[&](const Effect &effect) { return effect.explod && effect.removeOnGetHit && effect.ownerKey == ownerKey; }),
+		effects_.end());
+}
+
+void FightEffects::startEnvColor(int32_t r, int32_t g, int32_t b, int32_t time, bool under)
+{
+	envColor_ = 0xFF000000u | (uint32_t)std::clamp(r, 0, 255) << 16 | (uint32_t)std::clamp(g, 0, 255) << 8 |
+		(uint32_t)std::clamp(b, 0, 255);
+	envColorTime_ = time;
+	envColorUnder_ = under;
+}
+
+void FightEffects::drawEnvColor(bool under) const
+{
+	if (envColorTime_ != 0 && envColorUnder_ == under)
+		platform::fillRect(0, 0, platform::SCREEN_WIDTH, platform::SCREEN_HEIGHT, envColor_);
 }
 
 bool FightEffects::getSharedAnimation(int32_t animNo, Animation &out) const
@@ -139,6 +242,9 @@ void FightEffects::tick()
 	} else {
 		shakeOffsetX_ = shakeOffsetY_ = 0;
 	}
+	// EnvColor counts down (-1 lasts until replaced).
+	if (envColorTime_ > 0)
+		envColorTime_--;
 	// Ikemen checks expiry before advancing an existing Explod. A newly committed one still advances once on its
 	// creation tick, so removetime counts visible frames and the final animation element is not discarded.
 	effects_.erase(std::remove_if(effects_.begin(), effects_.end(),
@@ -167,7 +273,11 @@ void FightEffects::draw(const View &view, float groundY, int pass)
 		const float sy = view.screenY(groundY + effect.y - (effect.screen ? 0 : view.camY));
 		SpriteDraw how;
 		how.scaleX = effect.scaleX;
-		how.scaleY = effect.scaleY;
+		// vfacing -1 draws it upside down about its position.
+		how.scaleY = effect.scaleY * effect.vfacing;
+		how.trans = effect.trans;
+		how.srcAlpha = effect.srcAlpha;
+		how.dstAlpha = effect.dstAlpha;
 		effect.renderer->drawAnimation(effect.anim, sx, sy, view.scale, effect.facing, how);
 	}
 }

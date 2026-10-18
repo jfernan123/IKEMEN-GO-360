@@ -94,7 +94,8 @@ struct Buttons {
 // Test runs (PC): "--input script" plays player 1's controller from a file instead of the keyboard ("--input2 script"
 // player 2's, else player 2 stands still), "--shot N path"
 // saves frame N as a .bmp, "--quit N" stops after frame N, "--quickstart" skips the intros so the fight begins at
-// frame 0, "--cpu" makes player 2 the computer, "--trace" logs every state change and hit. A script line is "frames keys...": hold those keys for that
+// frame 0, "--cpu" makes player 2 the computer, "--trace" logs every state change and hit, "--show" keeps the window on
+// screen during a test run so it can be watched. A script line is "frames keys...": hold those keys for that
 // many frames, keys being U D L R (directions) x y z a b c s (buttons), or "-" for nothing; '#' starts a comment.
 class InputScript {
 public:
@@ -710,7 +711,7 @@ int main(int argc, char **argv)
 	std::map<uint32_t, std::string> shots;
 	uint32_t quitFrame = UINT32_MAX;
 	int32_t testPower = -1;
-	bool trace = false, quickStart = false, cpu = false;
+	bool trace = false, quickStart = false, cpu = false, show = false;
 	for (int i = 1; i < argc; i++) {
 		const std::string arg = argv[i];
 		if (arg == "--input" && i + 1 < argc)
@@ -729,6 +730,8 @@ int main(int argc, char **argv)
 			quickStart = true;
 		else if (arg == "--cpu")
 			cpu = true;
+		else if (arg == "--show")
+			show = true;
 		else if (arg == "--power" && i + 1 < argc)
 			testPower = text::atoi(argv[++i]);
 		else if (arg == "--p1" && i + 1 < argc)
@@ -739,7 +742,7 @@ int main(int argc, char **argv)
 			config.stage = argv[++i];
 	}
 	const bool testRun = !inputPath.empty() || !shots.empty() || quitFrame != UINT32_MAX;
-	if (!platform::init(testRun))
+	if (!platform::init(testRun && !show))
 		return 1;
 	logf("mugen360: milestone 7b, projectiles");
 	if (!configLoaded)

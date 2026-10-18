@@ -32,6 +32,27 @@ public:
 		int32_t priority = 0;
 		int layer = 0;
 		bool screen = false;
+		// Who made it (for RemoveExplod, ModifyExplod, NumExplod), and its Explod id (-1 none).
+		const void *ownerKey = nullptr;
+		int32_t id = -1;
+		// Kept at (bindX, bindY) from bindKey's position for bindTime ticks (-1 for good).
+		const void *bindKey = nullptr;
+		int32_t bindTime = 0;
+		float bindX = 0, bindY = 0;
+		bool removeOnGetHit = false;
+		int vfacing = 1;
+		Trans trans = Trans::None;
+		uint8_t srcAlpha = 255, dstAlpha = 0;
+	};
+
+	// An Explod's settings that ModifyExplod can change.
+	struct ExplodChange {
+		bool hasScale = false, hasVelocity = false, hasAccel = false, hasRemoveTime = false, hasPriority = false,
+			 hasBindTime = false, hasTrans = false, hasPos = false;
+		float scaleX = 1, scaleY = 1, velocityX = 0, velocityY = 0, accelX = 0, accelY = 0, bindX = 0, bindY = 0;
+		int32_t removeTime = -2, priority = 0, bindTime = 0;
+		Trans trans = Trans::None;
+		uint8_t srcAlpha = 255, dstAlpha = 0;
 	};
 
 	bool load(const std::string &sffPath, const std::string &airPath, std::string &error);
@@ -41,6 +62,19 @@ public:
 	bool getSharedAnimation(int32_t animNo, Animation &out) const;
 	void drawSharedAnimation(const Animation &anim, float x, float y, float scale, int facing, SpriteDraw base = {});
 	int32_t countExplods(int owner) const;
+	// NumExplod: a character's Explods, of one id or (id < 0) all.
+	int32_t countExplods(const void *ownerKey, int32_t id) const;
+	// RemoveExplod, ModifyExplod, ExplodBindTime: a character's Explods of an id, or all of them (id < 0).
+	void removeExplods(const void *ownerKey, int32_t id);
+	void modifyExplods(const void *ownerKey, int32_t id, const ExplodChange &change);
+	void setExplodBindTime(const void *ownerKey, int32_t id, int32_t time);
+	// Each tick, before the effects move: Explods bound to a character follow it.
+	void followBinder(const void *bindKey, float x, float y);
+	// The character was hit: its removeongethit Explods go.
+	void ownerHit(const void *ownerKey);
+	// EnvColor: the screen filled with a colour for time ticks, under the characters or over everything.
+	void startEnvColor(int32_t r, int32_t g, int32_t b, int32_t time, bool under);
+	void drawEnvColor(bool under) const;
 	void startShake(int32_t time, float frequency = 60, float amplitude = -4, float phase = NAN,
 		float multiplier = 1, float direction = 0, float directionAdd = 0, float decay = 1);
 	float shakeX() const { return shakeOffsetX_; }
@@ -68,7 +102,17 @@ private:
 		int32_t priority = 0;
 		int owner = -1, layer = 0;
 		bool screen = false, explod = false, fresh = true;
+		const void *ownerKey = nullptr, *bindKey = nullptr;
+		int32_t id = -1, bindTime = 0;
+		float bindX = 0, bindY = 0;
+		bool removeOnGetHit = false;
+		int vfacing = 1;
+		Trans trans = Trans::None;
+		uint8_t srcAlpha = 255, dstAlpha = 0;
 	};
+	uint32_t envColor_ = 0;
+	int32_t envColorTime_ = 0;
+	bool envColorUnder_ = false;
 
 	Sff sff_;
 	AnimationTable anims_;

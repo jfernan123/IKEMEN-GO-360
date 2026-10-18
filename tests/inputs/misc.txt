@@ -1,0 +1,6 @@
+# Milestone 7d: the misc fixture runs MUGEN's remaining controllers and triggers; reaching state 1009 means every
+# check passed.
+#   build\pc\mugen360.exe --p1 tests/fixtures/misc/misc.def --input tests\inputs\misc.txt --quickstart --quit 60 --trace
+20 -
+2 x
+38 -

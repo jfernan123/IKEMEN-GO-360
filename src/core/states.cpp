@@ -33,7 +33,8 @@ const std::pair<const char *, CtrlType> CTRL_NAMES[] = {
 	{ "makedust", CtrlType::MakeDust }, { "modifyexplod", CtrlType::ModifyExplod },
 	{ "movehitreset", CtrlType::MoveHitReset }, { "nothitby", CtrlType::NotHitBy }, { "null", CtrlType::Null },
 	{ "offset", CtrlType::Offset }, { "palfx", CtrlType::PalFX }, { "parentvaradd", CtrlType::ParentVarAdd },
-	{ "parentvarset", CtrlType::ParentVarSet }, { "pause", CtrlType::Pause }, { "playerpush", CtrlType::PlayerPush },
+	{ "parentvarset", CtrlType::ParentVarSet }, { "rootvaradd", CtrlType::RootVarAdd },
+	{ "rootvarset", CtrlType::RootVarSet }, { "pause", CtrlType::Pause }, { "playerpush", CtrlType::PlayerPush },
 	{ "playsnd", CtrlType::PlaySnd }, { "posadd", CtrlType::PosAdd }, { "posfreeze", CtrlType::PosFreeze },
 	{ "posset", CtrlType::PosSet }, { "poweradd", CtrlType::PowerAdd }, { "powerset", CtrlType::PowerSet },
 	{ "projectile", CtrlType::Projectile }, { "remappal", CtrlType::RemapPal },
@@ -144,7 +145,7 @@ bool isTextParam(CtrlType type, const std::string &p)
 	static const char *const anywhere[] = { "attr", "hitflag", "guardflag", "animtype", "air.animtype",
 		"fall.animtype", "ground.type", "air.type", "sparkno", "guard.sparkno", "hitsound", "guardsound",
 		"reversal.attr", "postype", "trans", "waveform", "flag", "flag2", "flag3", "p2getp1state", "space",
-		"getpower", "givepower", "palfx.color", "projhitanim", "projremanim", "projcancelanim", "projsprpriority" };
+		"getpower", "givepower", "text", "palfx.color", "projhitanim", "projremanim", "projcancelanim", "projsprpriority" };
 	for (const char *n : anywhere) {
 		if (p == n)
 			return true;
@@ -157,6 +158,8 @@ bool isTextParam(CtrlType type, const std::string &p)
 		return true;
 	// StateTypeSet's letters, and HitDef's "priority = 3, Hit" (a number, then Hit / Miss / Dodge).
 	if (type == CtrlType::StateTypeSet && (p == "statetype" || p == "movetype" || p == "physics"))
+		return true;
+	if (type == CtrlType::Helper && (p == "helpertype" || p == "name"))
 		return true;
 	if (type == CtrlType::HitDef && p == "priority")
 		return true;

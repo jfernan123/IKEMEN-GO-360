@@ -1,6 +1,7 @@
 #include "core/sprite_renderer.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace m360 {
 
@@ -77,12 +78,21 @@ void SpriteRenderer::drawSprite(int32_t group, int32_t number, float x, float y,
 	const float v0 = how.flipV ? 1.0f : 0.0f, v1 = 1 - v0;
 	// Shear shifts each row by its distance below the axis.
 	const float topShift = how.shear * (top - y), bottomShift = how.shear * (top + h - y);
-	const platform::Vertex corners[4] = {
+	platform::Vertex corners[4] = {
 		{ left + topShift, top, u0, v0 },
 		{ left + w + topShift, top, u1, v0 },
 		{ left + bottomShift, top + h, u0, v1 },
 		{ left + w + bottomShift, top + h, u1, v1 },
 	};
+	if (how.angle != 0) {
+		// Counterclockwise on screen, where y grows downward.
+		const float r = -how.angle * 3.14159265f / 180.0f, c = std::cos(r), s = std::sin(r);
+		for (platform::Vertex &v : corners) {
+			const float dx = v.x - how.pivotX, dy = v.y - how.pivotY;
+			v.x = how.pivotX + dx * c - dy * s;
+			v.y = how.pivotY + dx * s + dy * c;
+		}
+	}
 	const bool subtract = how.shadow < 0 && (how.trans == Trans::Sub || how.trans == Trans::SubAdd);
 	platform::drawQuad(tex, corners, subtract ? platform::Blend::Subtract : platform::Blend::Over);
 }
@@ -106,6 +116,12 @@ void SpriteRenderer::drawAnimation(const Animation &anim, float x, float y, floa
 		how.trans = frame->trans;
 		how.srcAlpha = frame->srcAlpha;
 		how.dstAlpha = frame->dstAlpha;
+	}
+	// A rotation turns the whole frame about the character's position (mirrored when it faces left).
+	if (how.angle != 0) {
+		how.angle *= facing;
+		how.pivotX = x;
+		how.pivotY = y;
 	}
 	drawSprite(anim.spriteGroup(), anim.spriteNumber(), x + ox, y + oy, how);
 }

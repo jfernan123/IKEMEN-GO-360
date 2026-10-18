@@ -1,0 +1,94 @@
+[Data]
+life = 1000
+power = 3000
+attack = 100
+defence = 100
+
+[Size]
+ground.back = 15
+ground.front = 16
+air.back = 12
+air.front = 12
+height = 60
+
+[Velocity]
+walk.fwd = 2.4, 0
+walk.back = -2.2, 0
+jump.neu = 0, -8.4
+
+[Movement]
+yaccel = .44
+stand.friction = .85
+crouch.friction = .82
+
+[Statedef 1100]
+type = S
+movetype = A
+physics = N
+anim = 200
+ctrl = 0
+
+[State 1100, write parent]
+type = ParentVarSet
+trigger1 = time = 0
+v = 5
+value = 123
+
+[State 1100, bind]
+type = BindToParent
+trigger1 = time = 0
+time = 5
+pos = 60, 0
+
+[State 1100, hit]
+type = HitDef
+trigger1 = time = 0
+attr = S, NA
+damage = 30
+animtype = Light
+hitflag = MAF
+guardflag = M
+pausetime = 2, 2
+sparkno = F0
+hitsound = F5,0
+ground.type = High
+ground.slidetime = 5
+ground.hittime = 10
+ground.velocity = -2, 0
+
+[State 1100, nested helper]
+type = Helper
+trigger1 = time = 1
+persistent = 0
+name = "Nested"
+id = 88
+stateno = 1200
+postype = p1
+pos = 10, 0
+
+[State 1100, remove]
+type = DestroySelf
+trigger1 = time = 12
+
+[Statedef 1200]
+type = S
+movetype = I
+physics = N
+anim = 0
+ctrl = 0
+
+[State 1200, write root]
+type = RootVarSet
+trigger1 = time = 0
+v = 6
+value = 456
+
+[State 1200, write parent]
+type = ParentVarSet
+trigger1 = time = 0
+v = 7
+value = 789
+
+[State 1200, remove]
+type = DestroySelf
+trigger1 = time = 4

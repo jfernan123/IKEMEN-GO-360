@@ -1,0 +1,5 @@
+# Spawn helper 77. It writes parent var 5, creates nested helper 88, and the nested helper writes root var 6 and
+# parent var 7. Root enters state 1002 only if both redirects and NumHelper work. Helpers then DestroySelf.
+20 -
+2 x
+98 -

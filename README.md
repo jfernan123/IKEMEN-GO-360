@@ -149,8 +149,20 @@ paths use forward slashes.
      use hit/remove/cancel animations, expire at configured bounds, trade by priority, and expose NumProj plus the
      ProjHit/Guarded/ContactTime triggers. Focused fixtures test hits after the creator leaves its state and symmetric
      projectile cancellation.
-   - 7c helpers: Helper, DestroySelf, parent/root binding and parent variables.
-   - 7d broader state compatibility: remaining common controllers and triggers, selected from real character usage.
+   - 7c helpers (done): Helper creates a child that shares its root's loaded files (sprites, animations, states,
+     sounds) and runs its own state machine; DestroySelf; BindToParent / BindToRoot; ParentVarSet/Add and
+     RootVarSet/Add; parent / root / helper(id) redirects; IsHelper, NumHelper(id), ParentDist, RootDist; keyctrl
+     helpers read the root's commands and run states -1/-2/-3. Helpers hit through their own HitDefs; they can't be
+     hit yet. `tests/fixtures/helper` spawns nested helpers that write through every redirect.
+   - 7d broader state compatibility (done): LifeAdd, LifeSet, PowerAdd, PowerSet, AttackMulSet, AttackDist, Gravity,
+     Offset, Trans, AngleDraw / AngleSet / AngleAdd / AngleMul (sprites rotate about the character), VarRandom,
+     MoveHitReset, HitAdd, BindToTarget, EnvColor, GameMakeAnim, AllPalFX (both players; stage colours not yet),
+     Explod ids, bindtime, removeongethit, ontop, vfacing and trans, with ModifyExplod, RemoveExplod and
+     ExplodBindTime; ForceFeedback, VictoryQuote, SndPan and the clipboard controllers are accepted. Triggers: Name,
+     P1Name, P2Name, AuthorName, TeamMode, P2Life, P2StateNo, P2Ctrl, HitPauseTime, ID, PlayerIDExist, MatchNo,
+     TicksPerSecond, IsHomeTeam, the screen edges and sizes, NumExplod / NumHelper / NumTarget / IsHelper with an
+     optional id, NumProjID, and the old ProjHit/ProjContact/ProjGuarded[id] = value[, op time] forms.
+     `tests/fixtures/misc` runs them all and only reaches its last state if every one reads back correctly.
    - 7e legacy characters: SFF v1 and PCX support for WinMUGEN-era content.
    - 7f game flow: roster/select flow and a fuller per-game configuration.
 

@@ -32,11 +32,14 @@ enum class Trig : uint16_t {
 	HitShakeOver, MoveContact, MoveHit, MoveGuarded, MoveReversed, HitFall, HitCount, UniqHitCount, CanRecover,
 	InGuardDist, RoundState, RoundNo, RoundsExisted, MatchOver, PalNo, IsBound, GameTime, TeamSide, NumProj,
 	NumHelper, NumTarget, NumExplod, Random, Win, Lose, DrawGame, IsHelper, AiLevel, NumEnemy, NumPartner,
-	FrontEdgeBodyDist, BackEdgeBodyDist, FrontEdgeDist, BackEdgeDist, StateTime,
+	FrontEdgeBodyDist, BackEdgeBodyDist, FrontEdgeDist, BackEdgeDist, StateTime, HitPauseTime, ID, MatchNo,
+	TicksPerSecond, IsHomeTeam, P2Life, P2StateNo, P2Ctrl, LeftEdge, RightEdge, TopEdge, BottomEdge, FrontEdge, BackEdge,
+	ScreenWidth, ScreenHeight, GameWidth, GameHeight,
 	// With an axis (x, y, z): "vel x"
-	Vel, Pos, P2Dist, P2BodyDist, ScreenPos, CameraPos, HitVel,
+	Vel, Pos, P2Dist, P2BodyDist, ParentDist, RootDist, ScreenPos, CameraPos, HitVel,
 	// With one argument: "animelemtime(2)"
 	AnimElemTime, AnimElemNo, SelfAnimExist, AnimExist, Const720p, ProjHitTime, ProjContactTime, ProjGuardedTime,
+	NumProjID, ProjCancelTime, PlayerIDExist,
 	Count
 };
 
@@ -47,6 +50,9 @@ enum class Flag : uint8_t { StateType, MoveType, P2StateType, P2MoveType };
 enum class Redirect : uint8_t { P2, Parent, Root, Target, Helper, Enemy, EnemyNear, Partner, PlayerId };
 
 enum class VarKind : uint8_t { Var, FVar, SysVar, SysFVar };
+
+// Triggers compared with a quoted string, case-insensitively: "P2Name = \"Kung Fu Man\"".
+enum class TextTrig : uint8_t { Name, P1Name, P2Name, P3Name, P4Name, AuthorName, TeamMode };
 
 // What an expression reads from and writes to: a character, as the game runs.
 class ExprContext {
@@ -67,6 +73,8 @@ public:
 	virtual bool hitDefAttr(int32_t stateTypes, int32_t attacks) = 0;
 	// Another character to read from, or null (the expression then reads as 0, like MUGEN's "bottom").
 	virtual ExprContext *redirect(Redirect r, int32_t arg) = 0;
+	// "name = ..." and friends: Name, P1Name, P2Name, P3Name, P4Name, AuthorName, TeamMode. Empty when unknown.
+	virtual std::string text(TextTrig) { return {}; }
 };
 
 struct ExprNode;

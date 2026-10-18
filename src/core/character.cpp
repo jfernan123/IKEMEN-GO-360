@@ -45,6 +45,9 @@ Value number(const std::string &s)
 
 bool Character::load(const std::string &defPath, int paletteNo, std::string &error)
 {
+	defPath_ = defPath;
+	if (!root_)
+		root_ = this;
 	std::vector<uint8_t> bytes;
 	if (!readFile(defPath, bytes)) {
 		error = "can't read " + defPath;
@@ -53,9 +56,15 @@ bool Character::load(const std::string &defPath, int paletteNo, std::string &err
 	const std::vector<IniSection> def = parseIni(std::string(bytes.begin(), bytes.end()));
 	const std::string dir = directoryOf(defPath);
 	if (const IniSection *info = findSection(def, "info")) {
+		infoName_ = info->text("name");
+		author_ = info->text("author");
+		for (std::string *t : { &infoName_, &author_ }) {
+			if (t->size() >= 2 && t->front() == '"' && t->back() == '"')
+				*t = t->substr(1, t->size() - 2);
+		}
 		name = info->text("displayname");
 		if (name.empty())
-			name = info->text("name");
+			name = infoName_;
 		int32_t lw = 320, lh = 240;
 		if (info->ints("localcoord", { &lw, &lh }) && lw > 0)
 			localScale = coords::scaleForWidth(lw);
@@ -67,16 +76,16 @@ bool Character::load(const std::string &defPath, int paletteNo, std::string &err
 		error = defPath + " has no [Files] section";
 		return false;
 	}
-	if (!sff_.load(dir + files->text("sprite"), error))
+	if (!source_->sff_.load(dir + files->text("sprite"), error))
 		return false;
-	if (!anims_.load(dir + files->text("anim"), error))
+	if (!source_->anims_.load(dir + files->text("anim"), error))
 		return false;
-	renderer_ = std::make_unique<SpriteRenderer>(sff_);
+	source_->renderer_ = std::make_unique<SpriteRenderer>(source_->sff_);
 	// Palette n is 1,n in an SFF v2; a missing one falls back to the sprites' own.
-	palette_ = sff_.paletteIndex(1, (uint16_t)paletteNo);
-	renderer_->setPalette(palette_);
+	palette_ = source_->sff_.paletteIndex(1, (uint16_t)paletteNo);
+	source_->renderer_->setPalette(palette_);
 	const std::string soundFile = files->text("sound");
-	if (!soundFile.empty() && !sound_.load(dir + soundFile, error))
+	if (!soundFile.empty() && !source_->sound_.load(dir + soundFile, error))
 		return false;
 
 	const std::string cmd = files->text("cmd");
@@ -96,22 +105,63 @@ bool Character::load(const std::string &defPath, int paletteNo, std::string &err
 	std::sort(stFiles.begin(), stFiles.end());
 	for (const auto &[key, value] : stFiles) {
 		const std::string file(text::trim(value));
-		if (!file.empty() && !states_.load(findFile(dir, file), error))
+		if (!file.empty() && !source_->states_.load(findFile(dir, file), error))
 			return false;
 	}
 	if (!cmd.empty())
-		states_.load(dir + cmd, error);
+		source_->states_.load(dir + cmd, error);
 	const std::string common = files->text("stcommon");
-	if (!common.empty() && !states_.load(findFile(dir, common), error))
+	if (!common.empty() && !source_->states_.load(findFile(dir, common), error))
 		return false;
 	emptyState_.type = emptyState_.moveType = emptyState_.physics = 'U';
 
 	logf("char: %s: \"%s\", palette %d, %zu states, life %d", defPath.c_str(), name.c_str(), paletteNo,
-		states_.all().size(), (int)constF("data.life", 1000));
-	for (const std::string &p : states_.stats().problems)
+		source_->states_.all().size(), (int)constF("data.life", 1000));
+	for (const std::string &p : source_->states_.stats().problems)
 		logf("char: %s", p.c_str());
 	startRound(0, 0, 1, true);
 	return true;
+}
+
+void Character::shareLoadedData(Character &from)
+{
+	source_ = from.source_;
+	defPath_ = from.defPath_;
+	name = from.name;
+	infoName_ = from.infoName_;
+	author_ = from.author_;
+	localScale = from.localScale;
+	mugen1_ = from.mugen1_;
+	palette_ = from.palette_;
+	yaccel_ = from.yaccel_;
+	standFriction_ = from.standFriction_;
+	crouchFriction_ = from.crouchFriction_;
+	groundFront_ = from.groundFront_;
+	groundBack_ = from.groundBack_;
+	airFront_ = from.airFront_;
+	airBack_ = from.airBack_;
+	height_ = from.height_;
+	attackDist_[0] = from.attackDist_[0];
+	attackDist_[1] = from.attackDist_[1];
+	liedownTime_ = from.liedownTime_;
+	airJuggle_ = from.airJuggle_;
+	fallDefenceMul_ = from.fallDefenceMul_;
+	emptyState_.type = emptyState_.moveType = emptyState_.physics = 'U';
+	startRound(0, 0, 1, true);
+}
+
+void Character::setOpponent(Character *opponent)
+{
+	p2_ = opponent;
+	for (auto &helper : helpers_)
+		helper->setOpponent(opponent);
+}
+
+void Character::setWorld(const FightWorld *world)
+{
+	world_ = world;
+	for (auto &helper : helpers_)
+		helper->setWorld(world);
 }
 
 // The [Data], [Size], [Velocity] and [Movement] groups of the CNS, as const() names: "velocity.walk.fwd.x",
@@ -134,7 +184,7 @@ void Character::loadConstants(const std::string &cnsPath)
 		{ "movement.airjump.height", 35 } };
 	// [Data] values are whole numbers; the rest are measurements.
 	for (const auto &[n, v] : defaults)
-		constants_[n] = text::startsWith(n, "data.") ? Value::I((int32_t)v) : Value::F((float)v);
+		source_->constants_[n] = text::startsWith(n, "data.") ? Value::I((int32_t)v) : Value::F((float)v);
 
 	std::vector<uint8_t> bytes;
 	if (!readFile(cnsPath, bytes))
@@ -149,21 +199,21 @@ void Character::loadConstants(const std::string &cnsPath)
 			const std::vector<std::string> parts = text::split(value, ',');
 			const std::string base = std::string(group) + "." + key;
 			if (parts.size() == 1 && !velocity) {
-				constants_[base] = number(parts[0]);
+				source_->constants_[base] = number(parts[0]);
 				continue;
 			}
 			static const char *const axes[] = { ".x", ".y", ".z" };
 			for (size_t i = 0; i < parts.size() && i < 3; i++) {
 				if (!parts[i].empty())
-					constants_[base + axes[i]] = Value::F((float)text::atof(parts[i]));
+					source_->constants_[base + axes[i]] = Value::F((float)text::atof(parts[i]));
 			}
 		}
 	}
 	// MUGEN's names for the vertical part of the jumps: jump.neu's y.
 	auto alias = [&](const char *to, const char *from) {
-		const auto it = constants_.find(from);
-		if (it != constants_.end() && !constants_.count(to))
-			constants_[to] = it->second;
+		const auto it = source_->constants_.find(from);
+		if (it != source_->constants_.end() && !source_->constants_.count(to))
+			source_->constants_[to] = it->second;
 	};
 	alias("velocity.jump.y", "velocity.jump.neu.y");
 	alias("velocity.airjump.y", "velocity.airjump.neu.y");
@@ -186,8 +236,8 @@ void Character::loadConstants(const std::string &cnsPath)
 
 float Character::constF(const std::string &n, float fallback) const
 {
-	const auto it = constants_.find(n);
-	return it == constants_.end() ? fallback : it->second.toF();
+	const auto it = source_->constants_.find(n);
+	return it == source_->constants_.end() ? fallback : it->second.toF();
 }
 
 // Ikemen's resetRound for one character: posReset, clearState, prepareNextRound, selfState 5900.
@@ -203,6 +253,10 @@ void Character::startRound(float px, float py, int face, bool newMatch)
 		power = 0;
 	ko_ = overAlive_ = overKo_ = false;
 	powerGain_ = 0;
+	attackMul_ = 1;
+	angle_ = 0;
+	drawOffsetX_ = drawOffsetY_ = 0;
+	transSet_ = angleDraw_ = false;
 	for (int32_t &v : sysvars_)
 		v = 0;
 	for (float &v : sysfvars_)
@@ -215,6 +269,8 @@ void Character::startRound(float px, float py, int face, bool newMatch)
 	minus_ = 0;
 	hitdef_ = HitDef{};
 	projectiles_.clear();
+	helpers_.clear();
+	destroyed_ = false;
 	projectileContactTime_ = projectileContactId_ = -1;
 	projectileContactType_ = 0;
 	hitdef_.guardDist[0] = attackDist_[0];
@@ -289,7 +345,7 @@ void Character::changeAnim(int32_t no, const AnimationTable *table)
 	if (no < 0 && no != -2)
 		no = 0;
 	Animation next;
-	if ((table ? *table : anims_).get(no, next)) {
+	if ((table ? *table : source_->anims_).get(no, next)) {
 		anim = std::move(next);
 		animNo = no;
 		animShared_ = false;
@@ -352,7 +408,7 @@ void Character::stateChange1(int32_t no, const Character *owner)
 	prevStateNo = stateNo;
 	stateNo = std::max(0, no);
 	stateTime = 0;
-	state_ = stateOwner_->states_.find(stateNo);
+	state_ = stateOwner_->source_->states_.find(stateNo);
 	if (!state_) {
 		logf("char: %s: changed to missing state %d (from %d)", name.c_str(), no, prevStateNo);
 		state_ = &emptyState_;
@@ -493,7 +549,7 @@ bool Character::runController(const StateController &sc)
 			}
 		} else {
 			// ChangeAnim2: an action of the state owner's AIR, drawn with this character's sprites.
-			changeAnim(i, sc.type == CtrlType::ChangeAnim2 ? &stateOwner_->anims_ : nullptr);
+			changeAnim(i, sc.type == CtrlType::ChangeAnim2 ? &stateOwner_->source_->anims_ : nullptr);
 		}
 		int32_t elem = 0, elemtime = 0;
 		const bool hasElem = paramI(sc, "elem", 0, elem);
@@ -652,6 +708,20 @@ bool Character::runController(const StateController &sc)
 		paramI(sc, "value", 0, i);
 		playerPush_ = i != 0;
 		return false;
+	case CtrlType::Helper: runHelper(sc); return false;
+	case CtrlType::DestroySelf:
+		if (parent_) {
+			destroyed_ = true;
+			if (!traceLabel.empty())
+				logf("%s frame %u: helper %d destroyed", traceLabel.c_str(), world_ ? world_->gameTime : 0, helperId_);
+		}
+		return true;
+	case CtrlType::BindToParent: runBindController(sc, parent_); return false;
+	case CtrlType::BindToRoot: runBindController(sc, root_); return false;
+	case CtrlType::ParentVarSet: runRedirectedVar(sc, parent_, false); return false;
+	case CtrlType::ParentVarAdd: runRedirectedVar(sc, parent_, true); return false;
+	case CtrlType::RootVarSet: runRedirectedVar(sc, root_, false); return false;
+	case CtrlType::RootVarAdd: runRedirectedVar(sc, root_, true); return false;
 	case CtrlType::HitDef: runHitDef(sc); return false;
 	case CtrlType::ReversalDef: runReversalDef(sc); return false;
 	case CtrlType::HitOverride: runHitOverride(sc); return false;
@@ -675,7 +745,7 @@ bool Character::runController(const StateController &sc)
 		paramI(sc, "value", 0, group);
 		paramI(sc, "value", 1, number);
 		paramI(sc, "channel", 0, channel);
-		const SoundBank *bank = value->prefix == 'F' && world_ ? world_->commonSound : &sound_;
+		const SoundBank *bank = value->prefix == 'F' && world_ ? world_->commonSound : &source_->sound_;
 		if (bank) bank->play(group, number, channel);
 		return false;
 	}
@@ -688,10 +758,10 @@ bool Character::runController(const StateController &sc)
 		int32_t group = -1, number = 0;
 		paramI(sc, "dest", 0, group);
 		paramI(sc, "dest", 1, number);
-		const int mapped = group >= 0 ? sff_.paletteIndex((uint16_t)group, (uint16_t)number) : -1;
+		const int mapped = group >= 0 ? source_->sff_.paletteIndex((uint16_t)group, (uint16_t)number) : -1;
 		if (mapped >= 0) {
 			palette_ = mapped;
-			renderer_->setPalette(mapped);
+			source_->renderer_->setPalette(mapped);
 		}
 		return false;
 	}
@@ -762,9 +832,309 @@ bool Character::runController(const StateController &sc)
 	case CtrlType::TargetDrop: return runTargetController(sc);
 	case CtrlType::Null: return false;
 	default:
-		// Accepted, not done yet: sound, effects, KO. They come with the rest of milestone 6.
+		if (runMiscController(sc))
+			return false;
+		// Accepted, not done yet: listed on the debug screen.
 		unsupported_[sc.typeName]++;
 		return false;
+	}
+}
+
+// ModifyExplod: changes the given settings of this character's Explods of an id (all of them without one).
+void Character::runModifyExplod(const StateController &sc)
+{
+	if (!world_ || !world_->effects)
+		return;
+	int32_t id = -1;
+	paramI(sc, "id", 0, id);
+	FightEffects::ExplodChange change;
+	if (paramF(sc, "scale", 0, change.scaleX)) {
+		change.hasScale = true;
+		change.scaleY = change.scaleX;
+		paramF(sc, "scale", 1, change.scaleY);
+		change.scaleX *= localScale;
+		change.scaleY *= localScale;
+	}
+	if (paramF(sc, "velocity", 0, change.velocityX)) {
+		change.hasVelocity = true;
+		paramF(sc, "velocity", 1, change.velocityY);
+		change.velocityX *= localScale;
+		change.velocityY *= localScale;
+	}
+	if (paramF(sc, "accel", 0, change.accelX)) {
+		change.hasAccel = true;
+		paramF(sc, "accel", 1, change.accelY);
+		change.accelX *= localScale;
+		change.accelY *= localScale;
+	}
+	if (paramF(sc, "pos", 0, change.bindX)) {
+		change.hasPos = true;
+		paramF(sc, "pos", 1, change.bindY);
+		change.bindX *= localScale * facing;
+		change.bindY *= localScale;
+	}
+	change.hasRemoveTime = paramI(sc, "removetime", 0, change.removeTime);
+	change.hasPriority = paramI(sc, "sprpriority", 0, change.priority);
+	change.hasBindTime = paramI(sc, "bindtime", 0, change.bindTime);
+	if (const std::string *t = sc.param("trans")) {
+		const std::string type = text::toLower(text::trim(*t));
+		change.hasTrans = true;
+		change.trans = type == "sub" ? Trans::Sub : type.rfind("add", 0) == 0 ? Trans::Add : Trans::None;
+		int32_t src = 255, dst = type == "add" || type == "sub" ? 255 : type == "add1" ? 128 : 0;
+		paramI(sc, "alpha", 0, src);
+		paramI(sc, "alpha", 1, dst);
+		change.srcAlpha = (uint8_t)std::clamp(src, 0, 255);
+		change.dstAlpha = (uint8_t)std::clamp(dst, 0, 255);
+	}
+	world_->effects->modifyExplods(this, id, change);
+}
+
+// Ikemen's lifeAdd: through defence unless absolute, at least 1 for any hurt, kept alive unless kill.
+void Character::lifeAdd(double add, bool kill, bool absolute)
+{
+	if (add == 0)
+		return;
+	if (!absolute) {
+		const float custom = !defenseMulDelay_ || moveType == 'H' ? customDefense_ : 1;
+		add /= constF("data.defence", 100) / 100.0 * custom * fallDefenseMul_;
+	}
+	if (add > -1 && add < 0)
+		add = -1;
+	int64_t next = (int64_t)life + (int64_t)std::llround(add);
+	if (!kill && next <= 0)
+		next = std::min<int64_t>(1, life);
+	life = (int32_t)std::clamp<int64_t>(next, 0, lifeMax());
+}
+
+// The rest of MUGEN 1.0's controllers (Ikemen's bytecode.go). Returns false for a type it doesn't know.
+bool Character::runMiscController(const StateController &sc)
+{
+	float f = 0;
+	int32_t i = 0;
+	switch (sc.type) {
+	case CtrlType::LifeAdd: {
+		int32_t value = 0, kill = 1, absolute = 0;
+		paramI(sc, "kill", 0, kill);
+		paramI(sc, "absolute", 0, absolute);
+		if (paramI(sc, "value", 0, value)) {
+			// MUGEN characters heal without defence.
+			lifeAdd(value, kill != 0, absolute != 0 || value > 0);
+			ghv_.kill = kill != 0;
+		}
+		return true;
+	}
+	case CtrlType::LifeSet:
+		if (paramI(sc, "value", 0, i))
+			life = std::clamp(i, 0, lifeMax());
+		return true;
+	case CtrlType::PowerAdd:
+		if (paramI(sc, "value", 0, i))
+			power = std::clamp(power + i, 0, powerMax());
+		return true;
+	case CtrlType::PowerSet:
+		if (paramI(sc, "value", 0, i))
+			power = std::clamp(i, 0, powerMax());
+		return true;
+	case CtrlType::AttackMulSet:
+		if (paramF(sc, "value", 0, f))
+			attackMul_ = f;
+		return true;
+	case CtrlType::AttackDist:
+		// Changes the current HitDef's guard distance directly, as MUGEN does.
+		if (paramF(sc, "value", 0, f))
+			hitdef_.guardDist[0] = std::max(0.0f, f);
+		if (paramF(sc, "value", 1, f))
+			hitdef_.guardDist[1] = std::max(0.0f, f);
+		return true;
+	case CtrlType::Gravity:
+		vy += yaccel_;
+		return true;
+	case CtrlType::Offset:
+		if (paramF(sc, "x", 0, f))
+			drawOffsetX_ = f;
+		if (paramF(sc, "y", 0, f))
+			drawOffsetY_ = f;
+		return true;
+	case CtrlType::Trans: {
+		// "trans = add / addalpha / add1 / sub / none / default", "alpha = src, dst".
+		const std::string type = sc.param("trans") ? text::toLower(text::trim(*sc.param("trans"))) : "default";
+		int32_t src = 255, dst = 0;
+		Trans t = Trans::None;
+		if (type == "add") {
+			t = Trans::Add;
+			dst = 255;
+		} else if (type == "add1") {
+			t = Trans::Add;
+			dst = 128;
+		} else if (type == "addalpha") {
+			t = Trans::Add;
+		} else if (type == "sub") {
+			t = Trans::Sub;
+			dst = 255;
+		}
+		paramI(sc, "alpha", 0, src);
+		paramI(sc, "alpha", 1, dst);
+		transSet_ = type != "default" && type != "none";
+		trans_ = t;
+		transSrc_ = (uint8_t)std::clamp(src, 0, 255);
+		transDst_ = (uint8_t)std::clamp(dst, 0, 255);
+		return true;
+	}
+	case CtrlType::AngleDraw:
+		if (paramF(sc, "value", 0, f))
+			angle_ = f;
+		if (paramF(sc, "scale", 0, f))
+			angleScale_[0] *= f;
+		if (paramF(sc, "scale", 1, f))
+			angleScale_[1] *= f;
+		angleDraw_ = true;
+		return true;
+	case CtrlType::AngleSet:
+		// MUGEN sets 0 when no value is given.
+		angle_ = 0;
+		paramF(sc, "value", 0, angle_);
+		return true;
+	case CtrlType::AngleAdd:
+		if (paramF(sc, "value", 0, f))
+			angle_ += f;
+		return true;
+	case CtrlType::AngleMul:
+		f = 0;
+		paramF(sc, "value", 0, f);
+		angle_ *= f;
+		return true;
+	case CtrlType::VarRandom: {
+		int32_t v = 0, lo = 0, hi = 1000;
+		paramI(sc, "v", 0, v);
+		if (paramI(sc, "range", 0, hi)) {
+			if (paramI(sc, "range", 1, i)) {
+				lo = hi;
+				hi = i;
+			}
+		}
+		if (hi < lo)
+			std::swap(lo, hi);
+		random_ = random_ * 1103515245u + 12345u;
+		setVar(VarKind::Var, v, Value::I(lo + (int32_t)((random_ >> 16) % (uint32_t)(hi - lo + 1))));
+		return true;
+	}
+	case CtrlType::MoveHitReset:
+		moveContactTime_ = 0;
+		return true;
+	case CtrlType::HitAdd:
+		if (paramI(sc, "value", 0, i)) {
+			hitCount_ += i;
+			uniqHitCount_ += i;
+			if (Character *t = target())
+				t->ghv_.hitcount += i;
+		}
+		return true;
+	case CtrlType::BindToTarget: {
+		// Binds this character to its target: pos x, y from the target, "foot" / "mid" / "head".
+		Character *t = target();
+		if (!t)
+			return true;
+		int32_t time = 1;
+		float px = 0, py = 0;
+		paramI(sc, "time", 0, time);
+		paramF(sc, "pos", 0, px);
+		paramF(sc, "pos", 1, py);
+		if (const std::string *p = sc.param("pos")) {
+			const std::vector<std::string> parts = text::split(*p, ',');
+			if (parts.size() > 2) {
+				const std::string where = text::toLower(text::trim(parts[2]));
+				if (where == "head" || where == "mid") {
+					px += t->constF(where == "head" ? "size.head.pos.x" : "size.mid.pos.x", -5);
+					py += t->constF(where == "head" ? "size.head.pos.y" : "size.mid.pos.y", where == "head" ? -90.0f : -60.0f);
+				}
+			}
+		}
+		bindTo_ = t;
+		bindTime_ = time < 0 ? INT32_MAX : time;
+		bindPos_[0] = px;
+		bindPos_[1] = py;
+		updateBinding();
+		return true;
+	}
+	case CtrlType::EnvColor: {
+		int32_t rgb[3] = { 255, 255, 255 }, time = 1, under = 0;
+		for (int k = 0; k < 3; k++)
+			paramI(sc, "value", k, rgb[k]);
+		paramI(sc, "time", 0, time);
+		paramI(sc, "under", 0, under);
+		if (world_ && world_->effects)
+			world_->effects->startEnvColor(rgb[0], rgb[1], rgb[2], time, under != 0);
+		return true;
+	}
+	case CtrlType::GameMakeAnim: {
+		// A shared (fightfx) animation at a position from this character, in front unless under.
+		if (!world_ || !world_->effects)
+			return true;
+		FightEffects::Spawn spawn;
+		paramI(sc, "value", 0, spawn.animNo);
+		const Param *value = sc.find("value");
+		spawn.shared = !value || value->prefix != 'S';
+		spawn.animations = &source_->anims_;
+		spawn.renderer = source_->renderer_.get();
+		spawn.owner = playerNo;
+		spawn.ownerKey = this;
+		float px = 0, py = 0, rx = 0, ry = 0;
+		paramF(sc, "pos", 0, px);
+		paramF(sc, "pos", 1, py);
+		if (paramF(sc, "random", 0, rx)) {
+			random_ = random_ * 1103515245u + 12345u;
+			px += ((random_ >> 16) % 1000 / 1000.0f - 0.5f) * rx;
+		}
+		if (paramF(sc, "random", 1, ry)) {
+			random_ = random_ * 1103515245u + 12345u;
+			py += ((random_ >> 16) % 1000 / 1000.0f - 0.5f) * ry;
+		}
+		spawn.x = worldX() + px * localScale * facing;
+		spawn.y = worldY() + py * localScale;
+		spawn.facing = spawn.moveFacing = facing;
+		i = 0;
+		paramI(sc, "under", 0, i);
+		spawn.layer = i ? 0 : 1;
+		world_->effects->spawnExplod(spawn);
+		return true;
+	}
+	case CtrlType::RemoveExplod:
+		if (world_ && world_->effects) {
+			i = -1;
+			paramI(sc, "id", 0, i);
+			world_->effects->removeExplods(this, i);
+		}
+		return true;
+	case CtrlType::ExplodBindTime:
+		if (world_ && world_->effects) {
+			int32_t id = -1, time = 0;
+			paramI(sc, "id", 0, id);
+			if (!paramI(sc, "time", 0, time))
+				paramI(sc, "value", 0, time);
+			world_->effects->setExplodBindTime(this, id, time);
+		}
+		return true;
+	case CtrlType::ModifyExplod: runModifyExplod(sc); return true;
+	case CtrlType::AllPalFX:
+		// Both players take the palette effect (the stage's colours aren't changed yet).
+		runPalFX(sc);
+		if (p2_)
+			p2_->palfx_ = palfx_;
+		return true;
+	// Accepted with nothing to do here: rumble, the winner's quote and sound panning.
+	case CtrlType::ForceFeedback:
+	case CtrlType::VictoryQuote:
+	case CtrlType::SndPan:
+		return true;
+	case CtrlType::DisplayToClipboard:
+	case CtrlType::AppendToClipboard:
+		if (!traceLabel.empty())
+			if (const std::string *t = sc.param("text"))
+				logf("%s frame %u: clipboard %s", traceLabel.c_str(), world_ ? world_->gameTime : 0, t->c_str());
+		return true;
+	case CtrlType::ClearClipboard:
+		return true;
+	default: return false;
 	}
 }
 
@@ -897,7 +1267,7 @@ void Character::runPause(const StateController &sc, bool superPause)
 		int32_t group = -1, number = 0;
 		paramI(sc, "sound", 0, group);
 		paramI(sc, "sound", 1, number);
-		const SoundBank *bank = sound->prefix == 'S' ? &sound_ : world_->commonSound;
+		const SoundBank *bank = sound->prefix == 'S' ? &source_->sound_ : world_->commonSound;
 		if (bank && group >= 0)
 			bank->play(group, number);
 	}
@@ -917,8 +1287,8 @@ void Character::runExplod(const StateController &sc)
 	FightEffects::Spawn spawn;
 	spawn.animNo = effectAnim;
 	spawn.shared = animParam->prefix == 'F';
-	spawn.animations = &anims_;
-	spawn.renderer = renderer_.get();
+	spawn.animations = &source_->anims_;
+	spawn.renderer = source_->renderer_.get();
 	spawn.owner = playerNo;
 	paramF(sc, "velocity", 0, spawn.velocityX);
 	paramF(sc, "velocity", 1, spawn.velocityY);
@@ -933,6 +1303,28 @@ void Character::runExplod(const StateController &sc)
 	paramI(sc, "removetime", 0, spawn.removeTime);
 	paramI(sc, "sprpriority", 0, spawn.priority);
 	paramI(sc, "layerno", 0, spawn.layer);
+	// ontop: in front of everything (MUGEN's layer 1).
+	int32_t flag = 0;
+	if (paramI(sc, "ontop", 0, flag) && flag)
+		spawn.layer = 1;
+	spawn.ownerKey = this;
+	paramI(sc, "id", 0, spawn.id);
+	paramI(sc, "bindtime", 0, spawn.bindTime);
+	flag = 0;
+	paramI(sc, "removeongethit", 0, flag);
+	spawn.removeOnGetHit = flag != 0;
+	flag = 1;
+	paramI(sc, "vfacing", 0, flag);
+	spawn.vfacing = flag < 0 ? -1 : 1;
+	if (const std::string *t = sc.param("trans")) {
+		const std::string type = text::toLower(text::trim(*t));
+		spawn.trans = type == "sub" ? Trans::Sub : type.rfind("add", 0) == 0 ? Trans::Add : Trans::None;
+		int32_t src = 255, dst = type == "add" || type == "sub" ? 255 : type == "add1" ? 128 : 0;
+		paramI(sc, "alpha", 0, src);
+		paramI(sc, "alpha", 1, dst);
+		spawn.srcAlpha = (uint8_t)std::clamp(src, 0, 255);
+		spawn.dstAlpha = (uint8_t)std::clamp(dst, 0, 255);
+	}
 
 	float px = 0, py = 0, relativeFacing = 1;
 	paramF(sc, "pos", 0, px);
@@ -949,6 +1341,10 @@ void Character::runExplod(const StateController &sc)
 		spawn.y = anchor->worldY() + py;
 		spawn.moveFacing = anchor->facing;
 		spawn.facing = anchor->facing * (relativeFacing < 0 ? -1 : 1);
+		// bindtime keeps it at this offset from the one it was placed by (-1: for good).
+		spawn.bindKey = anchor;
+		spawn.bindX = px * anchor->facing;
+		spawn.bindY = py;
 	} else if (postype == "none") {
 		spawn.x = px;
 		spawn.y = py;
@@ -996,6 +1392,8 @@ void Character::turnAndInput(const InputState &in)
 	} else {
 		commands.update(in, facing);
 	}
+	for (auto &helper : helpers_)
+		helper->turnAndInput(InputState{});
 }
 
 // MUGEN's built-in moves, the ones no state file asks for: guard, jump, crouch, stand up, walk, stop walking.
@@ -1032,6 +1430,13 @@ void Character::actionPrepare()
 		changeState(0, -1, -1);
 	if (stateType != 'A')
 		airJumpCount_ = 0;
+	// Offset, Trans and AngleDraw last one frame, even through a hitpause for MUGEN 1.x characters.
+	if (mugen1_ || !hitPause()) {
+		drawOffsetX_ = drawOffsetY_ = 0;
+		transSet_ = false;
+		angleDraw_ = false;
+		angleScale_[0] = angleScale_[1] = 1;
+	}
 	// What controllers set for one frame lasts through a hitpause.
 	if (!hitPause()) {
 		special_ = 0;
@@ -1057,13 +1462,18 @@ void Character::actionPrepare()
 		targetP2_ = false;
 	}
 	minus_ = 0;
+	for (auto &helper : helpers_)
+		helper->actionPrepare();
 }
 
 void Character::actionRun()
 {
 	for (int32_t neg : { -3, -2, -1 }) {
 		minus_ = neg;
-		if (const StateDef *s = states_.find(neg))
+		// Helpers skip them unless created with keyctrl.
+		if (!keyCtrl_)
+			continue;
+		if (const StateDef *s = source_->states_.find(neg))
 			runState(*s, negPersist_[neg]);
 	}
 	minus_ = 0;
@@ -1185,6 +1595,13 @@ void Character::actionRun()
 		overAlive_ = overKo_ = false;
 	if (stateNo == 5150)
 		overKo_ = true;
+	if (bindTo_ && !isTargetBound())
+		updateBinding();
+	// Explods bound to this character follow it.
+	if (world_ && world_->effects)
+		world_->effects->followBinder(this, worldX(), worldY());
+	for (size_t i = 0; i < helpers_.size(); i++)
+		helpers_[i]->actionRun();
 }
 
 void Character::setFacing(int f)
@@ -1281,6 +1698,9 @@ void Character::tick()
 	}
 	// Hit: into the get-hit states, which wait for actionRun (common1.cns 5000 standing, 5010 crouching, 5020 in the
 	// air, 5070 tripped, 5080 lying down).
+	// Getting hit removes this character's removeongethit Explods.
+	if (gotHit_ && world_ && world_->effects)
+		world_->effects->ownerHit(this);
 	if (gotHit_ && !ghv_.keepstate) {
 		moveType = 'H';
 		hitPauseTime_ = 0;
@@ -1316,6 +1736,10 @@ void Character::tick()
 	}
 	if (hitPauseTime_ > 0)
 		hitPauseTime_--;
+	for (auto &helper : helpers_)
+		helper->tick();
+	helpers_.erase(std::remove_if(helpers_.begin(), helpers_.end(),
+		[](const std::unique_ptr<Character> &helper) { return helper->destroyed_; }), helpers_.end());
 }
 
 void Character::body(float &left, float &right, float &top) const
@@ -1330,6 +1754,8 @@ void Character::body(float &left, float &right, float &top) const
 
 void Character::draw(const View &view, float groundY, int shadowIntensity, float shadowYScale)
 {
+	for (auto &helper : helpers_)
+		helper->draw(view, groundY, shadowIntensity, shadowYScale);
 	auto drawProjectiles = [&](bool foreground) {
 	for (const Projectile &projectile : projectiles_) {
 		if (!projectile.active)
@@ -1344,14 +1770,14 @@ void Character::draw(const View &view, float groundY, int shadowIntensity, float
 		if (projectile.shared) {
 			if (world_ && world_->effects)
 				world_->effects->drawSharedAnimation(projectile.anim, sx, sy, view.scale, projectile.facing, how);
-		} else if (renderer_) {
-			renderer_->drawAnimation(projectile.anim, sx, sy, view.scale * projectile.localScale,
+		} else if (source_->renderer_) {
+			source_->renderer_->drawAnimation(projectile.anim, sx, sy, view.scale * projectile.localScale,
 				projectile.facing, how);
 		}
 	}
 	};
 	drawProjectiles(false);
-	if ((!renderer_ && !animShared_) || (special_ & Special::Invisible)) {
+	if ((!source_->renderer_ && !animShared_) || (special_ & Special::Invisible)) {
 		drawProjectiles(true);
 		return;
 	}
@@ -1360,7 +1786,7 @@ void Character::draw(const View &view, float groundY, int shadowIntensity, float
 			if (world_ && world_->effects)
 				world_->effects->drawSharedAnimation(anim, px, py, view.scale, facing, how);
 		} else {
-			renderer_->drawAnimation(anim, px, py, view.scale * localScale, facing, how);
+			source_->renderer_->drawAnimation(anim, px, py, view.scale * localScale, facing, how);
 		}
 	};
 	// Shaking from a hit: a pixel back every other frame.
@@ -1395,7 +1821,7 @@ void Character::draw(const View &view, float groundY, int shadowIntensity, float
 			}
 			const float oldX = view.screenX(old.x * localScale - view.camX);
 			const float oldY = view.screenY(groundY + old.y * localScale - view.camY);
-			renderer_->drawAnimation(old.anim, oldX, oldY, view.scale * localScale, old.facing, how);
+			source_->renderer_->drawAnimation(old.anim, oldX, oldY, view.scale * localScale, old.facing, how);
 			visible++;
 		}
 	}
@@ -1409,7 +1835,19 @@ void Character::draw(const View &view, float groundY, int shadowIntensity, float
 			(&colour.mulR)[k] = (uint16_t)std::clamp(palfx_.mul[k], 0, 1024);
 		}
 	}
-	drawAnim(sx, view.screenY(groundY + worldY() - view.camY), colour);
+	// Offset, Trans and the angle (AngleDraw) for this frame.
+	if (transSet_) {
+		colour.trans = trans_;
+		colour.srcAlpha = transSrc_;
+		colour.dstAlpha = transDst_;
+	}
+	if (angleDraw_) {
+		colour.angle = angle_;
+		colour.scaleX = angleScale_[0];
+		colour.scaleY = angleScale_[1];
+	}
+	drawAnim(sx + drawOffsetX_ * localScale * view.scale,
+		view.screenY(groundY + worldY() + drawOffsetY_ * localScale - view.camY), colour);
 	drawProjectiles(true);
 }
 
@@ -1439,6 +1877,8 @@ void Character::drawBoxes(const View &view, float groundY) const
 			platform::fillRect(x0 + w - 1, y0, 1, h, 0xE0000000 | rgb);
 		}
 	}
+	for (const auto &helper : helpers_)
+		helper->drawBoxes(view, groundY);
 }
 
 // --- Hits ------------------------------------------------------------------------------------------------------------
@@ -1771,6 +2211,135 @@ void Character::runHitOverride(const StateController &sc)
 			stateNo, slot, out.attrAttack ? "armed" : "cleared");
 }
 
+void Character::runRedirectedVar(const StateController &sc, Character *target, bool add)
+{
+	if (!target)
+		return;
+	int32_t index = 0;
+	VarKind kind = VarKind::Var;
+	if (paramI(sc, "v", 0, index))
+		kind = VarKind::Var;
+	else if (paramI(sc, "fv", 0, index))
+		kind = VarKind::FVar;
+	else
+		return;
+	const Param *value = sc.find("value");
+	if (!value || value->exprs.empty())
+		return;
+	const Value next = value->exprs[0].eval(*this);
+	if (!add) {
+		target->setVar(kind, index, next);
+		return;
+	}
+	const Value current = target->var(kind, index);
+	target->setVar(kind, index, current.isFloat || next.isFloat
+		? Value::F(current.toF() + next.toF()) : Value::I(current.toI() + next.toI()));
+}
+
+void Character::runBindController(const StateController &sc, Character *target)
+{
+	if (!target || target == this)
+		return;
+	int32_t time = 1, relativeFacing = 0;
+	float px = 0, py = 0;
+	paramI(sc, "time", 0, time);
+	paramI(sc, "facing", 0, relativeFacing);
+	paramF(sc, "pos", 0, px);
+	paramF(sc, "pos", 1, py);
+	bindTo_ = target;
+	bindTime_ = time < 0 ? INT32_MAX : time;
+	bindPos_[0] = px;
+	bindPos_[1] = py;
+	if (relativeFacing != 0)
+		setFacing(relativeFacing > 0 ? target->facing : -target->facing);
+	updateBinding();
+}
+
+// Ikemen's Helper controller: a child runs the same character data in an independent state machine.
+void Character::runHelper(const StateController &sc)
+{
+	int32_t state = 0, id = 0, face = 1;
+	float px = 0, py = 0;
+	paramI(sc, "stateno", 0, state);
+	paramI(sc, "id", 0, id);
+	paramI(sc, "facing", 0, face);
+	paramF(sc, "pos", 0, px);
+	paramF(sc, "pos", 1, py);
+	if (id < 0)
+		id = 0;
+
+	// The helper shares its root's loaded files rather than reading them again.
+	auto helper = std::make_unique<Character>();
+	helper->parent_ = this;
+	helper->root_ = root_ ? root_ : this;
+	helper->world_ = world_;
+	helper->shareLoadedData(*helper->root_);
+	// keyctrl: it reads the root's commands and runs the negative states (Ikemen's keyctrl).
+	int32_t keyctrl = 0;
+	paramI(sc, "keyctrl", 0, keyctrl);
+	helper->keyCtrl_ = keyctrl != 0;
+	helper->helperId_ = id;
+	helper->playerNo = playerNo;
+	helper->aiLevel = aiLevel;
+	helper->world_ = world_;
+	helper->p2_ = helper->root_->p2_;
+	helper->traceLabel = traceLabel.empty() ? std::string() : traceLabel + "h" + std::to_string(id);
+
+	const std::string postype = text::toLower(text::trim(sc.param("postype") ? *sc.param("postype") : "p1"));
+	const Character *anchor = postype == "p2" && p2_ ? p2_ : this;
+	if (postype == "p1" || postype == "p2") {
+		helper->x = anchor->worldX() / helper->localScale + px * anchor->facing;
+		helper->y = anchor->worldY() / helper->localScale + py;
+		helper->facing = (face < 0 ? -1 : 1) * anchor->facing;
+	} else if (postype == "none") {
+		helper->x = px;
+		helper->y = py;
+		helper->facing = face < 0 ? -1 : 1;
+	} else {
+		const float halfWidth = world_ ? world_->halfWidth / helper->localScale : 160 / helper->localScale;
+		helper->x = (postype == "left" ? -halfWidth : halfWidth) + px;
+		helper->y = py;
+		helper->facing = face < 0 ? -1 : 1;
+	}
+	if (const std::string *helperName = sc.param("name")) {
+		std::string display(text::trim(*helperName));
+		if (display.size() >= 2 && display.front() == '"' && display.back() == '"')
+			display = display.substr(1, display.size() - 2);
+		if (!display.empty())
+			helper->name = helper->infoName_ = display;
+	}
+	helper->minus_ = 1;
+	helper->changeState(state, -1, 1, helper.get());
+	helper->minus_ = 0;
+	helper->stateChange2();
+	helper->actionPrepare();
+	if (!traceLabel.empty())
+		logf("%s frame %u: helper %d state %d", traceLabel.c_str(), world_ ? world_->gameTime : 0, id, state);
+	helpers_.push_back(std::move(helper));
+}
+
+Character *Character::findHelper(int32_t id)
+{
+	for (auto &helper : helpers_) {
+		if (!helper->destroyed_ && (id == 0 || helper->helperId_ == id))
+			return helper.get();
+		if (Character *nested = helper->findHelper(id))
+			return nested;
+	}
+	return nullptr;
+}
+
+int32_t Character::helperCount(int32_t id) const
+{
+	int32_t count = 0;
+	for (const auto &helper : helpers_) {
+		if (!helper->destroyed_ && (id < 0 || helper->helperId_ == id))
+			count++;
+		count += helper->helperCount(id);
+	}
+	return count;
+}
+
 bool Character::setProjectileAnimation(Projectile &projectile, int32_t number, char prefix)
 {
 	Animation next;
@@ -1779,7 +2348,7 @@ bool Character::setProjectileAnimation(Projectile &projectile, int32_t number, c
 			return false;
 		projectile.shared = true;
 	} else {
-		if (!anims_.get(number, next))
+		if (!source_->anims_.get(number, next))
 			return false;
 		projectile.shared = false;
 	}
@@ -2025,7 +2594,7 @@ void Character::hitDetectProjectiles(Character &getter)
 			spawnProjectileHitSpark(projectile, getter, result);
 			const int32_t *hitSound = std::abs(result) == 1 ? hitdef_.hitsound : hitdef_.guardsound;
 			const char soundPrefix = std::abs(result) == 1 ? hitdef_.hitsoundPrefix : hitdef_.guardsoundPrefix;
-			const SoundBank *soundBank = soundPrefix == 'F' && world_ ? world_->commonSound : &sound_;
+			const SoundBank *soundBank = soundPrefix == 'F' && world_ ? world_->commonSound : &source_->sound_;
 			if (soundBank && hitSound[0] >= 0)
 				soundBank->play(hitSound[0], hitSound[1]);
 			projectile.contact = true;
@@ -2202,7 +2771,8 @@ int Character::hitResultCheck(Character &g)
 	if (g.gotHit_ && (g.ghv_.attrAttack & (1 << 1 | 1 << 4 | 1 << 7)))
 		return 0;
 	const bool inCombo = (g.moveType == 'H' || g.gotHit_) && !g.ghv_.guarded;
-	const float attackMul = constF("data.attack", 100) / 100;
+	// The attack constant, and AttackMulSet.
+	const float attackMul = constF("data.attack", 100) / 100 * attackMul_;
 
 	// Blocked (2) when guarding the right way (guardflag: high standing, low crouching, air in the air), and the
 	// guard damage won't KO; else hit (1).
@@ -2470,7 +3040,7 @@ bool Character::resolveReversal(Character &attacker)
 	if (result == 0)
 		return false;
 	spawnHitSpark(attacker, result);
-	const SoundBank *soundBank = hitdef_.hitsoundPrefix == 'F' && world_ ? world_->commonSound : &sound_;
+	const SoundBank *soundBank = hitdef_.hitsoundPrefix == 'F' && world_ ? world_->commonSound : &source_->sound_;
 	if (soundBank && hitdef_.hitsound[0] >= 0)
 		soundBank->play(hitdef_.hitsound[0], hitdef_.hitsound[1]);
 	hitPauseTime_ = std::max(1, hitdef_.pausetime[0] + (mugen1_ ? 1 : 0));
@@ -2536,6 +3106,8 @@ void Character::beginHitDetection()
 			resetBind();
 		targetedBy_ = false;
 	}
+	for (auto &helper : helpers_)
+		helper->beginHitDetection();
 }
 
 void Character::hitDetection()
@@ -2543,6 +3115,8 @@ void Character::hitDetection()
 	Character *g = p2_;
 	if (!g)
 		return;
+	for (auto &helper : helpers_)
+		helper->hitDetection();
 	tradeProjectiles(*g);
 	hitDetectProjectiles(*g);
 	if (moveType == 'I')
@@ -2575,7 +3149,7 @@ void Character::hitDetection()
 	spawnHitSpark(*g, result);
 	const int32_t *hitSound = std::abs(result) == 1 ? hitdef_.hitsound : hitdef_.guardsound;
 	const char soundPrefix = std::abs(result) == 1 ? hitdef_.hitsoundPrefix : hitdef_.guardsoundPrefix;
-	const SoundBank *soundBank = soundPrefix == 'F' && world_ ? world_->commonSound : &sound_;
+	const SoundBank *soundBank = soundPrefix == 'F' && world_ ? world_->commonSound : &source_->sound_;
 	if (soundBank && hitSound[0] >= 0)
 		soundBank->play(hitSound[0], hitSound[1]);
 	// MUGEN 1.x attackers pause one frame longer than WinMUGEN ones (Ikemen's hpFix).
@@ -2800,8 +3374,8 @@ Value Character::trigger(Trig t, Value arg)
 	// A fall can be recovered from once fall.recovertime has passed, if the hit allows it.
 	case Trig::CanRecover: return Value::B(ghv_.fallRecover && ghv_.fallTime >= ghv_.fallRecovertime);
 	case Trig::InGuardDist: return Value::B(inGuardDist_);
-	case Trig::MoveReversed:
-	case Trig::IsBound: return Value::I(0);
+	case Trig::MoveReversed: return Value::I(0);
+	case Trig::IsBound: return Value::B(bindTo_ != nullptr);
 	case Trig::RoundState: return Value::I(world_ ? world_->roundState : 2);
 	case Trig::RoundNo: return Value::I(world_ ? world_->roundNo : 1);
 	case Trig::RoundsExisted: return Value::I(world_ ? world_->roundsExisted : 0);
@@ -2810,11 +3384,44 @@ Value Character::trigger(Trig t, Value arg)
 	case Trig::Lose: return Value::B(world_ && world_->winTeam == 1 - playerNo);
 	case Trig::DrawGame: return Value::B(world_ && world_->roundState >= 3 && world_->winTeam < 0);
 	case Trig::AiLevel: return Value::I(aiLevel);
-	case Trig::NumExplod: return Value::I(world_ && world_->effects ? world_->effects->countExplods(playerNo) : 0);
-	case Trig::IsHelper:
-	case Trig::NumHelper:
-	case Trig::NumTarget:
+	case Trig::NumExplod:
+		return Value::I(world_ && world_->effects ? world_->effects->countExplods(this, arg.isFloat ? -1 : arg.i) : 0);
+	// IsHelper(id), NumHelper(id), NumTarget(id): -1 for any.
+	case Trig::IsHelper: return Value::B(parent_ != nullptr && (arg.toI() < 0 || helperId_ == arg.toI()));
+	case Trig::NumHelper: return Value::I((root_ ? root_ : this)->helperCount(arg.toI()));
+	case Trig::NumTarget: {
+		const Character *tgt = target();
+		return Value::I(tgt && (arg.toI() < 0 || tgt->ghv_.hitid == arg.toI()) ? 1 : 0);
+	}
 	case Trig::NumPartner: return Value::I(0);
+	case Trig::NumProjID: {
+		int32_t count = 0;
+		for (const Projectile &projectile : projectiles_)
+			count += projectile.active && projectile.id == arg.toI();
+		return Value::I(count);
+	}
+	case Trig::ProjCancelTime: return Value::I(-1);
+	// Player IDs: player 1 is 56, player 2 57 (MUGEN's first ids), helpers after them.
+	case Trig::ID: return Value::I(parent_ ? 1000 + helperId_ : 56 + playerNo);
+	case Trig::PlayerIDExist: return Value::B(arg.toI() == 56 || arg.toI() == 57);
+	case Trig::HitPauseTime: return Value::I(hitPauseTime_);
+	case Trig::MatchNo: return Value::I(1);
+	case Trig::TicksPerSecond: return Value::I(60);
+	case Trig::IsHomeTeam: return Value::B(playerNo == 1);
+	case Trig::P2Life: return Value::I(p2_ ? p2_->life : 0);
+	case Trig::P2StateNo: return Value::I(p2_ ? p2_->stateNo : 0);
+	case Trig::P2Ctrl: return Value::B(p2_ && p2_->ctrl);
+	// Screen edges, in this character's units.
+	case Trig::LeftEdge: return Value::F(xmin);
+	case Trig::RightEdge: return Value::F(xmax);
+	case Trig::TopEdge: return Value::F(camY);
+	case Trig::BottomEdge: return Value::F(camY + 240 / localScale);
+	case Trig::FrontEdge: return Value::F(facing > 0 ? xmax : xmin);
+	case Trig::BackEdge: return Value::F(facing > 0 ? xmin : xmax);
+	case Trig::ScreenWidth:
+	case Trig::GameWidth: return Value::F(halfW * 2);
+	case Trig::ScreenHeight:
+	case Trig::GameHeight: return Value::F(240 / localScale);
 	case Trig::NumEnemy: return Value::I(p2_ ? 1 : 0);
 	case Trig::NumProj: {
 		int32_t count = 0;
@@ -2854,13 +3461,21 @@ Value Character::trigger(Trig t, Value arg)
 		const float theirs = theirsLocal * p2_->localScale / localScale;
 		return Value::F(dist - myFront - theirs);
 	}
+	case Trig::ParentDist:
+	case Trig::RootDist: {
+		const Character *relative = t == Trig::ParentDist ? parent_ : root_;
+		if (!relative || relative == this)
+			return Value::I(0);
+		return Value::F(arg.i == 0 ? (relative->worldX() / localScale - x) * facing
+			: arg.i == 1 ? relative->worldY() / localScale - y : 0);
+	}
 	case Trig::ScreenPos: return Value::F(arg.i == 0 ? x - xmin : arg.i == 1 ? y - camY : 0);
 	case Trig::CameraPos: return Value::F(arg.i == 0 ? camX : arg.i == 1 ? camY : 0);
 	case Trig::HitVel: return Value::F(arg.i == 0 ? ghv_.xvel * facing : arg.i == 1 ? ghv_.yvel : 0);
 	case Trig::AnimElemTime: return Value::I(anim.animElemTime(arg.toI()));
 	case Trig::AnimElemNo: return Value::I(anim.animElemNo(arg.toI()));
 	case Trig::SelfAnimExist:
-	case Trig::AnimExist: return Value::B(anims_.find(arg.toI()) != nullptr);
+	case Trig::AnimExist: return Value::B(source_->anims_.find(arg.toI()) != nullptr);
 	// A value written for 1280x720, in this character's units.
 	case Trig::Const720p: return Value::F(arg.toF() * (320.0f / localScale) / 1280.0f);
 	case Trig::ProjHitTime:
@@ -2886,13 +3501,16 @@ char Character::flag(Flag f)
 
 bool Character::command(const std::string &n)
 {
+	// A helper reads its root's controller, and only with keyctrl.
+	if (parent_)
+		return keyCtrl_ && root_ && root_->commands.active(n);
 	return commands.active(n);
 }
 
 bool Character::constant(const std::string &n, Value &out)
 {
-	const auto it = constants_.find(n);
-	if (it == constants_.end())
+	const auto it = source_->constants_.find(n);
+	if (it == source_->constants_.end())
 		return false;
 	out = it->second;
 	return true;
@@ -2992,13 +3610,29 @@ bool Character::hitDefAttr(int32_t stateTypes, int32_t attacks)
 	return moveType == 'A' && (hitdef_.attrState & stateTypes) != 0 && (hitdef_.attrAttack & attacks) != 0;
 }
 
-ExprContext *Character::redirect(Redirect r, int32_t)
+std::string Character::text(TextTrig t)
+{
+	const Character &root = root_ ? *root_ : *this;
+	switch (t) {
+	case TextTrig::Name: return infoName_;
+	case TextTrig::P1Name: return root.infoName_;
+	case TextTrig::P2Name: return p2_ ? p2_->infoName_ : std::string();
+	case TextTrig::AuthorName: return author_;
+	case TextTrig::TeamMode: return "single";
+	default: return {};
+	}
+}
+
+ExprContext *Character::redirect(Redirect r, int32_t arg)
 {
 	switch (r) {
 	case Redirect::P2:
 	case Redirect::Enemy:
 	case Redirect::EnemyNear: return p2_;
-	case Redirect::Root: return this;
+	case Redirect::Parent: return parent_;
+	case Redirect::Root: return root_ ? root_ : this;
+	case Redirect::Helper: return (root_ ? root_ : this)->findHelper(arg);
+	case Redirect::Target: return target();
 	default: return nullptr;
 	}
 }

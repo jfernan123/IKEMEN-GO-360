@@ -1,0 +1,14 @@
+[Info]
+name = "Misc Test"
+displayname = "Misc Test"
+mugenversion = 1.0
+localcoord = 320,240
+
+[Files]
+cmd = misc.cmd
+cns = misc.cns
+sprite = ../../../data/chars/kfm/kfm.sff
+anim = ../../../data/chars/kfm/kfm.air
+sound = ../../../data/chars/kfm/kfm.snd
+st = misc.cns
+stcommon = ../../../data/common1.cns

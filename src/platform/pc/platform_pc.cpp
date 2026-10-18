@@ -89,10 +89,12 @@ bool init(bool hidden)
 		SDL_BLENDOPERATION_REV_SUBTRACT, SDL_BLENDFACTOR_ZERO, SDL_BLENDFACTOR_ONE, SDL_BLENDOPERATION_ADD);
 	open_gamepads();
 	const SDL_AudioSpec audio_spec{ SDL_AUDIO_F32, 2, 48000 };
-	audio_stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &audio_spec, audio_callback, nullptr);
+	// A hidden test run stays silent: no sound from a window nobody can see.
+	audio_stream = hidden ? nullptr
+						  : SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &audio_spec, audio_callback, nullptr);
 	if (audio_stream)
 		SDL_ResumeAudioStreamDevice(audio_stream);
-	else
+	else if (!hidden)
 		logLine(SDL_GetError());
 	next_frame_ns = SDL_GetTicksNS();
 	return true;

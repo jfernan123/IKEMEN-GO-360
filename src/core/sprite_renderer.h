@@ -30,6 +30,9 @@ struct SpriteDraw {
 	// Palette effects, applied to straight RGB before premultiplication.
 	int16_t addR = 0, addG = 0, addB = 0;
 	uint16_t mulR = 256, mulG = 256, mulB = 256;
+	// Rotation in degrees, counterclockwise as seen, about the screen point (pivotX, pivotY) (AngleDraw).
+	float angle = 0;
+	float pivotX = 0, pivotY = 0;
 };
 
 // Draws an SFF's sprites, turning each sprite into a texture the first time it's drawn a given way. MUGEN's

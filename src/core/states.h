@@ -16,7 +16,7 @@ enum class CtrlType : uint16_t {
 	ClearClipboard, CtrlSet, DefenceMulSet, DestroySelf, DisplayToClipboard, EnvColor, EnvShake, Explod,
 	ExplodBindTime, FallEnvShake, ForceFeedback, GameMakeAnim, Gravity, Helper, HitAdd, HitBy, HitDef, HitFallDamage,
 	HitFallSet, HitFallVel, HitOverride, HitVelSet, LifeAdd, LifeSet, MakeDust, ModifyExplod, MoveHitReset, NotHitBy,
-	Null, Offset, PalFX, ParentVarAdd, ParentVarSet, Pause, PlayerPush, PlaySnd, PosAdd, PosFreeze, PosSet, PowerAdd,
+	Null, Offset, PalFX, ParentVarAdd, ParentVarSet, RootVarAdd, RootVarSet, Pause, PlayerPush, PlaySnd, PosAdd, PosFreeze, PosSet, PowerAdd,
 	PowerSet, Projectile, RemapPal, RemoveExplod, ReversalDef, ScreenBound, SelfState, SndPan, SprPriority,
 	StateTypeSet, StopSnd, SuperPause, TargetBind, TargetDrop, TargetFacing, TargetLifeAdd, TargetPowerAdd,
 	TargetState, TargetVelAdd, TargetVelSet, Trans, Turn, VarAdd, VarRandom, VarRangeSet, VarSet, VelAdd, VelMul,
