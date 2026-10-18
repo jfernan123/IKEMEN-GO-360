@@ -34,7 +34,11 @@
 #include "core/effects.h"
 #include "core/file.h"
 #include "core/game_config.h"
+#include "core/fight_screen.h"
 #include "core/hud.h"
+#include "core/motif.h"
+#include "core/select_screen.h"
+#include "core/title_screen.h"
 #include "core/log.h"
 #include "core/match.h"
 #include "core/select.h"
@@ -239,6 +243,12 @@ public:
 			return false;
 		if (!commonSound_.load(COMMON_SND, error))
 			return false;
+		// The screenpack's fight screen sets the round's timings; without one, the plain HUD and default timings.
+		std::string fightError;
+		if (!config.fight.empty() && fightScreen_.load(config.fight, fightError))
+			match_.setTimings(fightScreen_.timings());
+		else
+			logf("fightscreen: %s; using the plain HUD", config.fight.empty() ? "none" : fightError.c_str());
 		world_.effects = &effects_;
 		world_.commonSound = &commonSound_;
 		if (trace) {
@@ -263,6 +273,7 @@ public:
 	void newMatch()
 	{
 		match_.newMatch();
+		fightScreen_.newMatch();
 		startRound(true);
 	}
 	void setTestPower(int32_t value)
@@ -276,6 +287,7 @@ public:
 	{
 		match_.newRound();
 		hud_.reset();
+		fightScreen_.reset();
 		effects_.clear();
 		camera_.reset(stage_.camera);
 		updateWorld();
@@ -283,6 +295,7 @@ public:
 			players_[i].startRound((float)stage_.p[i].x, (float)stage_.p[i].y, stage_.p[i].facing, newMatch);
 		if (quickStart_) {
 			match_.skipIntro();
+			fightScreen_.skipIntro();
 			for (Character &c : players_)
 				c.roundStartControl();
 		}
@@ -297,6 +310,9 @@ public:
 			showInfo_ = !showInfo_;
 		if (ltPress_.update(pad1.lt))
 			newMatch();
+		// The KO and winner calls play at full speed through the KO slowdown.
+		if (!effects_.paused())
+			fightScreen_.frame(match_);
 		// After a KO the game slows down: some frames run no game tick.
 		speed_ += match_.speed();
 		while (speed_ >= 1) {
@@ -309,7 +325,8 @@ public:
 	void tick(const platform::Pad &pad1, const platform::Pad &pad2)
 	{
 		const bool globallyPaused = effects_.paused();
-		const Match::Event event = globallyPaused ? Match::Event::None : match_.step(players_[0], players_[1]);
+		const Match::Event event =
+			globallyPaused ? Match::Event::None : match_.step(players_[0], players_[1], fightScreen_);
 		if (event == Match::Event::NextRound) {
 			startRound(false);
 			return;
@@ -345,6 +362,9 @@ public:
 			if (run[i]) players_[i].actionPrepare();
 		for (int i = 0; i < 2; i++)
 			if (run[i]) players_[i].actionRun();
+		// The fight screen follows the characters' states, before hits land (Ikemen's FightScreen.step).
+		if (!globallyPaused)
+			fightScreen_.step(match_, players_[0], players_[1]);
 		// Players stay on screen and in the stage, and push each other apart.
 		for (int i = 0; i < 2; i++) {
 			if (players_[i].screenBound())
@@ -376,26 +396,34 @@ public:
 	void draw()
 	{
 		const View view = stage_.view(camera_.x - effects_.shakeX(), camera_.y - effects_.shakeY());
+		// Ikemen's order: the fight screen's layer -1 and 0 behind the characters, 1 and 2 in front.
 		stage_.draw(0, view);
+		fightScreen_.draw(-1, match_, players_[0], players_[1]);
 		effects_.draw(view, (float)stage_.zoffset, -1);
+		fightScreen_.draw(0, match_, players_[0], players_[1]);
 		// Player 1 in front.
 		for (int i = 1; i >= 0; i--)
 			players_[i].draw(view, (float)stage_.zoffset, shadowFor(players_[i]), stage_.shadow.yscale);
 		effects_.draw(view, (float)stage_.zoffset, 0);
 		stage_.draw(1, view);
-		effects_.draw(view, (float)stage_.zoffset, 1);
 		if (effects_.superPaused())
 			platform::fillRect(0, 0, platform::SCREEN_WIDTH, platform::SCREEN_HEIGHT, 0x70000000);
-		hud_.draw(match_, players_[0], players_[1]);
+		fightScreen_.draw(1, match_, players_[0], players_[1]);
+		effects_.draw(view, (float)stage_.zoffset, 1);
+		fightScreen_.draw(2, match_, players_[0], players_[1]);
+		if (fightScreen_.loaded())
+			fightScreen_.drawFade();
+		else
+			hud_.draw(match_, players_[0], players_[1], fightScreen_.roundCalled(), fightScreen_.fightCalled());
 		if (players_[1].aiLevel > 0)
-			drawTextf(platform::SCREEN_WIDTH - 40 - 6 * 2 * 9, 82, 2, 0xFFFFD040, "CPU LV %d", players_[1].aiLevel);
+			drawTextf(platform::SCREEN_WIDTH - 40 - 6 * 2 * 9, 176, 2, 0xFFFFD040, "CPU LV %d", players_[1].aiLevel);
 		if (showInfo_) {
 			for (const Character &c : players_)
 				c.drawBoxes(view, (float)stage_.zoffset);
-			drawTextf(30, 100, 2, DIM, "%s   CAMERA %.1f,%.1f   FRAME %u   ROUNDSTATE %d", stage_.name.c_str(), camera_.x,
+			drawTextf(30, 200, 2, DIM, "%s   CAMERA %.1f,%.1f   FRAME %u   ROUNDSTATE %d", stage_.name.c_str(), camera_.x,
 				camera_.y, world_.gameTime, (int)match_.roundState());
-			drawStateInfo(players_[0], "P1", 30, 124);
-			drawStateInfo(players_[1], "P2", 560, 124);
+			drawStateInfo(players_[0], "P1", 30, 224);
+			drawStateInfo(players_[1], "P2", 560, 224);
 			drawCommands();
 			drawText("PUNCH U I O  KICK J K L  (PAD X Y RB / A B RT)   Q/LB: INFO  R/LT: NEW MATCH  TAB/LB+START: NEXT", 30, 690, 2,
 				TEXT);
@@ -462,10 +490,10 @@ private:
 				held += std::string(name) + " ";
 		}
 		const float x = 1110;
-		drawText("P1 INPUT", x, 90, 2, DIM);
-		drawText(held.empty() ? "-" : held.c_str(), x, 110, 2, TEXT);
-		drawText("P1 COMMANDS", x, 140, 2, DIM);
-		float y = 160;
+		drawText("P1 INPUT", x, 200, 2, DIM);
+		drawText(held.empty() ? "-" : held.c_str(), x, 220, 2, TEXT);
+		drawText("P1 COMMANDS", x, 250, 2, DIM);
+		float y = 270;
 		for (const auto &[name, age] : history_) {
 			// Fresh ones bright, fading over a second.
 			const uint32_t alpha = (uint32_t)std::max(0x60, 0xFF - age * 3);
@@ -541,6 +569,7 @@ private:
 	Camera camera_;
 	FightWorld world_;
 	Match match_;
+	FightScreen fightScreen_;
 	FightHud hud_;
 	FightEffects effects_;
 	SoundBank commonSound_;
@@ -710,7 +739,7 @@ private:
 	size_t current_ = 0;
 };
 
-enum class Screen { Select, Stage, Animations, Sprites };
+enum class Screen { Title, Select, Stage, Animations, Sprites };
 
 } // namespace
 
@@ -724,7 +753,7 @@ int main(int argc, char **argv)
 	std::map<uint32_t, std::string> shots;
 	uint32_t quitFrame = UINT32_MAX;
 	int32_t testPower = -1;
-	bool trace = false, quickStart = false, cpu = false, show = false, forceSelect = false;
+	bool trace = false, quickStart = false, cpu = false, show = false, forceSelect = false, forceTitle = false;
 	for (int i = 1; i < argc; i++) {
 		const std::string arg = argv[i];
 		if (arg == "--input" && i + 1 < argc)
@@ -747,6 +776,8 @@ int main(int argc, char **argv)
 			show = true;
 		else if (arg == "--select")
 			forceSelect = true;
+		else if (arg == "--title")
+			forceTitle = forceSelect = true;
 		else if (arg == "--power" && i + 1 < argc)
 			testPower = text::atoi(argv[++i]);
 		else if (arg == "--p1" && i + 1 < argc)
@@ -759,7 +790,7 @@ int main(int argc, char **argv)
 	const bool testRun = !inputPath.empty() || !shots.empty() || quitFrame != UINT32_MAX;
 	if (!platform::init(testRun && !show))
 		return 1;
-	logf("mugen360: milestone 7, general compatibility");
+	logf("mugen360: milestone 8d, select screen");
 	if (!configLoaded)
 		logf("mugen360: %s", configError.c_str());
 	logf("game: p1=%s p2=%s stage=%s", config.player1.c_str(), config.player2.c_str(), config.stage.c_str());
@@ -778,12 +809,36 @@ int main(int argc, char **argv)
 		const bool selectLoaded = useSelect && select.load(config, error);
 		if (useSelect && !selectLoaded)
 			logf("mugen360: %s", error.c_str());
+		// The screenpack: Ikemen's select screen, and the title screen and its menu first (test runs only with --title).
+		Motif motif;
+		const bool motifLoaded = selectLoaded && !config.motif.empty() && motif.load(config.motif, error);
+		if (selectLoaded && !config.motif.empty() && !motifLoaded)
+			logf("mugen360: %s", error.c_str());
+		MotifSelect motifSelect;
+		const bool motifSelectLoaded = motifLoaded && motifSelect.load(motif, config, error);
+		if (motifLoaded && !motifSelectLoaded)
+			logf("mugen360: %s; using the plain select screen", error.c_str());
+		TitleScreen title;
+		const bool useTitle = motifLoaded && (!testRun || forceTitle);
+		const bool titleLoaded = useTitle && title.load(motif, error);
+		if (useTitle && !titleLoaded)
+			logf("mugen360: %s", error.c_str());
+		// The mode picked on the title: whether the computer plays player 2.
+		bool modeCpu = false;
+		SelectMode mode = SelectMode::Versus;
+		// A new character selection, on whichever select screen there is.
+		auto resetSelect = [&](bool secondController) {
+			if (motifSelectLoaded)
+				motifSelect.reset(mode, secondController && !cpu);
+			else
+				select.reset(cpu || modeCpu || !secondController);
+		};
 		std::unique_ptr<StageDemo> stage;
 		bool stageLoaded = false;
 		// A fight with these characters and stage.
 		auto startFight = [&](const GameConfig &fight) {
 			stage = std::make_unique<StageDemo>();
-			stageLoaded = stage->load(fight, error, trace, quickStart, cpu);
+			stageLoaded = stage->load(fight, error, trace, quickStart, cpu || modeCpu);
 			if (stageLoaded && testPower >= 0)
 				stage->setTestPower(testPower);
 			if (!stageLoaded)
@@ -792,8 +847,10 @@ int main(int argc, char **argv)
 				stage->returnToSelectAfterMatch();
 		};
 		Screen screen = Screen::Stage;
-		if (selectLoaded) {
-			select.reset(cpu || !platform::pad(1).connected);
+		if (titleLoaded) {
+			screen = Screen::Title;
+		} else if (selectLoaded) {
+			resetSelect(platform::pad(1).connected);
 			screen = Screen::Select;
 		} else {
 			startFight(config);
@@ -807,31 +864,83 @@ int main(int argc, char **argv)
 		AnimationViewer animViewer(kfm.anims(), renderer);
 		SpriteViewer spriteViewer(kfm.sff(), renderer);
 		Buttons buttons;
+		// Where the debug screens go back to.
+		Screen gameScreen = screen;
 
 		for (uint32_t frame = 0; frame <= quitFrame && platform::beginFrame(BACKGROUND); frame++) {
 			const platform::Pad pad = inputPath.empty() ? platform::pad(0) : script.at(frame);
 			const platform::Pad pad2 = inputPath.empty() ? platform::pad(1) : script2.at(frame);
-			if (buttons.back.update(pad.back))
+			// Back: out of a fight to the select screen, out of the select screen to the title, else quit. The title
+			// handles it itself (it moves to Exit).
+			const bool back = buttons.back.update(pad.back);
+			// The screenpack select screen handles Back itself (out of the palette menu, else back to the title).
+			const bool selectHandlesBack = screen == Screen::Select && motifSelectLoaded;
+			if (back && screen == Screen::Stage && selectLoaded) {
+				stage.reset();
+				resetSelect(pad2.connected);
+				screen = gameScreen = Screen::Select;
+			} else if (back && screen == Screen::Select && titleLoaded && !selectHandlesBack) {
+				title.reset();
+				screen = gameScreen = Screen::Title;
+			} else if (back && screen != Screen::Title && !selectHandlesBack) {
 				break;
+			}
 			if (const auto shot = shots.find(frame); shot != shots.end())
 				platform::requestScreenshot(shot->second.c_str());
 			// The debug screens cycle; from the last one, back to the fight (or the select screen before one).
-			if (buttons.menu.update(pad.menu))
-				screen = screen == Screen::Stage || screen == Screen::Select ? Screen::Animations
-					: screen == Screen::Animations                         ? Screen::Sprites
-					: stage                                                ? Screen::Stage
-																		   : Screen::Select;
+			if (buttons.menu.update(pad.menu)) {
+				if (screen == Screen::Animations)
+					screen = Screen::Sprites;
+				else if (screen == Screen::Sprites)
+					screen = gameScreen;
+				else
+					screen = Screen::Animations;
+			}
 			platform::Pad gameplayPad = pad;
 			if (pad.menu) {
 				gameplayPad.start = false;
 				gameplayPad.lb = false;
+			}
+			if (screen == Screen::Title) {
+				title.update(gameplayPad, pad2);
+				title.draw();
+				platform::endFrame();
+				const TitleChoice choice = title.result();
+				if (choice == TitleChoice::Exit)
+					break;
+				if (choice != TitleChoice::None) {
+					// 1P vs 2P: player 2 is controller 2 when there is one; the other modes are against the computer.
+					modeCpu = choice != TitleChoice::Versus;
+					mode = choice == TitleChoice::QuickMatch ? SelectMode::QuickMatch
+						: choice == TitleChoice::Arcade      ? SelectMode::Arcade
+						: choice == TitleChoice::Training    ? SelectMode::Training
+															 : SelectMode::Versus;
+					resetSelect(pad2.connected);
+					screen = gameScreen = Screen::Select;
+				}
+				continue;
+			}
+			if (screen == Screen::Select && motifSelectLoaded) {
+				motifSelect.update(gameplayPad, pad2);
+				motifSelect.draw();
+				platform::endFrame();
+				if (motifSelect.done()) {
+					startFight(motifSelect.fight());
+					screen = gameScreen = Screen::Stage;
+				} else if (motifSelect.cancelled()) {
+					if (!titleLoaded)
+						break;
+					title.reset();
+					screen = gameScreen = Screen::Title;
+				}
+				continue;
 			}
 			if (screen == Screen::Select) {
 				select.update(gameplayPad, pad2);
 				select.draw();
 				if (select.done()) {
 					startFight(select.fight());
-					screen = Screen::Stage;
+					screen = gameScreen = Screen::Stage;
 				}
 				platform::endFrame();
 				continue;
@@ -847,8 +956,8 @@ int main(int argc, char **argv)
 				// Match over: back to pick again.
 				if (stage->finished()) {
 					stage.reset();
-					select.reset(cpu || !pad2.connected);
-					screen = Screen::Select;
+					resetSelect(pad2.connected);
+					screen = gameScreen = Screen::Select;
 				}
 			} else if (screen == Screen::Animations) {
 				animViewer.update(buttons, gameplayPad);
@@ -861,7 +970,7 @@ int main(int argc, char **argv)
 		}
 	}
 
-	logf("mugen360: bye");
+	logf("mugen360: bye (textures %zu MB on a 360)", SpriteRenderer::totalTextureBytes() >> 20);
 	platform::shutdown();
 	return 0;
 }

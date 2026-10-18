@@ -33,16 +33,26 @@ struct SpriteDraw {
 	// Rotation in degrees, counterclockwise as seen, about the screen point (pivotX, pivotY) (AngleDraw).
 	float angle = 0;
 	float pivotX = 0, pivotY = 0;
+	// Turned in 3D about the sprite's axis, in degrees: xangle tips the top away, yangle the right side away
+	// (Ikemen's xangle / yangle). perspective projects toward the screen's centre from focalLength screen pixels in
+	// front of it; otherwise the turn is flat (orthographic).
+	float xangle = 0, yangle = 0;
+	bool perspective = false;
+	float focalLength = 2048;
 };
 
 // Draws an SFF's sprites, turning each sprite into a texture the first time it's drawn a given way. MUGEN's
 // transparency is baked into the texture as premultiplied colour (see platform::Blend), so the GPU needs no special
 // shaders: a pixel of alpha a drawn "src * s + dst * d" becomes colour * a * s with alpha a * (1 - d).
-// TODO(memory): one texture per sprite costs at least 64 KB of GPU memory each on the 360 (xsdk allocates in pages);
-// fine for one character and a stage, but a full match will want sprites packed into atlas textures.
+// One texture per sprite costs at least 64 KB of GPU memory each on the 360 (xsdk allocates in pages), and the CPU
+// heap shares the same ~450 MB: all renderers' textures together are kept under TEXTURE_BUDGET, the ones drawn least
+// recently freed first (and made again if they're drawn again).
 class SpriteRenderer {
 public:
-	explicit SpriteRenderer(const Sff &sff) : sff_(sff) {}
+	// The most all renderers' textures may take, counted as on a 360.
+	static constexpr size_t TEXTURE_BUDGET = 160u * 1024 * 1024;
+
+	explicit SpriteRenderer(const Sff &sff);
 	~SpriteRenderer();
 	SpriteRenderer(const SpriteRenderer &) = delete;
 	SpriteRenderer &operator=(const SpriteRenderer &) = delete;
@@ -62,15 +72,30 @@ public:
 
 	// Frees every texture, for after a palette change.
 	void clear();
+	// What every renderer's textures would take on a 360 (each padded to 32x32 tiles, at least 64 KB).
+	static size_t totalTextureBytes();
+
+	// Where a point of a sprite drawn with its axis at screen (x, y) lands once turned by how's xangle / yangle
+	// (Ikemen's applyRotation and applyProjection): (px, py) is the point's screen position before turning.
+	static void turnPoint(const SpriteDraw &how, float x, float y, float px, float py, float &outX, float &outY);
 
 private:
 	using Key = std::tuple<size_t, int, bool, Trans, uint8_t, uint8_t, int, int16_t, int16_t, int16_t,
 		uint16_t, uint16_t, uint16_t>;
 	platform::Texture *texture(const Sprite &sprite, int palette, const SpriteDraw &how);
 
+	struct Cached {
+		platform::Texture *texture = nullptr;
+		// Its size on a 360, and when it was last drawn (a count of draws across all renderers).
+		size_t bytes = 0;
+		uint64_t lastUse = 0;
+	};
+	// Frees the least recently drawn textures of all renderers until the total is well under the budget.
+	static void trim();
+
 	const Sff &sff_;
 	int palette_ = -1;
-	std::map<Key, platform::Texture *> cache_;
+	std::map<Key, Cached> cache_;
 };
 
 } // namespace m360

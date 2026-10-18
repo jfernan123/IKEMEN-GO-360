@@ -3,18 +3,88 @@
 #include <algorithm>
 #include <cmath>
 
+#include "core/log.h"
+
 namespace m360 {
+
+namespace {
+
+// Every renderer's textures together, as the 360 would hold them: padded to 32x32 tiles, at least 64 KB each.
+size_t textureCount = 0, textureBytes = 0, textureLogged = 0;
+uint64_t useClock = 0;
+std::vector<SpriteRenderer *> &renderers()
+{
+	static std::vector<SpriteRenderer *> all;
+	return all;
+}
+
+size_t consoleBytes(int width, int height)
+{
+	const size_t w = ((size_t)width + 31) / 32 * 32, h = ((size_t)height + 31) / 32 * 32;
+	const size_t bytes = (w * h * 4 + 65535) / 65536 * 65536;
+	return bytes;
+}
+
+} // namespace
+
+size_t SpriteRenderer::totalTextureBytes()
+{
+	return textureBytes;
+}
+
+SpriteRenderer::SpriteRenderer(const Sff &sff) : sff_(sff)
+{
+	renderers().push_back(this);
+}
 
 SpriteRenderer::~SpriteRenderer()
 {
 	clear();
+	std::vector<SpriteRenderer *> &all = renderers();
+	all.erase(std::remove(all.begin(), all.end(), this), all.end());
 }
 
 void SpriteRenderer::clear()
 {
-	for (auto &[key, tex] : cache_)
-		platform::destroyTexture(tex);
+	for (auto &[key, cached] : cache_) {
+		if (cached.texture) {
+			textureCount--;
+			textureBytes -= cached.bytes;
+		}
+		platform::destroyTexture(cached.texture);
+	}
 	cache_.clear();
+}
+
+void SpriteRenderer::trim()
+{
+	struct Entry {
+		uint64_t lastUse;
+		SpriteRenderer *renderer;
+		Key key;
+	};
+	std::vector<Entry> entries;
+	for (SpriteRenderer *r : renderers()) {
+		for (const auto &[key, cached] : r->cache_) {
+			if (cached.texture)
+				entries.push_back(Entry{ cached.lastUse, r, key });
+		}
+	}
+	std::sort(entries.begin(), entries.end(), [](const Entry &a, const Entry &b) { return a.lastUse < b.lastUse; });
+	// Down to three quarters, so this runs now and then rather than every draw.
+	size_t freed = 0, count = 0;
+	for (const Entry &e : entries) {
+		if (textureBytes <= TEXTURE_BUDGET / 4 * 3)
+			break;
+		const auto it = e.renderer->cache_.find(e.key);
+		textureCount--;
+		textureBytes -= it->second.bytes;
+		freed += it->second.bytes;
+		count++;
+		platform::destroyTexture(it->second.texture);
+		e.renderer->cache_.erase(it);
+	}
+	logf("textures: freed %zu (%zu MB), %zu left (%zu MB)", count, freed >> 20, textureCount, textureBytes >> 20);
 }
 
 platform::Texture *SpriteRenderer::texture(const Sprite &sprite, int palette, const SpriteDraw &how)
@@ -25,12 +95,16 @@ platform::Texture *SpriteRenderer::texture(const Sprite &sprite, int palette, co
 		how.trans == Trans::None ? (uint8_t)255 : how.srcAlpha, how.trans == Trans::None ? (uint8_t)0 : how.dstAlpha,
 		how.shadow, how.addR, how.addG, how.addB, how.mulR, how.mulG, how.mulB };
 	const auto it = cache_.find(key);
-	if (it != cache_.end())
-		return it->second;
+	if (it != cache_.end()) {
+		it->second.lastUse = ++useClock;
+		return it->second.texture;
+	}
 
 	platform::Texture *tex = nullptr;
-	if (!sprite.isBlank()) {
+	if (!sprite.isBlank() && sff_.decode(sprite)) {
 		std::vector<Argb> pixels = sprite.toArgb(sff_.palette(palette), how.mask);
+		// The texture keeps the picture; the sprite goes back to its packed bytes.
+		sff_.release(sprite);
 		const float s = (how.trans == Trans::None ? 255 : how.srcAlpha) / 255.0f;
 		const float keep = (how.trans == Trans::None ? 0 : how.dstAlpha) / 255.0f;
 		for (Argb &p : pixels) {
@@ -54,7 +128,27 @@ platform::Texture *SpriteRenderer::texture(const Sprite &sprite, int palette, co
 		}
 		tex = platform::createTexture(sprite.width, sprite.height, pixels.data());
 	}
-	cache_[key] = tex;
+	Cached cached;
+	cached.texture = tex;
+	cached.lastUse = ++useClock;
+	if (tex) {
+		cached.bytes = consoleBytes(sprite.width, sprite.height);
+		textureCount++;
+		textureBytes += cached.bytes;
+		// Every 32 MB more, a line in the log.
+		if (textureBytes >= textureLogged + 32 * 1024 * 1024) {
+			textureLogged = textureBytes / (32 * 1024 * 1024) * (32 * 1024 * 1024);
+			logf("textures: %zu, %zu MB on a 360", textureCount, textureBytes >> 20);
+		}
+	}
+	cache_[key] = cached;
+	if (textureBytes > TEXTURE_BUDGET) {
+		trim();
+		textureLogged = 0;
+		// The one just made may have been among the oldest only if everything else was drawn since; keep it.
+		const auto made = cache_.find(key);
+		return made == cache_.end() ? nullptr : made->second.texture;
+	}
 	return tex;
 }
 
@@ -96,8 +190,67 @@ void SpriteRenderer::drawSprite(int32_t group, int32_t number, float x, float y,
 			v.y = how.pivotY + dx * s + dy * c;
 		}
 	}
-	const bool subtract = how.shadow < 0 && (how.trans == Trans::Sub || how.trans == Trans::SubAdd);
-	platform::drawQuad(tex, corners, subtract ? platform::Blend::Subtract : platform::Blend::Over);
+	const platform::Blend blend =
+		how.shadow < 0 && (how.trans == Trans::Sub || how.trans == Trans::SubAdd) ? platform::Blend::Subtract
+																				   : platform::Blend::Over;
+	if (how.xangle == 0 && how.yangle == 0) {
+		platform::drawQuad(tex, corners, blend);
+		return;
+	}
+	// Turned in 3D: the platform maps a texture straight across each triangle, so a strongly turned sprite is drawn
+	// as a grid of small pieces, each turned on its own, to keep its picture from bending.
+	const int columns = how.yangle != 0 ? 8 : 1, rows = how.xangle != 0 ? 8 : 1;
+	const auto corner = [&](float fu, float fv, platform::Vertex &out) {
+		// Bilinear across the (sheared, rotated) flat quad, then turned.
+		const float topX = corners[0].x + (corners[1].x - corners[0].x) * fu;
+		const float topY = corners[0].y + (corners[1].y - corners[0].y) * fu;
+		const float bottomX = corners[2].x + (corners[3].x - corners[2].x) * fu;
+		const float bottomY = corners[2].y + (corners[3].y - corners[2].y) * fu;
+		turnPoint(how, x, y, topX + (bottomX - topX) * fv, topY + (bottomY - topY) * fv, out.x, out.y);
+		out.u = u0 + (u1 - u0) * fu;
+		out.v = v0 + (v1 - v0) * fv;
+	};
+	for (int row = 0; row < rows; row++) {
+		for (int column = 0; column < columns; column++) {
+			platform::Vertex piece[4];
+			const float fu0 = (float)column / columns, fu1 = (float)(column + 1) / columns;
+			const float fv0 = (float)row / rows, fv1 = (float)(row + 1) / rows;
+			corner(fu0, fv0, piece[0]);
+			corner(fu1, fv0, piece[1]);
+			corner(fu0, fv1, piece[2]);
+			corner(fu1, fv1, piece[3]);
+			platform::drawQuad(tex, piece, blend);
+		}
+	}
+}
+
+void SpriteRenderer::turnPoint(const SpriteDraw &how, float x, float y, float px, float py, float &outX, float &outY)
+{
+	// Relative to the axis, y down and z toward the viewer: X by xangle (Ikemen's -xangle with y up), then Y by
+	// yangle.
+	float dx = px - x, dy = py - y, dz = 0;
+	if (how.xangle != 0) {
+		const float r = how.xangle * 3.14159265f / 180.0f, c = std::cos(r), s = std::sin(r);
+		const float ny = dy * c - dz * s, nz = dy * s + dz * c;
+		dy = ny;
+		dz = nz;
+	}
+	if (how.yangle != 0) {
+		const float r = how.yangle * 3.14159265f / 180.0f, c = std::cos(r), s = std::sin(r);
+		const float nx = dx * c + dz * s, nz = -dx * s + dz * c;
+		dx = nx;
+		dz = nz;
+	}
+	outX = x + dx;
+	outY = y + dy;
+	if (!how.perspective)
+		return;
+	// Seen from focalLength in front of the screen's centre: nearer points spread out, farther ones gather in.
+	const float f = how.focalLength > 1 ? how.focalLength : 1;
+	const float depth = f - dz > 1 ? f - dz : 1;
+	const float cx = platform::SCREEN_WIDTH / 2.0f, cy = platform::SCREEN_HEIGHT / 2.0f;
+	outX = cx + (outX - cx) * f / depth;
+	outY = cy + (outY - cy) * f / depth;
 }
 
 void SpriteRenderer::drawAnimation(const Animation &anim, float x, float y, float scale, int facing, SpriteDraw base)

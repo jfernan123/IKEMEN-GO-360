@@ -16,25 +16,27 @@ void Match::newMatch()
 
 void Match::newRound()
 {
-	intro_ = START_WAIT + CTRL_TIME + 1;
-	announce_ = -1;
+	intro_ = timings_.startWait + timings_.ctrlTime + 1;
 	time_ = ROUND_TIME;
-	winposeTime_ = OVER_WIN;
-	winWaitTime_ = FORCE_WIN;
-	slowTime_ = SLOW_TIME;
+	winposeTime_ = timings_.overWin;
+	winWaitTime_ = timings_.forceWin;
+	slowTime_ = timings_.slowTime;
 	finish_ = Finish::None;
 	winTeam_ = -1;
+	// A side one win away from the match (Ikemen's decisiveRound).
+	for (int i = 0; i < 2; i++)
+		decisive_[i] = wins_[i] >= timings_.matchWins - 1;
 }
 
 int32_t Match::roundState() const
 {
-	if (intro_ > CTRL_TIME + 1)
+	if (intro_ > timings_.ctrlTime + 1)
 		return 0; // pre-intro
 	if (intro_ > 0)
 		return 1; // intros and the announcement
 	if (intro_ == 0 || finish_ == Finish::None)
 		return 2; // fighting
-	if (intro_ < -OVER_WAIT)
+	if (intro_ < -timings_.overWait)
 		return 4; // win poses
 	return 3;     // the round is decided
 }
@@ -46,19 +48,20 @@ void Match::fillWorld(FightWorld &w) const
 	w.roundsExisted = roundNo_ - 1;
 	w.winTeam = winTeam_;
 	w.matchOver = matchOver();
-	w.roundEnded = intro_ < -OVER_HIT;
+	w.roundEnded = intro_ < -timings_.overHit;
 	// Inputs are ignored at time over, and between losing control and the win poses.
-	w.inputWait = (time_ == 0 && finish_ != Finish::None) || (intro_ <= -OVER_WAIT && winposeTime_ >= 0);
+	w.inputWait = (time_ == 0 && finish_ != Finish::None) || (intro_ <= -timings_.overWait && winposeTime_ >= 0);
 }
 
 float Match::speed() const
 {
 	if (slowTime_ <= 0 || intro_ >= 0 || time_ == 0)
 		return 1;
-	// Slow at first, easing back to full speed over the last SLOW_FADE ticks.
-	float s = SLOW_SPEED;
-	if (slowTime_ < SLOW_FADE)
-		s += (1 - s) * (float)(SLOW_FADE - slowTime_) / SLOW_FADE;
+	// Slow at first, easing back to full speed over the last slow.fadetime ticks.
+	float s = timings_.slowSpeed;
+	const int32_t fade = timings_.slowFade;
+	if (slowTime_ < fade && fade > 0)
+		s += (1 - s) * (float)(fade - slowTime_) / fade;
 	return s;
 }
 
@@ -92,27 +95,25 @@ bool Match::decide(Character &p1, Character &p2)
 	return ko[0] || ko[1] || time_ == 0;
 }
 
-Match::Event Match::step(Character &p1, Character &p2)
+Match::Event Match::step(Character &p1, Character &p2, RoundAnnouncer &announcer)
 {
 	Character *p[2] = { &p1, &p2 };
 
+	// The round calls hold the round while "Round N" plays and until "Fight" is called.
+	if (!announcer.act(*this))
+		return Event::None;
+
 	// Intros: a character asserting Intro holds the round until its intro is done.
-	if (intro_ > CTRL_TIME) {
+	const int32_t ctrlTime = timings_.ctrlTime;
+	if (intro_ > ctrlTime) {
 		intro_--;
-		if ((p1.asserts(Special::Intro) || p2.asserts(Special::Intro)) && intro_ <= CTRL_TIME)
-			intro_ = CTRL_TIME + 1;
+		if ((p1.asserts(Special::Intro) || p2.asserts(Special::Intro)) && intro_ <= ctrlTime)
+			intro_ = ctrlTime + 1;
 	} else if (intro_ > 0) {
-		if (intro_ == CTRL_TIME) {
-			// Back to the start positions, then "Round N" and "Fight" before the count to control begins.
-			if (announce_ < 0) {
-				for (Character *c : p)
-					c->posReset();
-				announce_ = 0;
-			}
-			if (announce_ < ANNOUNCE) {
-				announce_++;
-				return Event::None;
-			}
+		// Back to the start positions as the count to control begins.
+		if (intro_ == ctrlTime) {
+			for (Character *c : p)
+				c->posReset();
 		}
 		intro_--;
 		if (intro_ == 0) {
@@ -128,13 +129,13 @@ Match::Event Match::step(Character &p1, Character &p2)
 	if (intro_ == 0 && !p1.asserts(Special::TimerFreeze) && !p2.asserts(Special::TimerFreeze) && time_ > 0)
 		time_--;
 
-	if (intro_ < -OVER_HIT || decide(p1, p2)) {
-		const int32_t rs4 = -OVER_WAIT;
+	if (intro_ < -timings_.overHit || decide(p1, p2)) {
+		const int32_t rs4 = -timings_.overWait;
 		intro_--;
 		if (slowTime_ > 0 && time_ != 0)
 			slowTime_--;
 		// The winner's count goes up once the result can no longer change.
-		if (intro_ == -OVER_HIT && finish_ != Finish::None) {
+		if (intro_ == -timings_.overHit && finish_ != Finish::None) {
 			if (winTeam_ >= 0)
 				wins_[winTeam_]++;
 			else
@@ -147,7 +148,7 @@ Match::Event Match::step(Character &p1, Character &p2)
 				wins_[0], wins_[1]);
 		}
 		if (winposeTime_ > 0) {
-			// Wait (up to FORCE_WIN) for each player to be done: KO'd, or standing idle with control.
+			// Wait (up to over.forcewintime) for each player to be done: KO'd, or standing idle with control.
 			if (winWaitTime_ > 0 && intro_ == rs4 - 1) {
 				for (Character *c : p) {
 					if (!c->readyForWinPose()) {
@@ -177,7 +178,7 @@ Match::Event Match::step(Character &p1, Character &p2)
 		if (winWaitTime_ > 0)
 			winWaitTime_--;
 		// RoundNotOver holds the round open.
-		const int32_t end = -(OVER_WAIT + OVER_TIME);
+		const int32_t end = -(timings_.overWait + timings_.roundOverTime());
 		if ((p1.asserts(Special::RoundNotOver) || p2.asserts(Special::RoundNotOver)) && intro_ == end)
 			intro_++;
 		if (intro_ < end) {

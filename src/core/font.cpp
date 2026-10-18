@@ -239,7 +239,7 @@ int32_t Font::textWidth(const std::string &text, int32_t bank) const
 }
 
 void Font::draw(const std::string &text, float x, float y, float scaleX, float scaleY, int32_t bank, int align,
-	uint32_t colour) const
+	uint32_t colour, const SpriteDraw &effects) const
 {
 	if (!renderer_ || text.empty() || scaleX == 0 || scaleY == 0)
 		return;
@@ -252,12 +252,12 @@ void Font::draw(const std::string &text, float x, float y, float scaleX, float s
 	else if (align < 0)
 		x -= textWidth(text, bank) * scaleX;
 	renderer_->setPalette(paletteFor(bank));
-	SpriteDraw how;
+	SpriteDraw how = effects;
 	how.scaleX = scaleX;
 	how.scaleY = scaleY;
-	how.mulR = (uint16_t)((colour >> 16 & 0xFF) * 256 / 255);
-	how.mulG = (uint16_t)((colour >> 8 & 0xFF) * 256 / 255);
-	how.mulB = (uint16_t)((colour & 0xFF) * 256 / 255);
+	how.mulR = (uint16_t)(effects.mulR * (colour >> 16 & 0xFF) / 255);
+	how.mulG = (uint16_t)(effects.mulG * (colour >> 8 & 0xFF) / 255);
+	how.mulB = (uint16_t)(effects.mulB * (colour & 0xFF) / 255);
 	const uint8_t alpha = (uint8_t)(colour >> 24);
 	if (alpha < 255) {
 		how.trans = Trans::Add;

@@ -1,7 +1,21 @@
-MUGEN360 - milestone 7: general compatibility (homebrew test build)
-===================================================================
+MUGEN360 - milestone 8d: select screen (homebrew test build)
+============================================================
 
-The game opens on a character select screen: pick Kung Fu Man or the
+New: Ikemen's select screen (tilted 3D grid, big portraits, Color menu), and
+a memory fix: the last build ran out of memory on a real console (missing
+letters and portraits, then a crash in the fight). The skin's sprites now
+stay compressed until drawn, and textures are kept under a budget.
+
+The game opens on Ikemen's title screen and main menu. VS MODE > 1P VS 2P
+is a match against controller 2 (or the computer without one); QUICK MATCH,
+ARCADE and PRACTICE are a match against the computer for now (the real
+arcade and training modes come later). OPTIONS isn't there yet. EXIT quits.
+
+The fight looks like Ikemen: its default skin's lifebars, power bars,
+portraits, names, clock, combo counter, win icons, and the "Round 1",
+"Fight!", "K.O." and "Winner!" calls with their sounds.
+
+From the menu you get the character select screen: pick Kung Fu Man or the
 high-resolution Kung Fu Man 720 (the attack button you pick with chooses his
 colours), the computer picks for player 2 unless controller 2 is plugged in,
 then the stage, then the fight. After the match it goes back to select.
@@ -42,9 +56,17 @@ INSTALL
    Do NOT put it in Content\0000000000000000.
 2. Launch it from Aurora's file manager: ...\mugen360\default.xex
 
+CONTROLS (title menu)
+  D-pad              move
+  A B RT X Y RB Start  choose
+  Back               back out of a submenu; on the main menu, jump to EXIT
+
 CONTROLS (select screen)
   D-pad              move the cursor; on the stage screen, change stage
-  A B RT X Y RB      pick the character with colours 1-6; confirm the stage
+  A B RT X Y RB      pick the character, then confirm its colour; confirm the stage
+  D-pad (Color menu) next / previous colour;  Start: random colour
+  Back               out of the Color menu; else back to the title menu
+  Against the computer you pick its character after yours.
 
 CONTROLS (stage)
   D-pad              walk, jump, crouch (controller 2 plays player 2)
@@ -54,7 +76,7 @@ CONTROLS (stage)
   LT                 start a new match
   Start              taunt / character Start button
   LB + Start         next screen (animations, then sprites)
-  Back               quit
+  Back               leave the fight for the select screen
 
 CONTROLS (animation player)
   D-pad left/right   previous / next action      LB / RB   10 at a time

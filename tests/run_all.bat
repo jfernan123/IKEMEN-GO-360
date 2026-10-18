@@ -31,6 +31,7 @@ call :projectile_clash || exit /b 1
 call :helper || exit /b 1
 call :misc || exit /b 1
 call :select || exit /b 1
+call :title || exit /b 1
 call :run buttons 80 --quickstart || exit /b 1
 call :run commands 260 --quickstart || exit /b 1
 call :run states 330 --quickstart || exit /b 1
@@ -45,9 +46,14 @@ findstr /c:"reverses p2 state 200" tests\out\latest_reversal.log >nul || (echo F
 findstr /c:"cornerpush" tests\out\latest_cornerpush.log >nul || (echo FAIL: corner push was not applied & exit /b 1)
 findstr /c:"-> 195" tests\out\latest_taunt.log >nul || (echo FAIL: Start did not reach KFM's taunt state & exit /b 1)
 findstr /c:"projectile 7 hits for 50 damage" tests\out\latest_projectile.log >nul || (echo FAIL: Projectile did not hit P2 & exit /b 1)
-findstr /c:"select: 2 characters" tests\out\latest_select.log >nul || (echo FAIL: the select screen did not load the roster & exit /b 1)
+findstr /c:"select: 3 characters" tests\out\latest_select.log >nul || (echo FAIL: the select screen did not load the roster & exit /b 1)
+findstr /c:"select: p1 Kung Fu Man palette 1" tests\out\latest_select.log >nul || (echo FAIL: player 1 did not pick through the palette menu & exit /b 1)
+findstr /c:"select: p2 Kung Fu Man palette 2" tests\out\latest_select.log >nul || (echo FAIL: player 1 did not pick player 2 & exit /b 1)
+findstr /c:"select: stage" tests\out\latest_select.log >nul || (echo FAIL: the stage was not chosen & exit /b 1)
 findstr /c:"char: data/chars/kfm720/kfm720.def" tests\out\latest_select.log >nul || (echo FAIL: player 1's pick did not reach the fight & exit /b 1)
 findstr /c:"match: round 1" tests\out\latest_select.log >nul || (echo FAIL: the fight did not start after the select screen & exit /b 1)
+findstr /c:"title: VS MODE > 1P VS 2P" tests\out\latest_title.log >nul || (echo FAIL: the title menu did not pick 1P VS 2P & exit /b 1)
+findstr /c:"match: round 1" tests\out\latest_title.log >nul || (echo FAIL: the fight did not start from the title menu & exit /b 1)
 findstr /c:"state 1002 -> 1009" tests\out\latest_misc.log >nul || (echo FAIL: 7d controllers and triggers did not all check out & exit /b 1)
 findstr /c:"helper 88 state 1200" tests\out\latest_helper.log >nul || (echo FAIL: nested Helper was not created & exit /b 1)
 findstr /c:"state 1000 -> 1002" tests\out\latest_helper.log >nul || (echo FAIL: Helper parent/root redirects or NumHelper failed & exit /b 1)
@@ -66,6 +72,10 @@ findstr /c:"p1 command: QCF_x" tests\out\latest_commands.log >nul || (echo FAIL:
 findstr /c:"-> 40" tests\out\latest_states.log >nul || (echo FAIL: jump state test changed & exit /b 1)
 findstr /c:"time over, wins 1-0" tests\out\latest_timeover.log >nul || (echo FAIL: time-over result changed & exit /b 1)
 findstr /c:"round 2: KO, wins 2-0" tests\out\latest_match.log >nul || (echo FAIL: full match result changed & exit /b 1)
+findstr /c:"fightscreen: data/fight.def" tests\out\latest_match.log >nul || (echo FAIL: the fight.def fight screen did not load & exit /b 1)
+findstr /c:"round 1 call, fight call" tests\out\latest_match.log >nul || (echo FAIL: the round and fight calls did not run & exit /b 1)
+findstr /c:"fightscreen: KO call" tests\out\latest_match.log >nul || (echo FAIL: the KO call did not run & exit /b 1)
+findstr /c:"fightscreen: TO call" tests\out\latest_timeover.log >nul || (echo FAIL: the time over call did not run & exit /b 1)
 
 echo PASS: all unit and scripted integration tests passed.
 exit /b 0
@@ -108,8 +118,14 @@ exit /b 0
 
 :select
 echo     select screen
-"%EXE%" --select --cpu --input tests/inputs/select.txt --quit 400 --trace %SHOW% >nul || exit /b 1
+"%EXE%" --select --cpu --input tests/inputs/select.txt --quit 600 --trace %SHOW% >nul || exit /b 1
 copy /y m360.log tests\out\latest_select.log >nul
+exit /b 0
+
+:title
+echo     title menu
+"%EXE%" --title --cpu --input tests/inputs/title.txt --quit 600 --trace %SHOW% >nul || exit /b 1
+copy /y m360.log tests\out\latest_title.log >nul
 exit /b 0
 
 :misc

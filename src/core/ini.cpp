@@ -83,7 +83,8 @@ std::vector<IniSection> parseIni(const std::string &body)
 		const std::string key = text::toLower(text::trim(line.substr(0, eq)));
 		if (key.empty())
 			continue;
-		sections.back().values.emplace(key, std::string(text::trim(line.substr(eq + 1))));
+		if (sections.back().values.emplace(key, std::string(text::trim(line.substr(eq + 1)))).second)
+			sections.back().keys.push_back(key);
 	}
 	return sections;
 }

@@ -184,6 +184,36 @@ paths use forward slashes.
      .spr / .anim / .font / .text with .offset, .facing, .scale, .layerno). Sound files are kept as they are and each
      sound decodes the first time it plays, so the 6 MB fight.snd doesn't become tens of MB. The ikemen1 screenpack
      files and the MUGEN fonts are in `data/`. `tests/screenpack_test.cpp` loads them.
+   - 8b fight screen (done): `core/fight_screen` draws Ikemen's fight screen from `fight.def` (`[Game] fight` in
+     `data/mugen360.ini`): slanted lifebars whose red part waits out the combo then drains, power bars with the level
+     number and level-up sounds, portraits (9000,0 in the character's palette), names, the clock, win icons, the combo
+     counter sliding in with hits / damage / percent, and the round calls ("Round N", "Fight", KO, double KO, time
+     over, the winner) with their animations and fight.snd sounds, plus the round's fade in and out. Layouts gained
+     xshear, palfx (add, mul, sinadd, sinmul; rounded to steps of 8 so pulsing makes few textures) and clipped bar
+     fills (`platform::setClip`). The round's pacing now comes from `[Round]` (ikemen1: control 50 ticks after
+     "Fight", 300 ticks of ending) and waits for the calls as Ikemen's does. Without a fight.def the plain HUD and
+     default timings remain. Not yet: team modes, guard / stun bars, red life, [Action] messages, perfect / clutch
+     wins, the vs-CPU win and lose calls.
+   - 8c title screen (done): `core/motif` loads a screenpack's system.def (`[Game] motif` in `data/mugen360.ini`), and
+     `core/title_screen` draws Ikemen's title from `[Title Info]` and TitleBG: the background (with sin.x / sin.y
+     motion, now in `BgDef`), the menu built from the `menu.itemname.` keys in file order (`IniSection::keys`), its
+     scrolling window and tween, active-item font, move / done / cancel sounds, fades and the footer; fonts can be
+     named by file. Modes that can't run yet are left out of the menu; a submenu left with one mode runs it directly
+     (Ikemen's main.lua). ikemen1 gives ARCADE, VS MODE (1P VS 2P, QUICK MATCH), PRACTICE, OPTIONS, EXIT; arcade,
+     quick match and training are a versus match against the computer until stages 10 and 11, options shows a notice.
+     Back leaves a fight for the select screen and the select screen for the title. `--title` runs it in a test
+     (`tests/inputs/title.txt`). Not yet: the logo storyboard, demo and attract modes, the info box, music.
+   - 8d select screen (done): `core/select_screen` (`MotifSelect`) is Ikemen's select screen from `[Select Info]` and
+     SelectBG (start.lua): the grid with ikemen1's per-row overrides (spacing, offset, scale, 3D tilt), each side's
+     eased cursor, the big portraits (the character's stance animation and 9000,1 turned in perspective, then its
+     181 "done" animation), names, the mode's title, the Color palette menu (next / previous / "?" random), the stage
+     line with its blinking font, fades. A `randomselect` roster entry is the "?" cell. Against the computer, player 1
+     picks player 2's character too (Ikemen's rule); Arcade picks a random opponent. The renderer gained 3D turning
+     (xangle / yangle, perspective from a focal length, drawn in strips) and layouts their `.window` clip. The plain
+     screen stays as the fallback. Memory for the 360: SFF v2 sprites now stay packed and decode only while a texture
+     is made (ikemen1's system.sff was 426 MB decoded, more than the console has), and all textures together stay
+     under a 160 MB budget, the least recently drawn freed first (the 360 frees them a few frames later, once no draw
+     in flight uses them). Not yet: the VS screen (8e), team modes, the select timer, stage portraits.
 
 ## Asset notice
 

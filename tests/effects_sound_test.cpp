@@ -52,6 +52,8 @@ void m360::platform::destroyTexture(Texture *texture) { delete texture; }
 void m360::platform::drawQuad(Texture *, const Vertex[4], Blend) {}
 void m360::platform::drawTexture(Texture *, float, float, float, float, Blend) {}
 void m360::platform::fillRect(float, float, float, float, uint32_t) {}
+void m360::platform::setClip(int, int, int, int) {}
+void m360::platform::clearClip() {}
 
 int run6dTests()
 {

@@ -231,6 +231,58 @@ bool Sff::load(const std::string &path, std::string &error, bool character)
 	return loadBytes(file, path, error, character);
 }
 
+bool Sff::decode(const Sprite &sprite) const
+{
+	if (!sprite.packed || !sprite.indices.empty() || !sprite.argb.empty())
+		return !sprite.isBlank();
+	const uint8_t *data = file_ ? ByteReader(*file_).at(sprite.packedOffset, sprite.packedSize) : nullptr;
+	if (!data)
+		return false;
+	// Compressed formats start with the decoded size, 4 bytes, which the decoders don't need.
+	const uint32_t size = sprite.packedSize;
+	const uint8_t *packed = size >= 4 ? data + 4 : data;
+	const size_t packedSize = size >= 4 ? size - 4 : 0;
+	const size_t pixels = (size_t)sprite.width * sprite.height;
+	// The pixels are a cache of the file's: filling them doesn't change the sprite as the rest of the engine sees it.
+	Sprite &s = const_cast<Sprite &>(sprite);
+	std::string decodeError;
+	bool decoded = true;
+	switch (sprite.format) {
+	case FORMAT_RAW:
+		if (sprite.depth == 8) {
+			s.indices.assign(data, data + (size < pixels ? size : pixels));
+			s.indices.resize(pixels);
+		} else {
+			decoded = false;
+			decodeError = "raw " + std::to_string(sprite.depth) + "-bit sprites aren't supported yet";
+		}
+		break;
+	case FORMAT_RLE8: s.indices = rle8Decode(packed, packedSize, pixels); break;
+	case FORMAT_RLE5: s.indices = rle5Decode(packed, packedSize, pixels); break;
+	case FORMAT_LZ5: s.indices = lz5Decode(packed, packedSize, pixels); break;
+	case FORMAT_PNG8: decoded = decodePng8(packed, packedSize, s, decodeError); break;
+	case FORMAT_PNG24:
+	case FORMAT_PNG32: decoded = decodePngTrueColor(packed, packedSize, s, decodeError); break;
+	default:
+		decoded = false;
+		decodeError = "unknown format " + std::to_string(sprite.format);
+		break;
+	}
+	if (!decoded) {
+		logf("sff: %s: sprite %u,%u: %s", path_.c_str(), sprite.group, sprite.number, decodeError.c_str());
+		s.packed = false;
+	}
+	return decoded && !sprite.isBlank();
+}
+
+void Sff::release(const Sprite &sprite) const
+{
+	if (!sprite.packed)
+		return;
+	std::vector<uint8_t>().swap(sprite.indices);
+	std::vector<Argb>().swap(sprite.argb);
+}
+
 bool Sff::loadBytes(const std::vector<uint8_t> &file, const std::string &path, std::string &error, bool character)
 {
 	sprites_.clear();
@@ -238,6 +290,8 @@ bool Sff::loadBytes(const std::vector<uint8_t> &file, const std::string &path, s
 	palettes_.clear();
 	paletteByKey_.clear();
 	v1_ = false;
+	file_.reset();
+	path_ = path;
 
 	ByteReader r(file);
 	char signature[12];
@@ -335,49 +389,31 @@ bool Sff::loadBytes(const std::vector<uint8_t> &file, const std::string &path, s
 				const Sprite &src = sprites_[link];
 				s.width = src.width;
 				s.height = src.height;
-				s.indices = src.indices;
-				s.argb = src.argb;
+				s.packed = src.packed;
+				s.trueColor = src.trueColor;
+				s.format = src.format;
+				s.depth = src.depth;
+				s.packedOffset = src.packedOffset;
+				s.packedSize = src.packedSize;
 			}
 		} else {
-			const size_t pixels = (size_t)s.width * s.height;
-			const uint8_t *data = ByteReader(file).at(offset, size);
-			if (!data) {
+			if (!ByteReader(file).at(offset, size)) {
 				error = path + ": sprite " + std::to_string(s.group) + "," + std::to_string(s.number) + " runs past the file";
 				return false;
 			}
-			// Compressed formats start with the decoded size, 4 bytes, which the decoders don't need.
-			const uint8_t *packed = size >= 4 ? data + 4 : data;
-			const size_t packedSize = size >= 4 ? size - 4 : 0;
-			std::string decodeError;
-			bool decoded = true;
-			switch (format) {
-			case FORMAT_RAW:
-				if (depth == 8) {
-					s.indices.assign(data, data + (size < pixels ? size : pixels));
-					s.indices.resize(pixels);
-				} else {
-					decoded = false;
-					decodeError = "raw " + std::to_string(depth) + "-bit sprites aren't supported yet";
-				}
-				break;
-			case FORMAT_RLE8: s.indices = rle8Decode(packed, packedSize, pixels); break;
-			case FORMAT_RLE5: s.indices = rle5Decode(packed, packedSize, pixels); break;
-			case FORMAT_LZ5: s.indices = lz5Decode(packed, packedSize, pixels); break;
-			case FORMAT_PNG8: decoded = decodePng8(packed, packedSize, s, decodeError); break;
-			case FORMAT_PNG24:
-			case FORMAT_PNG32: decoded = decodePngTrueColor(packed, packedSize, s, decodeError); break;
-			default:
-				decoded = false;
-				decodeError = "unknown format " + std::to_string(format);
-				break;
-			}
-			if (!decoded)
-				logf("sff: %s: sprite %u,%u: %s", path.c_str(), s.group, s.number, decodeError.c_str());
+			// Kept packed; decoded when drawn (see Sff::decode).
+			s.packed = true;
+			s.format = format;
+			s.depth = depth;
+			s.trueColor = format == FORMAT_PNG24 || format == FORMAT_PNG32;
+			s.packedOffset = offset;
+			s.packedSize = size;
 		}
 		if (!byKey_.count(key(s.group, s.number)))
 			byKey_[key(s.group, s.number)] = i;
 	}
-	logf("sff: %s: %u sprites, %u palettes", path.c_str(), spriteCount, paletteCount);
+	file_ = std::make_shared<const std::vector<uint8_t>>(file);
+	logf("sff: %s: %u sprites, %u palettes, %zu KB", path.c_str(), spriteCount, paletteCount, file.size() >> 10);
 	return true;
 }
 

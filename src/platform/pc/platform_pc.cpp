@@ -154,6 +154,7 @@ bool beginFrame(uint32_t clear_argb)
 			return false;
 	}
 	set_color(clear_argb);
+	SDL_SetRenderClipRect(renderer, nullptr);
 	SDL_RenderClear(renderer);
 	return true;
 }
@@ -236,6 +237,17 @@ void drawTexture(Texture *texture, float x, float y, float width, float height, 
 		{ x + width, y + height, 1, 1 },
 	};
 	drawQuad(texture, corners, blend);
+}
+
+void setClip(int x, int y, int width, int height)
+{
+	const SDL_Rect r = { x, y, width > 0 ? width : 0, height > 0 ? height : 0 };
+	SDL_SetRenderClipRect(renderer, &r);
+}
+
+void clearClip()
+{
+	SDL_SetRenderClipRect(renderer, nullptr);
 }
 
 void fillRect(float x, float y, float width, float height, uint32_t argb)
