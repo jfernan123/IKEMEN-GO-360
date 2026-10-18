@@ -65,8 +65,10 @@ bool Character::load(const std::string &defPath, int paletteNo, std::string &err
 		if (name.empty())
 			name = infoName_;
 		int32_t lw = 320, lh = 240;
-		if (info->ints("localcoord", { &lw, &lh }) && lw > 0)
+		if (info->ints("localcoord", { &lw, &lh }) && lw > 0) {
 			localScale = coords::scaleForWidth(lw);
+			localcoordWidth_ = lw;
+		}
 		// "1.0" and "1.1" are MUGEN 1.x; WinMUGEN characters give a date ("04.14.2001") or nothing.
 		mugen1_ = text::startsWith(text::trim(info->text("mugenversion")), "1.");
 	}

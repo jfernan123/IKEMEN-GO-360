@@ -33,6 +33,8 @@ void BgDef::load(const std::vector<IniSection> &sections, const std::string &pre
 	// Backgrounds, in file order: later elements draw over earlier ones.
 	// The last element that isn't position-linked, which a linked one copies its motion from.
 	int linkIndex = -1;
+	// Keys some element sets that aren't read yet, logged once for the set.
+	std::vector<std::string> unread;
 	for (const IniSection &s : sections) {
 		if (!text::startsWith(s.lower, start))
 			continue;
@@ -135,12 +137,22 @@ void BgDef::load(const std::vector<IniSection> &sections, const std::string &pre
 				bg.sinTime[i] = bg.sinStart[i];
 			}
 		}
-		if (s.has("window") || s.has("maskwindow"))
-			logf("bgdef: %s: %s: window isn't supported yet", defPath.c_str(), bg.name.c_str());
+		for (const std::string &key : unreadKeys(s, { "type", "layerno", "actionno", "spriteno", "mask",
+					 "positionlink", "start", "delta", "trans", "alpha", "tile", "width", "xscale", "yscalestart",
+					 "yscaledelta", "tilespacing", "velocity", "sin.x", "sin.y" })) {
+			if (std::find(unread.begin(), unread.end(), key) == unread.end())
+				unread.push_back(key);
+		}
 
 		bgs_.push_back(std::move(bg));
 		if (!bgs_.back().positionlink)
 			linkIndex = (int)bgs_.size() - 1;
+	}
+	if (!unread.empty()) {
+		std::string list;
+		for (const std::string &key : unread)
+			list += (list.empty() ? "" : ", ") + key;
+		logf("bgdef: %s: %s elements: not read yet: %s", defPath.c_str(), prefix.c_str(), list.c_str());
 	}
 	// A linked element's start is relative to the element it links to.
 	size_t base = 0;

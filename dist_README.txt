@@ -1,5 +1,10 @@
-MUGEN360 - milestone 8: screenpack, menus and music (homebrew test build)
-=========================================================================
+MUGEN360 - milestone 9a: more stages (homebrew test build)
+==========================================================
+
+New: five more stages from Ikemen on the stage screen (Training Room, Training
+Room 720, Training Stage, Training Stage Z, Interactive Training Stage). The
+720 one is widescreen and fills the whole screen. Zoom and some moving parts
+of these stages come in the next builds.
 
 New: Ikemen's VS screen between select and the fight (both fighters in their
 colours, names, the next stage and its picture, "Match 1" in Arcade). It

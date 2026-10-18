@@ -269,12 +269,13 @@ bool MotifSelect::load(Motif &motif, const GameConfig &config, std::string &erro
 		StagePortrait portrait;
 		const IniSection *bgdef = findSection(def, "bgdef");
 		const std::string spr = bgdef ? bgdef->text("spr") : std::string();
+		// [StageInfo] localcoord and portraitscale (Ikemen's select-screen stage loading).
 		int32_t localW = 320, localH = 240;
-		if (const IniSection *info = findSection(def, "stageinfo"))
-			info->ints("localcoord", { &localW, &localH });
 		float portraitScale = 1;
-		if (const IniSection *info = findSection(def, "info"))
+		if (const IniSection *info = findSection(def, "stageinfo")) {
+			info->ints("localcoord", { &localW, &localH });
 			info->readFloat("portraitscale", portraitScale);
+		}
 		portrait.resFix = portraitScale * (float)motif.localWidth() / (float)std::max(1, localW);
 		std::string sffError;
 		portrait.sff = std::make_unique<Sff>();

@@ -99,4 +99,17 @@ const IniSection *findSection(const std::vector<IniSection> &sections, const std
 	return nullptr;
 }
 
+std::vector<std::string> unreadKeys(const IniSection &section, std::initializer_list<const char *> known)
+{
+	std::vector<std::string> out;
+	for (const std::string &key : section.keys) {
+		bool found = false;
+		for (const char *k : known)
+			found = found || key == k;
+		if (!found)
+			out.push_back(key);
+	}
+	return out;
+}
+
 } // namespace m360

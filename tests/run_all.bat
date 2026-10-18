@@ -49,7 +49,7 @@ findstr /c:"projectile 7 hits for 50 damage" tests\out\latest_projectile.log >nu
 findstr /c:"select: 3 characters" tests\out\latest_select.log >nul || (echo FAIL: the select screen did not load the roster & exit /b 1)
 findstr /c:"select: p1 Kung Fu Man palette 1" tests\out\latest_select.log >nul || (echo FAIL: player 1 did not pick through the palette menu & exit /b 1)
 findstr /c:"select: p2 Kung Fu Man palette 2" tests\out\latest_select.log >nul || (echo FAIL: player 1 did not pick player 2 & exit /b 1)
-findstr /c:"select: stage" tests\out\latest_select.log >nul || (echo FAIL: the stage was not chosen & exit /b 1)
+findstr /c:"select: stage Mountainside Temple" tests\out\latest_select.log >nul || (echo FAIL: the stage was not chosen & exit /b 1)
 findstr /c:"versus: Kung Fu Man vs Kung Fu Man" tests\out\latest_select.log >nul || (echo FAIL: the VS screen did not show & exit /b 1)
 findstr /c:"char: data/chars/kfm720/kfm720.def" tests\out\latest_select.log >nul || (echo FAIL: player 1's pick did not reach the fight & exit /b 1)
 findstr /c:"match: round 1" tests\out\latest_select.log >nul || (echo FAIL: the fight did not start after the select screen & exit /b 1)

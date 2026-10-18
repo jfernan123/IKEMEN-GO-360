@@ -30,6 +30,8 @@ bool Stage::load(const std::string &defPath, std::string &error)
 		localWidth = 320;
 		localHeight = 240;
 	}
+	gameWidth = 240.0f * (float)localWidth / (float)localHeight;
+	localScale = gameWidth / (float)localWidth;
 	// Defaults are written for 320-wide stages, as for characters.
 	const float coordRatio = localWidth / 320.0f;
 	p[0] = { (int32_t)(-70 * coordRatio), 0, 1 };
@@ -93,8 +95,53 @@ bool Stage::load(const std::string &defPath, std::string &error)
 
 	// Backgrounds, the [BG ...] sections.
 	bgs_.load(sections, "bg", sff_, anims_, defPath);
+	logUnread(sections, defPath);
 	logf("stage: %s: \"%s\", %zu backgrounds", defPath.c_str(), name.c_str(), bgs_.size());
 	return true;
+}
+
+// One log line of what the stage sets that isn't read yet (the background elements log their own): whole sections
+// as "[name]", else "[section] key, key". The .def's comments and author details don't count.
+void Stage::logUnread(const std::vector<IniSection> &sections, const std::string &defPath)
+{
+	struct Known {
+		const char *section;
+		std::initializer_list<const char *> keys;
+	};
+	static const Known KNOWN[] = {
+		{ "info", { "name", "displayname", "versiondate", "mugenversion", "author", "ikemenversion" } },
+		{ "stageinfo", { "zoffset", "localcoord", "portraitscale" } },
+		{ "bound", { "screenleft", "screenright" } },
+		{ "playerinfo", { "p1startx", "p1starty", "p1facing", "p2startx", "p2starty", "p2facing", "leftbound",
+							"rightbound" } },
+		{ "camera", { "startx", "starty", "boundleft", "boundright", "boundhigh", "boundlow", "verticalfollow",
+						"floortension", "tension", "cuthigh", "cutlow" } },
+		{ "shadow", { "intensity", "yscale", "fade.range" } },
+		{ "reflection", { "intensity" } },
+		{ "music", { "bgmusic", "bgmvolume", "bgmloop", "bgmloopstart", "bgmloopend" } },
+		{ "bgdef", { "spr", "debugbg" } },
+	};
+	std::string report;
+	for (const IniSection &s : sections) {
+		// Background elements log their own; "[Begin Action n]" is the stage's animations.
+		if (text::startsWith(s.lower, "bg ") || s.lower == "bg" || text::startsWith(s.lower, "begin action"))
+			continue;
+		const Known *known = nullptr;
+		for (const Known &k : KNOWN)
+			known = s.lower == k.section ? &k : known;
+		if (!known) {
+			report += (report.empty() ? "[" : "; [") + s.name + "]";
+			continue;
+		}
+		const std::vector<std::string> keys = unreadKeys(s, known->keys);
+		if (keys.empty())
+			continue;
+		report += (report.empty() ? "[" : "; [") + s.name + "]";
+		for (size_t i = 0; i < keys.size(); i++)
+			report += (i == 0 ? " " : ", ") + keys[i];
+	}
+	if (!report.empty())
+		logf("stage: %s: not read yet: %s", defPath.c_str(), report.c_str());
 }
 
 View Stage::view(float camX, float camY) const
@@ -105,15 +152,15 @@ View Stage::view(float camX, float camY) const
 	const float screenAspect = (float)platform::SCREEN_WIDTH / platform::SCREEN_HEIGHT;
 	if ((float)localWidth / (float)localHeight < screenAspect - 0.01f) {
 		// A narrower stage (4:3) keeps its shape, as Ikemen's fight aspect follows the stage: its full height, black
-		// bars at the sides. The play area is as wide in stage units as when it filled the width.
-		v.scale = (float)platform::SCREEN_HEIGHT / (float)localHeight;
-		v.width = (float)localWidth * v.scale;
+		// bars at the sides.
+		v.scale = (float)platform::SCREEN_HEIGHT / 240.0f;
+		v.width = gameWidth * v.scale;
 		v.originX = ((float)platform::SCREEN_WIDTH - v.width) / 2;
 		return v;
 	}
-	v.scale = (float)platform::SCREEN_WIDTH / (float)localWidth;
+	v.scale = (float)platform::SCREEN_WIDTH / gameWidth;
 	// The stage height the screen can't show, taken off the top and bottom as cuthigh and cutlow divide it.
-	const float cut = (float)localHeight - platform::SCREEN_HEIGHT / v.scale;
+	const float cut = (float)localHeight * localScale - platform::SCREEN_HEIGHT / v.scale;
 	const float high = (float)std::max(0, camera.cuthigh), low = (float)std::max(0, camera.cutlow);
 	v.topCut = high + low > 0 ? cut * high / (high + low) : cut / 2;
 	return v;
@@ -126,7 +173,13 @@ void Stage::update()
 
 void Stage::draw(int32_t layer, const View &view)
 {
-	bgs_.draw(layer, view);
+	// The backgrounds are in stage units: the same view, measured in them.
+	View local = view;
+	local.camX = view.camX / localScale;
+	local.camY = view.camY / localScale;
+	local.topCut = view.topCut / localScale;
+	local.scale = view.scale * localScale;
+	bgs_.draw(layer, local);
 }
 
 } // namespace m360

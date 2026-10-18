@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <initializer_list>
 #include <map>
 #include <string>
 #include <vector>
@@ -34,5 +35,7 @@ struct IniSection {
 std::vector<IniSection> parseIni(const std::string &text);
 // The first section named name (case-insensitive), or null.
 const IniSection *findSection(const std::vector<IniSection> &sections, const std::string &name);
+// The keys of a section that aren't in known, in file order: what a loader doesn't read yet, for its log.
+std::vector<std::string> unreadKeys(const IniSection &section, std::initializer_list<const char *> known);
 
 } // namespace m360
