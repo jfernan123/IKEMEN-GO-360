@@ -18,6 +18,7 @@
 #include "core/select_screen.h"
 #include "core/sprite_renderer.h"
 #include "core/title_screen.h"
+#include "core/versus_screen.h"
 #include "core/sff.h"
 
 using namespace m360;
@@ -268,5 +269,55 @@ int run8dTests()
 	expect(MotifSelect::cyclePalette(1, 3, -1) == 4, "palette menu: previous from 1 goes to ?");
 
 	std::printf("8d select screen: %d passed, %d failed\n", passed, failed);
+	return failed;
+}
+
+int run8eTests()
+{
+	passed = failed = 0;
+	std::string error;
+	Motif motif;
+	expect(motif.load("data/ikemen1/system.def", error), "system.def loads");
+	VersusScreen versus;
+	versus.load(motif);
+	expect(versus.faceAnim() == 0, "ikemen1's VS portraits are the stance animation (p1.anim = 0)");
+	expect(versus.stageSprite(0) == 9000 && versus.stageSprite(1) == 1, "the stage portrait is 9000,1");
+
+	// ikemen1: p1.offset 444, spacing -100, num 4, padding 1: one character is centred in the room for four.
+	expect(VersusScreen::paddedX(444, -100, 4, 1, 1, true) == 244, "player 1's portrait x with padding");
+	expect(VersusScreen::paddedX(836, 100, 4, 1, 1, true) == 1036, "player 2's portrait x with padding");
+	expect(VersusScreen::paddedX(444, -100, 4, 1, 1, false) == 444, "no padding: the first character at pos");
+
+	// It runs [VS Screen] time (390) after its fade in (20), then fades out (25).
+	VersusScreen::Fighter fighters[2];
+	VersusScreen::StagePick stage;
+	const bool humans[2] = { true, false };
+	platform::Pad idle, press;
+	press.a = true;
+	versus.start(fighters, stage, 0);
+	expect(versus.counter() == -20, "the counter starts at minus the fade in");
+	versus.update(press, idle, humans);
+	expect(versus.counter() == -19 && !versus.done(), "a button held over from the select screen doesn't skip");
+	int ticks = 1;
+	while (!versus.done() && ticks < 1000) {
+		versus.update(idle, idle, humans);
+		ticks++;
+	}
+	expect(ticks == 20 + 390 + 25, "time out: 20 fading in, 390 shown, then the 25 fading out");
+	versus.start(fighters, stage, 1);
+	versus.update(idle, idle, humans);
+	versus.update(press, idle, humans);
+	ticks = 2;
+	while (!versus.done() && ticks < 1000) {
+		versus.update(idle, idle, humans);
+		ticks++;
+	}
+	expect(ticks == 2 + 25, "a done key fades it out at once");
+	versus.start(fighters, stage, 1);
+	versus.update(idle, idle, humans);
+	versus.update(idle, press, humans);
+	expect(versus.counter() == -18 && !versus.done(), "the computer's pad doesn't skip it");
+
+	std::printf("8e VS screen: %d passed, %d failed\n", passed, failed);
 	return failed;
 }

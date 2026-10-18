@@ -95,6 +95,7 @@ bool MotifSelect::load(Motif &motif, const GameConfig &config, std::string &erro
 		return false;
 	}
 	motif.loadBg("selectbg", bg_, clearColour_);
+	versus_.load(motif);
 	IniSection s;
 	for (const auto &pair : SELECT_DEFAULTS)
 		s.values[pair[0]] = pair[1];
@@ -228,10 +229,13 @@ bool MotifSelect::load(Motif &motif, const GameConfig &config, std::string &erro
 			if (side.face2Spr[0] >= 0)
 				keep.emplace_back((uint16_t)side.face2Spr[0], (uint16_t)side.face2Spr[1]);
 		}
+		if (versus_.faceSprite(0) >= 0)
+			keep.emplace_back((uint16_t)versus_.faceSprite(0), (uint16_t)versus_.faceSprite(1));
 		if (charAnims.load(dir + files->text("anim"), animError)) {
 			e.hasStance = sides_[0].faceAnim >= 0 && charAnims.get(sides_[0].faceAnim, e.stance);
 			e.hasDone = sides_[0].faceDoneAnim >= 0 && charAnims.get(sides_[0].faceDoneAnim, e.done);
-			for (const Animation *a : { &e.stance, &e.done }) {
+			e.hasVersus = versus_.faceAnim() >= 0 && charAnims.get(versus_.faceAnim(), e.versus);
+			for (const Animation *a : { &e.stance, &e.done, &e.versus }) {
 				for (const AnimFrame &f : a->frames) {
 					if (f.group >= 0)
 						keep.emplace_back((uint16_t)f.group, (uint16_t)f.number);
@@ -275,7 +279,10 @@ bool MotifSelect::load(Motif &motif, const GameConfig &config, std::string &erro
 		std::string sffError;
 		portrait.sff = std::make_unique<Sff>();
 		if (!spr.empty() && (portrait.sff->load(directoryOf(stage) + spr, sffError) || portrait.sff->load("data/" + spr, sffError))) {
-			portrait.sff->keepOnly({ { (uint16_t)stagePortraitSpr_[0], (uint16_t)stagePortraitSpr_[1] } });
+			std::vector<std::pair<uint16_t, uint16_t>> keep = { { (uint16_t)stagePortraitSpr_[0], (uint16_t)stagePortraitSpr_[1] } };
+			if (versus_.stageSprite(0) >= 0)
+				keep.emplace_back((uint16_t)versus_.stageSprite(0), (uint16_t)versus_.stageSprite(1));
+			portrait.sff->keepOnly(keep);
 			portrait.renderer = std::make_unique<SpriteRenderer>(*portrait.sff);
 		} else {
 			portrait.sff.reset();
@@ -421,6 +428,7 @@ void MotifSelect::reset(SelectMode mode, bool secondController)
 	phase_ = Phase::Characters;
 	cancelled_ = false;
 	timer_ = 0;
+	versusStarted_ = false;
 	stage_ = 0;
 	stageCount_ = 0;
 	stageBlink_ = true;
@@ -671,22 +679,52 @@ void MotifSelect::update(const platform::Pad &pad1, const platform::Pad &pad2)
 		break;
 	}
 	case Phase::Versus:
-		// Once the "done" animations have had their time, fade out; then the plain VS screen until 8e.
-		if (!fadeOut_.isActive() && sides_[0].screenDelay <= 0 && sides_[1].screenDelay <= 0 && timer_ < 1000) {
+		// Once the "done" animations have had their time, fade out; then the VS screen.
+		if (versusStarted_) {
+			const bool humans[2] = { true, mode_ == SelectMode::Versus && secondController_ };
+			versus_.update(pad1, pad2, humans);
+			if (versus_.done())
+				phase_ = Phase::Done;
+		} else if (!fadeOut_.isActive() && sides_[0].screenDelay <= 0 && sides_[1].screenDelay <= 0 && timer_ < 1000) {
 			fadeOut_.start(false);
 			timer_ = 1000;
-		}
-		if (fadeOut_.isActive()) {
+		} else if (fadeOut_.isActive()) {
 			fadeOut_.step();
 		} else if (timer_ >= 1000) {
-			if (++timer_ > 1000 + 120)
-				phase_ = Phase::Done;
+			startVersus();
 		}
 		break;
 	case Phase::Done: break;
 	}
 	for (int i = 0; i < 2; i++)
 		before_[i] = now[i];
+}
+
+// Hands the picks to the VS screen: each side's character in its palette, the stage, Arcade's match number.
+void MotifSelect::startVersus()
+{
+	VersusScreen::Fighter fighters[2];
+	for (int i = 0; i < 2; i++) {
+		const Entry &e = roster_[(size_t)sides_[i].chosen];
+		VersusScreen::Fighter &f = fighters[i];
+		f.name = e.name;
+		f.sff = e.sff.get();
+		f.renderer = e.renderer.get();
+		f.anim = e.versus;
+		f.hasAnim = e.hasVersus;
+		f.resFix = e.resFix;
+		f.sizeScaleX = e.sizeScaleX;
+		f.sizeScaleY = e.sizeScaleY;
+		f.palette = sides_[i].palette;
+	}
+	VersusScreen::StagePick stage;
+	const size_t s = (size_t)std::max(0, stage_ - 1);
+	stage.name = stageNames_[s];
+	stage.number = stage_;
+	stage.renderer = stagePortraits_[s].renderer.get();
+	stage.resFix = stagePortraits_[s].resFix;
+	versus_.start(fighters, stage, mode_ == SelectMode::Arcade ? 1 : 0);
+	versusStarted_ = true;
 }
 
 GameConfig MotifSelect::fight() const
@@ -842,8 +880,11 @@ void MotifSelect::drawStage()
 
 void MotifSelect::draw()
 {
+	if (versusStarted_) {
+		versus_.draw();
+		return;
+	}
 	Motif &m = *motif_;
-	const ScreenSpace &space = m.space();
 	platform::fillRect(0, 0, platform::SCREEN_WIDTH, platform::SCREEN_HEIGHT, clearColour_);
 	const View view = m.view();
 	bg_.draw(0, view);
@@ -857,18 +898,6 @@ void MotifSelect::draw()
 		fadeOut_.draw();
 	else if (fadeIn_.isActive())
 		fadeIn_.draw();
-	// After the fade: the plain VS screen until milestone 8e brings Ikemen's.
-	if (phase_ == Phase::Versus && timer_ > 1000 && !fadeOut_.isActive()) {
-		platform::fillRect(0, 0, platform::SCREEN_WIDTH, platform::SCREEN_HEIGHT, 0xFF000000);
-		const TextLayout &t = sides_[0].name;
-		TextLayout centred = t;
-		centred.align = 0;
-		centred.layout.offsetX = centred.layout.offsetY = 0;
-		const float w = (float)m.localWidth(), h = (float)m.localHeight();
-		centred.draw(roster_[(size_t)sides_[0].chosen].name, w * 0.25f, h * 0.5f, centred.layout.layer, m.fonts(), space);
-		centred.draw("VS", w * 0.5f, h * 0.5f, centred.layout.layer, m.fonts(), space);
-		centred.draw(roster_[(size_t)sides_[1].chosen].name, w * 0.75f, h * 0.5f, centred.layout.layer, m.fonts(), space);
-	}
 }
 
 // One pass of Ikemen's f_selectScreen draw order: the title, the big portraits, the grid, the cursors, the names, the

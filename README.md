@@ -212,8 +212,15 @@ paths use forward slashes.
      (xangle / yangle, perspective from a focal length, drawn in strips) and layouts their `.window` clip. The plain
      screen stays as the fallback. Memory for the 360: SFF v2 sprites now stay packed and decode only while a texture
      is made (ikemen1's system.sff was 426 MB decoded, more than the console has), and all textures together stay
-     under a 160 MB budget, the least recently drawn freed first (the 360 frees them a few frames later, once no draw
-     in flight uses them). Not yet: the VS screen (8e), team modes, the select timer.
+     under a 224 MB budget, the least recently drawn freed first (the 360 frees them a few frames later, once no draw
+     in flight uses them). Not yet: team modes, the select timer.
+   - 8e VS screen (done): `core/versus_screen` (`VersusScreen`) is Ikemen's VS screen from `[VS Screen]` and
+     VersusBG (start.lua's f_selectVersus): both characters' portraits (ikemen1: their stance animation in the chosen
+     palette, centred by `padding` and clipped to their windows), the names, the stage's portrait in its frame and
+     "Next Stage: ...", Arcade's "Match 1", between VersusBG's layers, with its fades. It lasts `time` (390 ticks in
+     ikemen1) after fading in; an attack button or Start cuts it short (a computer's pad doesn't). The select screen
+     hands it the picks after its own fade out, replacing the plain VS text. Not yet: team order select, the timer,
+     background loading, face2, the VS music (8f).
    - Checked against real Ikemen-GO screenshots (a scripted copy of the release): focal lengths are in Ikemen's
      240-high game space; select elements draw by layerno around SelectBG layer 1; both sides show from the start;
      the stage portrait shows in its frame. In the fight a 4:3 stage is pillarboxed at 960x720 as Ikemen keeps the
