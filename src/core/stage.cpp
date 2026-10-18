@@ -152,8 +152,9 @@ void Stage::logUnread(const std::vector<IniSection> &sections, const std::string
 	};
 	std::string report;
 	for (const IniSection &s : sections) {
-		// Background elements log their own; "[Begin Action n]" is the stage's animations.
-		if (text::startsWith(s.lower, "bg ") || s.lower == "bg" || text::startsWith(s.lower, "begin action"))
+		// Background elements and controllers log their own; "[Begin Action n]" is the stage's animations.
+		if (text::startsWith(s.lower, "bg ") || s.lower == "bg" || text::startsWith(s.lower, "begin action") ||
+			text::startsWith(s.lower, "bgctrl"))
 			continue;
 		const Known *known = nullptr;
 		for (const Known &k : KNOWN)
