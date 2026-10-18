@@ -1,5 +1,5 @@
-MUGEN360 - milestone 8f: music (homebrew test build)
-====================================================
+MUGEN360 - milestone 8: screenpack, menus and music (homebrew test build)
+=========================================================================
 
 New: Ikemen's VS screen between select and the fight (both fighters in their
 colours, names, the next stage and its picture, "Match 1" in Arcade). It
