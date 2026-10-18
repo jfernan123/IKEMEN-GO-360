@@ -1,0 +1,2 @@
+dr_mp3 v0.7.4 (in development) from https://github.com/mackron/dr_libs, commit dfe8377631000664666519fdb83da193fd8037f4.
+Public domain (Unlicense) or MIT No Attribution: see the end of dr_mp3.h.

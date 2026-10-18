@@ -38,6 +38,7 @@
 #include "core/fight_screen.h"
 #include "core/hud.h"
 #include "core/motif.h"
+#include "core/music.h"
 #include "core/select_screen.h"
 #include "core/title_screen.h"
 #include "core/log.h"
@@ -305,10 +306,13 @@ public:
 
 	void newMatch()
 	{
+		matchCount_++;
 		match_.newMatch();
 		fightScreen_.newMatch();
 		startRound(true);
 	}
+	uint32_t matchCount() const { return matchCount_; }
+	const MusicTrack &music() const { return stage_.music; }
 	void setTestPower(int32_t value)
 	{
 		for (Character &c : players_)
@@ -603,6 +607,8 @@ private:
 	}
 
 	Stage stage_;
+	// Matches started in this fight: each new one restarts the stage's music.
+	uint32_t matchCount_ = 0;
 	Character players_[2];
 	Camera camera_;
 	FightWorld world_;
@@ -832,7 +838,7 @@ int main(int argc, char **argv)
 	const bool testRun = !inputPath.empty() || !shots.empty() || quitFrame != UINT32_MAX;
 	if (!platform::init(testRun && !show))
 		return 1;
-	logf("mugen360: milestone 8e, VS screen");
+	logf("mugen360: milestone 8f, music");
 	if (!configLoaded)
 		logf("mugen360: %s", configError.c_str());
 	logf("game: p1=%s p2=%s stage=%s", config.player1.c_str(), config.player2.c_str(), config.stage.c_str());
@@ -919,6 +925,9 @@ int main(int argc, char **argv)
 		Buttons buttons;
 		// Where the debug screens go back to.
 		Screen gameScreen = screen;
+		Music music;
+		// What the music was last chosen for ("title", "select", "vs", "match N").
+		std::string musicFor;
 
 		// Every 600 frames (10 seconds), a line in the log on how long frames took to update and draw (not counting the
 		// wait for the screen), and the textures made meanwhile: the console's log shows where time goes.
@@ -963,6 +972,26 @@ int main(int argc, char **argv)
 			} else if (back && screen != Screen::Title && !selectHandlesBack) {
 				break;
 			}
+			// The music for where the game is, as Ikemen's playBgm calls go: the title's and the select screen's
+			// replace whatever plays, the VS screen's only if the screenpack has one, and the stage's starts over with
+			// each match (Ikemen's Music.act at round 1).
+			std::string wantedMusic;
+			if (gameScreen == Screen::Title)
+				wantedMusic = "title";
+			else if (gameScreen == Screen::Select)
+				wantedMusic = motifSelectLoaded && motifSelect.inVersus() ? "vs" : "select";
+			else if (gameScreen == Screen::Stage && stage)
+				wantedMusic = "match " + std::to_string(stage->matchCount());
+			if (wantedMusic != musicFor) {
+				musicFor = wantedMusic;
+				if (wantedMusic == "title" || wantedMusic == "select")
+					music.request(motifLoaded ? motif.music(wantedMusic) : MusicTrack{}, true);
+				else if (wantedMusic == "vs")
+					music.request(motif.music("vs"), false);
+				else if (stage)
+					music.restart(stage->music());
+			}
+			music.update();
 			if (const auto shot = shots.find(frame); shot != shots.end())
 				platform::requestScreenshot(shot->second.c_str());
 			// The debug screens cycle; from the last one, back to the fight (or the select screen before one).

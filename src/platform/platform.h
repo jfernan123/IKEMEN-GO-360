@@ -72,6 +72,12 @@ bool requestScreenshot(const char *path);
 // A copied 48 kHz stereo floating-point sound. A nonnegative MUGEN channel replaces the sound already on it.
 void playSound(const float *stereo, size_t frames, int channel = -1);
 void stopSound(int channel);
+// Music, streamed: the engine tops up a queue of 48 kHz stereo frames every frame, and it plays under the sounds.
+// musicSpace is how many frames the queue takes now: 0 when there's no audio (a hidden test run), so nothing decodes.
+size_t musicSpace();
+void queueMusic(const float *stereo, size_t frames);
+// Drops what's queued, for a new song or silence.
+void clearMusic();
 
 // Reads a whole file in as few disk reads as the platform allows (one on the 360: its drives are slow per request).
 // The path is relative to the game's folder, with '/'.

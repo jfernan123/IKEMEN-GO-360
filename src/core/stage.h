@@ -9,6 +9,7 @@
 #include "core/bgdef.h"
 #include "core/camera.h"
 #include "core/ini.h"
+#include "core/music.h"
 #include "core/sff.h"
 #include "core/sprite_renderer.h"
 
@@ -45,6 +46,8 @@ public:
 	} shadow;
 	// [Reflection] intensity: the fighters mirrored on the floor, 0 (none) to 255.
 	int32_t reflection = 0;
+	// [Music] bgmusic and its settings, found as Ikemen's SearchFile finds it.
+	MusicTrack music;
 
 	const Sff &sff() const { return sff_; }
 

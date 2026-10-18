@@ -220,7 +220,16 @@ paths use forward slashes.
      "Next Stage: ...", Arcade's "Match 1", between VersusBG's layers, with its fades. It lasts `time` (390 ticks in
      ikemen1) after fading in; an attack button or Start cuts it short (a computer's pad doesn't). The select screen
      hands it the picks after its own fade out, replacing the plain VS text. Not yet: team order select, the timer,
-     background loading, face2, the VS music (8f).
+     background loading, face2.
+   - 8f music (done): `core/music` is Ikemen's Bgm: one song at a time, MP3 (dr_mp3), Ogg Vorbis (stb_vorbis) or WAV,
+     decoded about 85 ms at a time into a one-second queue each platform mixes under the sounds
+     (`platform::queueMusic`), so a song never sits decoded in memory. It's resampled to 48 kHz, played at Ikemen's
+     music volume (2 ^ (-5 + 75 * 0.06 * volume / 100)) and loops between its loop points. The screenpack's `[Music]`
+     plays on the title and select screens (replacing what plays; none means silence) and on the VS screen (only if
+     it names one), and the stage's `[Music]` bgmusic starts over with each match; files are found as Ikemen's
+     SearchFile finds them. The Ikemen release ships no music (ikemen1 names sound/Title.mp3, Select.mp3,
+     Versus.mp3; KFM's stage names kfm.mid), so nothing plays until songs are added. Not yet: MIDI and tracker
+     files, round / final / low-life / victory music, the pause volume, options for the volumes.
    - Checked against real Ikemen-GO screenshots (a scripted copy of the release): focal lengths are in Ikemen's
      240-high game space; select elements draw by layerno around SelectBG layer 1; both sides show from the start;
      the stage portrait shows in its frame. In the fight a 4:3 stage is pillarboxed at 960x720 as Ikemen keeps the

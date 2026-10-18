@@ -46,6 +46,9 @@ void m360::platform::playSound(const float *stereo, size_t frames, int channel)
 	playedChannel = channel;
 }
 void m360::platform::stopSound(int) {}
+size_t m360::platform::musicSpace() { return 0; }
+void m360::platform::queueMusic(const float *, size_t) {}
+void m360::platform::clearMusic() {}
 struct m360::platform::Texture {};
 m360::platform::Texture *m360::platform::createTexture(int, int, const uint32_t *) { return new Texture; }
 void m360::platform::destroyTexture(Texture *texture) { delete texture; }

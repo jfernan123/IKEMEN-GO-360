@@ -13,6 +13,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "platform/music_queue.h"
 #include "platform/platform.h"
 
 extern "C" {
@@ -74,6 +75,7 @@ uint32_t audio_driver;
 std::atomic_flag audio_lock = ATOMIC_FLAG_INIT;
 struct Voice { std::vector<float> samples; size_t position = 0; int channel = -1; };
 std::vector<Voice> voices;
+MusicQueue music;
 
 void audio_callback(const uint32_t *)
 {
@@ -93,6 +95,11 @@ void audio_callback(const uint32_t *)
 	voices.erase(std::remove_if(voices.begin(), voices.end(), [](const Voice &v) {
 		return v.position >= v.samples.size() / 2;
 	}), voices.end());
+	float left = 0, right = 0;
+	for (size_t i = 0; i < AUDIO_SAMPLES && music.pop(left, right); i++) {
+		audio_frame[i] += left;
+		audio_frame[AUDIO_SAMPLES + i] += right;
+	}
 	for (size_t i = 0; i < AUDIO_SAMPLES * 2; i++) audio_frame[i] = std::clamp(audio_frame[i], -1.0f, 1.0f);
 	audio_lock.clear(std::memory_order_release);
 	(void)XAudioSubmitRenderDriverFrame(driver, audio_frame);
@@ -294,6 +301,32 @@ void stopSound(int channel)
 {
 	while (audio_lock.test_and_set(std::memory_order_acquire)) {}
 	voices.erase(std::remove_if(voices.begin(), voices.end(), [channel](const Voice &v) { return channel < 0 || v.channel == channel; }), voices.end());
+	audio_lock.clear(std::memory_order_release);
+}
+
+size_t musicSpace()
+{
+	if (!audio_driver)
+		return 0;
+	while (audio_lock.test_and_set(std::memory_order_acquire)) {}
+	const size_t space = music.space();
+	audio_lock.clear(std::memory_order_release);
+	return space;
+}
+
+void queueMusic(const float *stereo, size_t frames)
+{
+	if (!audio_driver || !stereo || !frames)
+		return;
+	while (audio_lock.test_and_set(std::memory_order_acquire)) {}
+	music.push(stereo, frames);
+	audio_lock.clear(std::memory_order_release);
+}
+
+void clearMusic()
+{
+	while (audio_lock.test_and_set(std::memory_order_acquire)) {}
+	music.clear();
 	audio_lock.clear(std::memory_order_release);
 }
 

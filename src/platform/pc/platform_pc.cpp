@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "platform/music_queue.h"
 #include "platform/platform.h"
 
 namespace m360::platform {
@@ -30,6 +31,7 @@ std::string screenshot_path;
 SDL_AudioStream *audio_stream;
 struct Voice { std::vector<float> samples; size_t position = 0; int channel = -1; };
 std::vector<Voice> voices;
+MusicQueue music;
 
 void SDLCALL audio_callback(void *, SDL_AudioStream *stream, int additional_amount, int)
 {
@@ -43,6 +45,11 @@ void SDLCALL audio_callback(void *, SDL_AudioStream *stream, int additional_amou
 	voices.erase(std::remove_if(voices.begin(), voices.end(), [](const Voice &v) {
 		return v.position >= v.samples.size() / 2;
 	}), voices.end());
+	float left = 0, right = 0;
+	for (size_t i = 0; i < frames && music.pop(left, right); i++) {
+		mixed[i * 2] += left;
+		mixed[i * 2 + 1] += right;
+	}
 	for (float &sample : mixed) sample = std::clamp(sample, -1.0f, 1.0f);
 	SDL_PutAudioStreamData(stream, mixed.data(), (int)(mixed.size() * sizeof(float)));
 }
@@ -139,6 +146,34 @@ void stopSound(int channel)
 		return;
 	SDL_LockAudioStream(audio_stream);
 	voices.erase(std::remove_if(voices.begin(), voices.end(), [channel](const Voice &v) { return channel < 0 || v.channel == channel; }), voices.end());
+	SDL_UnlockAudioStream(audio_stream);
+}
+
+size_t musicSpace()
+{
+	if (!audio_stream)
+		return 0;
+	SDL_LockAudioStream(audio_stream);
+	const size_t space = music.space();
+	SDL_UnlockAudioStream(audio_stream);
+	return space;
+}
+
+void queueMusic(const float *stereo, size_t frames)
+{
+	if (!audio_stream || !stereo || !frames)
+		return;
+	SDL_LockAudioStream(audio_stream);
+	music.push(stereo, frames);
+	SDL_UnlockAudioStream(audio_stream);
+}
+
+void clearMusic()
+{
+	if (!audio_stream)
+		return;
+	SDL_LockAudioStream(audio_stream);
+	music.clear();
 	SDL_UnlockAudioStream(audio_stream);
 }
 
