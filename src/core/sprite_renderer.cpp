@@ -1,6 +1,7 @@
 #include "core/sprite_renderer.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 
 #include "core/log.h"
@@ -30,6 +31,19 @@ size_t consoleBytes(int width, int height)
 size_t SpriteRenderer::totalTextureBytes()
 {
 	return textureBytes;
+}
+
+namespace {
+size_t createdCount = 0;
+uint64_t createdMicroseconds = 0;
+} // namespace
+
+void SpriteRenderer::takeCreationStats(size_t &count, uint64_t &microseconds)
+{
+	count = createdCount;
+	microseconds = createdMicroseconds;
+	createdCount = 0;
+	createdMicroseconds = 0;
 }
 
 SpriteRenderer::SpriteRenderer(const Sff &sff) : sff_(sff)
@@ -101,33 +115,56 @@ platform::Texture *SpriteRenderer::texture(const Sprite &sprite, int palette, co
 	}
 
 	platform::Texture *tex = nullptr;
+	const auto started = std::chrono::steady_clock::now();
 	if (!sprite.isBlank() && sff_.decode(sprite)) {
 		std::vector<Argb> pixels = sprite.toArgb(sff_.palette(palette), how.mask);
 		// The texture keeps the picture; the sprite goes back to its packed bytes.
 		sff_.release(sprite);
-		const float s = (how.trans == Trans::None ? 255 : how.srcAlpha) / 255.0f;
-		const float keep = (how.trans == Trans::None ? 0 : how.dstAlpha) / 255.0f;
+		// Integer maths throughout: on the 360's CPU each float-to-integer conversion stalls, and this runs per pixel.
+		// x * y / 255, rounded.
+		const auto times = [](uint32_t x, uint32_t y) { const uint32_t t = x * y + 128; return (t + (t >> 8)) >> 8; };
+		const uint32_t s = how.trans == Trans::None ? 255 : how.srcAlpha;
+		const uint32_t keep = how.trans == Trans::None ? 0 : how.dstAlpha;
+		const bool plain = how.shadow < 0 && how.trans == Trans::None && how.addR == 0 && how.addG == 0 &&
+			how.addB == 0 && how.mulR == 256 && how.mulG == 256 && how.mulB == 256;
+		const auto channel = [](uint32_t c, int add, uint32_t mul) {
+			const int v = ((int)c + add) * (int)mul / 256;
+			return (uint32_t)(v < 0 ? 0 : v > 255 ? 255 : v);
+		};
 		for (Argb &p : pixels) {
-			const float a = (p >> 24) / 255.0f;
-			float outA = a;
-			float r = std::clamp(((int)(p >> 16 & 0xFF) + how.addR) * how.mulR / 256.0f, 0.0f, 255.0f) * a;
-			float g = std::clamp(((int)(p >> 8 & 0xFF) + how.addG) * how.mulG / 256.0f, 0.0f, 255.0f) * a;
-			float b = std::clamp(((int)(p & 0xFF) + how.addB) * how.mulB / 256.0f, 0.0f, 255.0f) * a;
+			const uint32_t a = p >> 24;
+			if (a == 0) {
+				p = 0;
+				continue;
+			}
+			uint32_t r = p >> 16 & 0xFF, g = p >> 8 & 0xFF, b = p & 0xFF, outA = a;
+			if (!plain) {
+				r = channel(r, how.addR, how.mulR);
+				g = channel(g, how.addG, how.mulG);
+				b = channel(b, how.addB, how.mulB);
+			}
+			// Premultiplied by alpha (see platform::Blend).
+			r = times(r, a);
+			g = times(g, a);
+			b = times(b, a);
 			if (how.shadow >= 0) {
 				// Black, covering the screen by the shadow's strength where the sprite is.
 				r = g = b = 0;
-				outA = a * how.shadow / 255.0f;
+				outA = times(a, (uint32_t)how.shadow);
 			} else if (how.trans == Trans::Add) {
-				r *= s, g *= s, b *= s;
-				outA = a * (1 - keep);
+				r = times(r, s), g = times(g, s), b = times(b, s);
+				outA = times(a, 255 - keep);
 			} else if (how.trans == Trans::Sub || how.trans == Trans::SubAdd) {
-				r *= s, g *= s, b *= s;
+				r = times(r, s), g = times(g, s), b = times(b, s);
 				outA = 0;
 			}
-			p = (Argb)(outA * 255 + 0.5f) << 24 | (Argb)(r + 0.5f) << 16 | (Argb)(g + 0.5f) << 8 | (Argb)(b + 0.5f);
+			p = outA << 24 | r << 16 | g << 8 | b;
 		}
 		tex = platform::createTexture(sprite.width, sprite.height, pixels.data());
 	}
+	createdCount++;
+	createdMicroseconds += (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(
+		std::chrono::steady_clock::now() - started).count();
 	Cached cached;
 	cached.texture = tex;
 	cached.lastUse = ++useClock;

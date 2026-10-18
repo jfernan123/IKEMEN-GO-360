@@ -50,7 +50,7 @@ struct SpriteDraw {
 class SpriteRenderer {
 public:
 	// The most all renderers' textures may take, counted as on a 360.
-	static constexpr size_t TEXTURE_BUDGET = 160u * 1024 * 1024;
+	static constexpr size_t TEXTURE_BUDGET = 224u * 1024 * 1024;
 
 	explicit SpriteRenderer(const Sff &sff);
 	~SpriteRenderer();
@@ -74,6 +74,8 @@ public:
 	void clear();
 	// What every renderer's textures would take on a 360 (each padded to 32x32 tiles, at least 64 KB).
 	static size_t totalTextureBytes();
+	// Textures made since the last call, and the microseconds spent making them (decoding, converting, uploading).
+	static void takeCreationStats(size_t &count, uint64_t &microseconds);
 
 	// Where a point of a sprite drawn with its axis at screen (x, y) lands once turned by how's xangle / yangle
 	// (Ikemen's applyRotation and applyProjection): (px, py) is the point's screen position before turning.

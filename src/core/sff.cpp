@@ -277,7 +277,10 @@ bool Sff::decode(const Sprite &sprite) const
 
 void Sff::release(const Sprite &sprite) const
 {
-	if (!sprite.packed)
+	// Palette sprites are small (a byte a pixel) and get made into several textures (palettes, colour effects, and
+	// again after the texture budget drops them): they stay decoded. Full-colour ones (a screenpack's backgrounds,
+	// four bytes a pixel, hundreds of MB decoded) go back to their packed bytes.
+	if (!sprite.packed || !sprite.isTrueColor())
 		return;
 	std::vector<uint8_t>().swap(sprite.indices);
 	std::vector<Argb>().swap(sprite.argb);

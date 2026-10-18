@@ -317,6 +317,21 @@ Pad pad(int player)
 	return p;
 }
 
+bool readWholeFile(const char *path, std::vector<uint8_t> &out)
+{
+	std::FILE *f = std::fopen(path, "rb");
+	if (!f)
+		return false;
+	std::fseek(f, 0, SEEK_END);
+	const long size = std::ftell(f);
+	std::fseek(f, 0, SEEK_SET);
+	out.resize(size > 0 ? (size_t)size : 0);
+	const size_t got = out.empty() ? 0 : std::fread(out.data(), 1, out.size(), f);
+	std::fclose(f);
+	out.resize(got);
+	return size >= 0 && got == (size_t)size;
+}
+
 void logLine(const char *line)
 {
 	std::printf("%s\n", line);

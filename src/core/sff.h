@@ -60,10 +60,12 @@ public:
 	void keepOnly(const std::vector<std::pair<uint16_t, uint16_t>> &keys);
 
 	const Sprite *get(uint16_t group, uint16_t number) const;
-	// A packed sprite's pixels, decoded into it (false if they won't decode); release() drops them again.
+	// A packed sprite's pixels, decoded into it (false if they won't decode); release() drops a full-colour one's
+	// again (a palette sprite's stay, being small).
 	bool decode(const Sprite &sprite) const;
 	void release(const Sprite &sprite) const;
 	const std::vector<Sprite> &sprites() const { return sprites_; }
+	const std::string &path() const { return path_; }
 	const std::vector<Palette> &palettes() const { return palettes_; }
 	// The palette list index for palette group,number (a character's palette 1 is 1,1), or -1.
 	int paletteIndex(uint16_t group, uint16_t number) const;

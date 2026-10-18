@@ -31,8 +31,7 @@ void loadFonts(const IniSection &files, const std::string &defPath, FontTable &o
 			continue;
 		std::string error = "can't find " + name;
 		for (const std::string &path : { directoryOf(defPath) + name, "data/" + name, "data/font/" + name }) {
-			std::vector<uint8_t> probe;
-			if (!readFile(path, probe))
+			if (!fileExists(path))
 				continue;
 			auto font = std::make_unique<Font>();
 			if (font->load(path, error))
@@ -301,8 +300,7 @@ void resolveFontFile(TextLayout &text, FontTable &fonts, FontFiles &files, const
 	std::string error = "can't find " + text.fontFile;
 	for (const std::string &path : { directoryOf(defPath) + text.fontFile, "data/" + text.fontFile,
 			 "data/font/" + text.fontFile }) {
-		std::vector<uint8_t> probe;
-		if (!readFile(path, probe))
+		if (!fileExists(path))
 			continue;
 		auto font = std::make_unique<Font>();
 		if (font->load(path, error)) {
