@@ -265,12 +265,15 @@ void FightEffects::tick()
 
 void FightEffects::draw(const View &view, float groundY, int pass)
 {
+	// Screen-space effects don't zoom with the camera (Ikemen's SprData.draw for "screen" sprites).
+	const View flat = view.unzoomed();
 	for (const Effect &effect : effects_) {
 		const int effectPass = effect.layer < 0 ? -1 : effect.layer > 0 ? 1 : effect.priority < 0 ? -1 : 0;
 		if (effectPass != pass || !effect.renderer)
 			continue;
-		const float sx = view.screenX(effect.screen ? effect.x : effect.x - view.camX);
-		const float sy = view.screenY(groundY + effect.y - (effect.screen ? 0 : view.camY));
+		const View &v = effect.screen ? flat : view;
+		const float sx = v.screenX(effect.screen ? effect.x : effect.x - v.camX);
+		const float sy = v.screenY(groundY + effect.y - (effect.screen ? 0 : v.camY));
 		SpriteDraw how;
 		how.scaleX = effect.scaleX;
 		// vfacing -1 draws it upside down about its position.
@@ -278,7 +281,7 @@ void FightEffects::draw(const View &view, float groundY, int pass)
 		how.trans = effect.trans;
 		how.srcAlpha = effect.srcAlpha;
 		how.dstAlpha = effect.dstAlpha;
-		effect.renderer->drawAnimation(effect.anim, sx, sy, view.scale, effect.facing, how);
+		effect.renderer->drawAnimation(effect.anim, sx, sy, v.drawScaleX(), effect.facing, how);
 	}
 }
 

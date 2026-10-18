@@ -64,6 +64,26 @@ bool Stage::load(const std::string &defPath, std::string &error)
 		c->readInt("tension", camera.tension);
 		c->readInt("cuthigh", camera.cuthigh);
 		c->readInt("cutlow", camera.cutlow);
+		c->readInt("overdrawhigh", camera.overdrawhigh);
+		c->readInt("overdrawlow", camera.overdrawlow);
+		c->readFloat("tensionvel", camera.tensionvel);
+		c->readFloat("startzoom", camera.startzoom);
+		c->readFloat("zoomin", camera.zoomin);
+		c->readFloat("zoomout", camera.zoomout);
+		c->readFloat("zoomindelay", camera.zoomindelay);
+		c->readFloat("zoominspeed", camera.zoominspeed);
+		c->readFloat("zoomoutspeed", camera.zoomoutspeed);
+		c->readFloat("yscrollspeed", camera.yscrollspeed);
+		c->readFloat("boundhighzoomdelta", camera.boundhighzoomdelta);
+		c->readFloat("verticalfollowzoomdelta", camera.verticalfollowzoomdelta);
+		int32_t flag = 0;
+		camera.autocenter = c->readInt("autocenter", flag) && flag != 0;
+		camera.lowestcap = c->readInt("lowestcap", flag) && flag != 0;
+		// "tensionlow" turns on the vertical tension (Ikemen's stage loading).
+		if (c->readInt("tensionlow", camera.tensionlow)) {
+			camera.ytensionenable = true;
+			c->readInt("tensionhigh", camera.tensionhigh);
+		}
 	}
 	if (const IniSection *s = findSection(sections, "shadow")) {
 		s->readInt("intensity", shadow.intensity);
@@ -115,7 +135,10 @@ void Stage::logUnread(const std::vector<IniSection> &sections, const std::string
 		{ "playerinfo", { "p1startx", "p1starty", "p1facing", "p2startx", "p2starty", "p2facing", "leftbound",
 							"rightbound" } },
 		{ "camera", { "startx", "starty", "boundleft", "boundright", "boundhigh", "boundlow", "verticalfollow",
-						"floortension", "tension", "cuthigh", "cutlow" } },
+						"floortension", "tension", "cuthigh", "cutlow", "overdrawhigh", "overdrawlow", "tensionvel",
+						"startzoom", "zoomin", "zoomout", "zoomindelay", "zoominspeed", "zoomoutspeed", "yscrollspeed",
+						"boundhighzoomdelta", "verticalfollowzoomdelta", "autocenter", "lowestcap", "tensionlow",
+						"tensionhigh" } },
 		{ "shadow", { "intensity", "yscale", "fade.range" } },
 		{ "reflection", { "intensity" } },
 		{ "music", { "bgmusic", "bgmvolume", "bgmloop", "bgmloopstart", "bgmloopend" } },
@@ -178,6 +201,7 @@ void Stage::draw(int32_t layer, const View &view)
 	local.camX = view.camX / localScale;
 	local.camY = view.camY / localScale;
 	local.topCut = view.topCut / localScale;
+	local.ground = view.ground / localScale;
 	local.scale = view.scale * localScale;
 	bgs_.draw(layer, local);
 }

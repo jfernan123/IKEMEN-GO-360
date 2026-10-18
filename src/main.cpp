@@ -327,7 +327,16 @@ public:
 		hud_.reset();
 		fightScreen_.reset();
 		effects_.clear();
-		camera_.reset(stage_.camera, stage_.localScale);
+		CameraSpace space;
+		space.localScale = stage_.localScale;
+		space.gameWidth = stage_.gameWidth;
+		space.gameHeight = 240;
+		space.screenLeft = (float)stage_.screenleft * stage_.localScale;
+		space.screenRight = (float)stage_.screenright * stage_.localScale;
+		space.zoffset = (float)stage_.zoffset * stage_.localScale;
+		space.localHeight = stage_.localHeight;
+		space.heightScale = stage_.view(0, 0).scale;
+		camera_.reset(stage_.camera, space);
 		updateWorld();
 		for (int i = 0; i < 2; i++)
 			players_[i].startRound((float)stage_.p[i].x * stage_.localScale, (float)stage_.p[i].y * stage_.localScale,
@@ -380,6 +389,7 @@ public:
 		}
 		match_.fillWorld(world_);
 		updateWorld();
+		camera_.resetTracking();
 		const float edge = world_.screenEdge;
 		// Player 2 is the computer unless a second controller is plugged in.
 		const bool cpu = forceCpu_ || !pad2.connected;
@@ -409,6 +419,13 @@ public:
 			if (players_[i].screenBound())
 				keepInBounds(i, edge);
 		}
+		// Where the players are for the camera (Ikemen's Char.track, after their update): their x, moving at their
+		// velocity unless paused.
+		for (int i = 0; i < 2; i++) {
+			const Character &c = players_[i];
+			const float velocity = run[i] && !c.hitPause() ? c.vx * c.localScale * (float)c.facing : 0.0f;
+			camera_.track(c.worldX(), c.worldX(), velocity, c.worldY());
+		}
 		// Only where their hurt boxes touch, as MUGEN does: a thrown player (no hurt box) isn't pushed off.
 		if (players_[0].playerPush() && players_[1].playerPush() && players_[0].clsnTouch(players_[1], 2, 2))
 			pushApart(edge);
@@ -417,12 +434,10 @@ public:
 			if (run[i]) players_[i].beginHitDetection();
 		for (int i = 0; i < 2; i++)
 			if (run[i]) players_[i].hitDetection();
-		const float leftest = std::min(players_[0].worldX(), players_[1].worldX());
-		const float rightest = std::max(players_[0].worldX(), players_[1].worldX());
-		if (!globallyPaused)
-			camera_.update(leftest, rightest, std::min(players_[0].worldY(), players_[1].worldY()), world_.halfWidth, edge);
 		for (int i = 0; i < 2; i++)
 			if (run[i]) players_[i].tick();
+		// The camera runs after the characters, pauses included (Ikemen's System.action).
+		camera_.action();
 		effects_.tick();
 		effects_.tickPause();
 		if (!globallyPaused) {
@@ -434,7 +449,7 @@ public:
 
 	void draw()
 	{
-		const View view = stage_.view(camera_.x - effects_.shakeX(), camera_.y - effects_.shakeY());
+		const View view = fightView(effects_.shakeX(), effects_.shakeY());
 		// Ikemen's order: the fight screen's layer -1 and 0 behind the characters, 1 and 2 in front.
 		stage_.draw(0, view);
 		fightScreen_.draw(-1, match_, players_[0], players_[1]);
@@ -481,7 +496,7 @@ private:
 	{
 		world_.camX = camera_.x;
 		world_.camY = camera_.y;
-		world_.halfWidth = stage_.view(camera_.x, camera_.y).halfWidth();
+		world_.halfWidth = fightView(0, 0).halfWidth();
 		world_.screenEdge = world_.halfWidth - (float)std::max(stage_.screenleft, stage_.screenright) * stage_.localScale;
 		world_.leftBound = stage_.leftbound * stage_.localScale;
 		world_.rightBound = stage_.rightbound * stage_.localScale;
@@ -547,16 +562,24 @@ private:
 		}
 	}
 
-	// Where player i may stand: inside the stage's bounds and the screen's edges. The camera follows, but only as far
-	// as keeps the other player on screen, so the screen's edge is what stops a player walking away.
-	void limits(int i, float edge, float &lo, float &hi) const
+	// Where player i may stand (Ikemen's xScreenBound): inside the camera's screen less the stage's screenleft /
+	// screenright (xmin / xmax), and inside the stage's leftbound / rightbound.
+	void limits(int, float, float &lo, float &hi) const
 	{
-		const float other = players_[1 - i].worldX();
 		const float scale = stage_.localScale;
-		const float camMin = std::max((float)stage_.camera.boundleft * scale, other - edge);
-		const float camMax = std::min((float)stage_.camera.boundright * scale, other + edge);
-		lo = std::max(stage_.leftbound * scale, camMin - edge);
-		hi = std::min(stage_.rightbound * scale, camMax + edge);
+		lo = std::max(camera_.xmin(), stage_.leftbound * scale);
+		hi = std::min(camera_.xmax(), stage_.rightbound * scale);
+		// Ikemen's Clamp keeps the minimum when the two cross.
+		hi = std::max(hi, lo);
+	}
+
+	// The fight's view: the camera's position (less any shake) and zoom, about the ground line.
+	View fightView(float shakeX, float shakeY) const
+	{
+		View view = stage_.view(camera_.x - shakeX, camera_.y - shakeY);
+		view.zoomX = view.zoomY = camera_.scale;
+		view.ground = (float)stage_.zoffset * stage_.localScale;
+		return view;
 	}
 
 	void keepInBounds(int i, float edge)
@@ -843,7 +866,7 @@ int main(int argc, char **argv)
 	const bool testRun = !inputPath.empty() || !shots.empty() || quitFrame != UINT32_MAX;
 	if (!platform::init(testRun && !show))
 		return 1;
-	logf("mugen360: milestone 9a, the release stages");
+	logf("mugen360: milestone 9b, camera zoom");
 	if (!configLoaded)
 		logf("mugen360: %s", configError.c_str());
 	logf("game: p1=%s p2=%s stage=%s", config.player1.c_str(), config.player2.c_str(), config.stage.c_str());

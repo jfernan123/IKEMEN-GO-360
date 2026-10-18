@@ -254,8 +254,17 @@ paths use forward slashes.
      yet ("not read yet: ..."), the list for 9b-9d. The select screen reads a stage's portraitscale from
      [StageInfo], as Ikemen does. Not included: the 3D stages (glTF models) and interactivestage's attached
      character (a ZSS script).
-   - Next: 9b camera zoom, 9c windows / parallax width / BG controllers, 9d the stage's palette effects (SuperPause
-     darkening, BGPalFX, AllPalFX).
+   - 9b camera (done): `core/camera` is now a translation of Ikemen's fighting camera (camera.go Reset / Init /
+     action / reduceZoomSpeed / keepScreenEdge / boundY, without the Z axis or autozoom) instead of the simplified
+     one: the edges ease toward keeping both players inside the tension margins, the camera zooms between the
+     stage's zoomout and zoomin (startzoom, zoomindelay, zoominspeed, zoomoutspeed), follows the highest player by
+     verticalfollow or, with "tensionlow", the vertical tension, and keeps x to quarter units on stages that don't
+     zoom. Players are held inside the camera's screen less screenleft / screenright (Ikemen's xmin / xmax) and the
+     stage's bounds. Characters, effects and projectiles draw zoomed about the ground line; background elements zoom
+     by their delta (an element that doesn't scroll doesn't zoom); screen-space effects don't zoom. Training Stage Z
+     and the Interactive stage zoom out to 0.75 as the players separate. The scripted KFM fights are unchanged.
+   - Next: 9c windows / parallax width / BG controllers, 9d the stage's palette effects (SuperPause darkening,
+     BGPalFX, AllPalFX).
 
 ## Asset notice
 
