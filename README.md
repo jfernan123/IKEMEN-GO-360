@@ -263,8 +263,13 @@ paths use forward slashes.
      stage's bounds. Characters, effects and projectiles draw zoomed about the ground line; background elements zoom
      by their delta (an element that doesn't scroll doesn't zoom); screen-space effects don't zoom. Training Stage Z
      and the Interactive stage zoom out to 0.75 as the players separate. The scripted KFM fights are unchanged.
-   - Next: 9c windows / parallax width / BG controllers, 9d the stage's palette effects (SuperPause darkening,
-     BGPalFX, AllPalFX).
+   - 9c background elements (done): `window`, `maskwindow` and `windowdelta` clip stage and screenpack elements;
+     `scalestart` / `scaledelta` resize them as the camera moves; parallax `width = top,bottom` floors draw as a
+     subdivided trapezoid without a diagonal seam. Stage BGCtrlDef / BGCtrl timelines support Anim, Visible, Enable,
+     PosSet/Add, VelSet/Add and SinX/Y, including target IDs, loop times and resetbg. Ikemen-only layer -1 draws on
+     stages that declare an Ikemen version. Focused tests cover the window rectangle, floor convergence, controller
+     timing, disabled motion and round reset.
+   - Next: 9d the stage's palette effects (SuperPause darkening, BGPalFX, AllPalFX).
 
 ## Asset notice
 

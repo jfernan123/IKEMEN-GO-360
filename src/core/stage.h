@@ -62,6 +62,7 @@ public:
 	MusicTrack music;
 
 	const Sff &sff() const { return sff_; }
+	const BgDef &backgrounds() const { return bgs_; }
 
 private:
 	Sff sff_;

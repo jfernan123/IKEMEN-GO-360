@@ -73,6 +73,10 @@ struct BgCtrl {
 
 struct ClipRect;
 
+struct BgTrapezoid {
+	float topLeft = 0, topRight = 0, bottomLeft = 0, bottomRight = 0;
+};
+
 // A set of background elements: a stage's, or a screenpack screen's. The elements are the sections named
 // "<prefix> ..." (Ikemen's loadBGDef / readBackGround / backGround.drawTransformed), and for a stage its BG
 // controllers. Without 3D models, video, zoomdelta and the other Ikemen-only zoom keys.
@@ -96,6 +100,10 @@ public:
 	void draw(int32_t layer, const View &view);
 	size_t size() const { return bgs_.size(); }
 	const BgElement &element(size_t i) const { return bgs_[i]; }
+	// Geometry helpers exposed for the stage compatibility tests and debug tooling.
+	bool clipRect(size_t index, const View &view, ClipRect &out) const;
+	static BgTrapezoid parallaxEdges(float anchorX, float centre, float spriteWidth, float axisX,
+		float topScale, float bottomScale, float drawScaleX);
 
 private:
 	void drawElement(const BgElement &bg, const View &view);

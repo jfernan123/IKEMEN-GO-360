@@ -1,0 +1,55 @@
+[Info]
+name = "Stage 9c Test"
+
+[StageInfo]
+zoffset = 200
+localcoord = 320,240
+
+[Camera]
+boundleft = -160
+boundright = 160
+
+[PlayerInfo]
+p1startx = -70
+p2startx = 70
+
+[BGdef]
+spr = ../../data/stages/kfm.sff
+
+[BG Controlled]
+type = normal
+spriteno = 0,0
+id = 10
+velocity = 1,0
+window = 10,20,109,69
+windowdelta = 0.5,0.25
+
+[BG Floor]
+type = parallax
+spriteno = 0,0
+start = 0,160
+width = 100,200
+
+[BGCtrlDef Test]
+ctrlid = 10
+looptime = 6
+
+[BGCtrl Hide]
+type = Visible
+time = 0
+value = 0
+
+[BGCtrl Disable]
+type = Enable
+time = 1
+value = 0
+
+[BGCtrl Resume]
+type = Enable
+time = 3
+value = 1
+
+[BGCtrl Faster]
+type = VelSet
+time = 3
+x = 3

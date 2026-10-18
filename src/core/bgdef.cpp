@@ -362,8 +362,10 @@ void BgDef::update()
 			runController(ctrl);
 	}
 	for (BgElement &bg : bgs_) {
-		bg.offsetX += bg.velocityX;
-		bg.offsetY += bg.velocityY;
+		if (bg.enabled) {
+			bg.offsetX += bg.velocityX;
+			bg.offsetY += bg.velocityY;
+		}
 		// Keep a tiled element's scroll within one tile, so it never loses precision.
 		if (bg.tileX && bg.spacingX > 0)
 			bg.offsetX = std::fmod(bg.offsetX, (float)bg.spacingX);
@@ -500,17 +502,39 @@ void BgDef::drawElement(const BgElement &bg, const View &cameraView)
 			}
 			// The bottom row is the top row scaled about the screen's centre column, so it scrolls faster as the camera
 			// moves (Ikemen's renderSpriteQuad trapezoid convergence).
-			const float topLeft = px - (float)sprite->axisX * topScale * view.drawScaleX();
-			const float topWidth = (float)sprite->width * topScale * view.drawScaleX();
-			const float ratio = topScale != 0 ? bottomScale / topScale : 1.0f;
+			const BgTrapezoid edges = parallaxEdges(px, centre, (float)sprite->width, (float)sprite->axisX,
+				topScale, bottomScale, view.drawScaleX());
 			const float top = py - (float)sprite->axisY * how.scaleY, bottom = top + (float)sprite->height * how.scaleY;
-			const float bottomLeft = centre + (topLeft - centre) * ratio;
-			renderer_->drawSpriteTrapezoid(group, number, topLeft, topLeft + topWidth, top, bottomLeft,
-				bottomLeft + topWidth * ratio, bottom, how);
+			renderer_->drawSpriteTrapezoid(group, number, edges.topLeft, edges.topRight, top, edges.bottomLeft,
+				edges.bottomRight, bottom, how);
 		}
 	}
 	if (clip)
 		platform::clearClip();
+}
+
+BgTrapezoid BgDef::parallaxEdges(float anchorX, float centre, float spriteWidth, float axisX,
+	float topScale, float bottomScale, float drawScaleX)
+{
+	BgTrapezoid out;
+	out.topLeft = anchorX - axisX * topScale * drawScaleX;
+	out.topRight = out.topLeft + spriteWidth * topScale * drawScaleX;
+	const float ratio = topScale != 0 ? bottomScale / topScale : 1.0f;
+	out.bottomLeft = centre + (out.topLeft - centre) * ratio;
+	out.bottomRight = out.bottomLeft + (out.topRight - out.topLeft) * ratio;
+	return out;
+}
+
+bool BgDef::clipRect(size_t index, const View &view, ClipRect &out) const
+{
+	if (index >= bgs_.size() || !bgs_[index].hasWindow)
+		return false;
+	View elementView = view;
+	const BgElement &bg = bgs_[index];
+	const float zoom = view.zoomX;
+	elementView.zoomX = std::max(0.0f, zoom + (1 - zoom) * (1 - std::max(0.0f, bg.deltaX)));
+	elementView.zoomY = std::max(0.0f, zoom + (1 - zoom) * (1 - std::max(0.0f, bg.deltaY)));
+	return windowRect(bg, view, elementView, out);
 }
 
 // The element's window in screen pixels (Ikemen's drawTransformed window): for a stage, in stage units from the top
