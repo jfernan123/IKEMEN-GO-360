@@ -3,7 +3,8 @@ MUGEN360 - milestone 10d: Survival (homebrew test build)
 
 Which build is this? During a fight the version shows faintly in the
 bottom-right corner, like V2026.10.18-1701 7F39FDD. The V part matches the
-GitHub release (xbox-2026.10.18-1701); DEV means a build made by hand.
+GitHub release's title (Xbox build V2026.10.18-1701); DEV means a build made
+by hand.
 
 New: SURVIVAL, under MISSION on the title menu. Pick a fighter and a stage,
 then fight one-round matches against the roster for as long as you can last.

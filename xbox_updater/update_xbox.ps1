@@ -17,7 +17,7 @@ $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $settingsFile = Join-Path $PSScriptRoot 'settings.txt'
-$stateFile = Join-Path $PSScriptRoot 'installed_build.txt'   # the release tag the console has
+$stateFile = Join-Path $PSScriptRoot 'installed_build.txt'   # the upload the console has (tag/asset id)
 $logsDir = Join-Path $PSScriptRoot 'logs'
 
 # The console's address and game folder: asked once, then read from settings.txt.
@@ -39,15 +39,28 @@ $login = "${FtpUser}:${FtpPass}"
 
 function Say($text, $color = 'Gray') { Write-Host "[$(Get-Date -Format 'HH:mm:ss')] $text" -ForegroundColor $color }
 
-# The newest release that has the Xbox package, or $null. GitHub allows 60 unauthenticated checks an hour.
+# The most recently uploaded Xbox package across the releases, or $null. publish_360.bat re-uploads it to the same
+# release each time, so the upload (its asset id) is what tells builds apart, not the release's tag.
+# GitHub allows 60 unauthenticated checks an hour.
 function Get-NewestBuild {
-	$releases = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases?per_page=10" -Headers @{ 'User-Agent' = 'mugen360-updater' }
+	$releases = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases?per_page=20" -Headers @{ 'User-Agent' = 'mugen360-updater' }
+	$newest = $null
 	foreach ($release in $releases) {
 		if ($release.draft) { continue }
-		$zip = $release.assets | Where-Object { $_.name -eq $Asset } | Select-Object -First 1
-		if ($zip) { return [pscustomobject]@{ Tag = $release.tag_name; Url = $zip.browser_download_url; Size = $zip.size } }
+		foreach ($zip in $release.assets | Where-Object { $_.name -eq $Asset }) {
+			if (-not $newest -or [datetime]$zip.updated_at -gt [datetime]$newest.zip.updated_at) {
+				$newest = @{ release = $release; zip = $zip }
+			}
+		}
 	}
-	return $null
+	if (-not $newest) { return $null }
+	$uploaded = ([datetime]$newest.zip.updated_at).ToString('yyyy-MM-dd HH:mm')
+	return [pscustomobject]@{
+		Id = "$($newest.release.tag_name)/$($newest.zip.id)"
+		Name = "$($newest.release.tag_name), uploaded $uploaded"
+		Url = $newest.zip.browser_download_url
+		Size = $newest.zip.size
+	}
 }
 
 # Aurora's FTP server doesn't answer EPSV (curl's first choice of passive mode), so every FTP call uses plain PASV.
@@ -76,7 +89,7 @@ function Install-Build($build) {
 		Say "Saved the last session's log: $saved (send it to Juan)" Green
 	}
 
-	Say "Downloading $($build.Tag) ($([math]::Round($build.Size / 1MB, 1)) MB)" Cyan
+	Say "Downloading $($build.Name) ($([math]::Round($build.Size / 1MB, 1)) MB)" Cyan
 	$zip = Join-Path $work $Asset
 	curl.exe -s -S -L --fail -o $zip $build.Url
 	if ($LASTEXITCODE -ne 0) { throw 'Download failed.' }
@@ -94,9 +107,9 @@ function Install-Build($build) {
 		if ($LASTEXITCODE -ne 0) { Write-Progress -Activity 'Uploading to the Xbox' -Completed; throw "Upload failed at $relative." }
 	}
 	Write-Progress -Activity 'Uploading to the Xbox' -Completed
-	Set-Content -Path $stateFile -Value $build.Tag -Encoding ascii
+	Set-Content -Path $stateFile -Value $build.Id -Encoding ascii
 	Remove-Item -Recurse -Force $work
-	Say "Installed $($build.Tag): $($files.Count) files. Launch mugen360 from Aurora." Green
+	Say "Installed $($build.Name): $($files.Count) files. Launch mugen360 from Aurora." Green
 }
 
 # Waits $seconds, or less if a key is pressed: returns 'check', 'force' or 'timeout'.
@@ -125,8 +138,8 @@ while ($true) {
 		$installed = if (Test-Path $stateFile) { (Get-Content $stateFile -Raw).Trim() } else { '' }
 		$build = Get-NewestBuild
 		if (-not $build) { $note = 'No Xbox build on GitHub yet.' }
-		elseif ($build.Tag -eq $installed -and -not $force) { $note = "Up to date ($installed)." }
-		elseif ($reason = Test-Console) { $note = "Build $($build.Tag) is waiting: can't reach the Xbox at ${ConsoleIp}:$FtpPort ($reason). Is it on, in Aurora, FTP enabled, same network, right IP?" }
+		elseif ($build.Id -eq $installed -and -not $force) { $note = "Up to date ($($build.Name))." }
+		elseif ($reason = Test-Console) { $note = "Build $($build.Name) is waiting: can't reach the Xbox at ${ConsoleIp}:$FtpPort ($reason). Is it on, in Aurora, FTP enabled, same network, right IP?" }
 		else { Install-Build $build; $note = '' }
 	} catch {
 		$note = "Problem: $($_.Exception.Message) Trying again in $CheckMinutes min."

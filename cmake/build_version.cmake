@@ -1,5 +1,5 @@
 # Writes OUT, a .cpp with the version text the game shows (m360::buildVersion), run on every build.
-# publish_360.bat sets MUGEN360_VERSION to the release's stamp (the tag is xbox-<stamp>); any other build is
+# publish_360.bat sets MUGEN360_VERSION to the stamp it puts in the release's title; any other build is
 # "DEV <date> <commit>". OUT is only rewritten when the text changes, so an unchanged version recompiles nothing.
 set(version "$ENV{MUGEN360_VERSION}")
 execute_process(COMMAND git rev-parse --short HEAD WORKING_DIRECTORY "${SOURCE_DIR}"
