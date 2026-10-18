@@ -20,11 +20,16 @@ bool Stage::load(const std::string &defPath, std::string &error)
 	// The stage's own animations, for "type = anim" elements.
 	anims_.parse(defPath, body);
 
-	if (const IniSection *info = findSection(sections, "info"))
+	if (const IniSection *info = findSection(sections, "info")) {
 		name = info->text("name");
+		float major = 0, minor = 0;
+		ikemen = info->floats("ikemenversion", { &major, &minor }) && (major != 0 || minor != 0);
+	}
 	if (const IniSection *si = findSection(sections, "stageinfo")) {
 		si->readInt("zoffset", zoffset);
 		si->ints("localcoord", { &localWidth, &localHeight });
+		int32_t flag = 1;
+		resetBg = !si->readInt("resetbg", flag) || flag != 0;
 	}
 	if (localWidth <= 0 || localHeight <= 0) {
 		localWidth = 320;
@@ -114,6 +119,7 @@ bool Stage::load(const std::string &defPath, std::string &error)
 	}
 
 	// Backgrounds, the [BG ...] sections.
+	bgs_.setStage(true);
 	bgs_.load(sections, "bg", sff_, anims_, defPath);
 	logUnread(sections, defPath);
 	logf("stage: %s: \"%s\", %zu backgrounds", defPath.c_str(), name.c_str(), bgs_.size());
@@ -130,7 +136,7 @@ void Stage::logUnread(const std::vector<IniSection> &sections, const std::string
 	};
 	static const Known KNOWN[] = {
 		{ "info", { "name", "displayname", "versiondate", "mugenversion", "author", "ikemenversion" } },
-		{ "stageinfo", { "zoffset", "localcoord", "portraitscale" } },
+		{ "stageinfo", { "zoffset", "localcoord", "portraitscale", "resetbg" } },
 		{ "bound", { "screenleft", "screenright" } },
 		{ "playerinfo", { "p1startx", "p1starty", "p1facing", "p2startx", "p2starty", "p2facing", "leftbound",
 							"rightbound" } },
@@ -187,6 +193,12 @@ View Stage::view(float camX, float camY) const
 	const float high = (float)std::max(0, camera.cuthigh), low = (float)std::max(0, camera.cutlow);
 	v.topCut = high + low > 0 ? cut * high / (high + low) : cut / 2;
 	return v;
+}
+
+void Stage::reset()
+{
+	if (resetBg)
+		bgs_.reset();
 }
 
 void Stage::update()
