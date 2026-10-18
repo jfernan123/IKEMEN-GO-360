@@ -24,4 +24,25 @@ private:
 	int32_t index_ = 0;
 };
 
+// Which member is active in a Turns team match. A lost fight removes that side's active member; the series ends
+// when one side has no member left.
+class TurnsSeries {
+public:
+	void reset(int32_t team1, int32_t team2);
+	// Records a fight winner (0/1, -1 draw). True when another active pair remains.
+	bool result(int winner);
+	int32_t active(int side) const { return active_[side]; }
+	int32_t size(int side) const { return size_[side]; }
+	bool over() const { return active_[0] >= size_[0] || active_[1] >= size_[1]; }
+	int winner() const
+	{
+		const bool out1 = active_[0] >= size_[0], out2 = active_[1] >= size_[1];
+		return out1 && out2 ? -1 : out1 ? 1 : out2 ? 0 : -1;
+	}
+
+private:
+	int32_t size_[2] = { 1, 1 };
+	int32_t active_[2] = { 0, 0 };
+};
+
 } // namespace m360

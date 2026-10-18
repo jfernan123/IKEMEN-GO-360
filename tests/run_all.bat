@@ -34,6 +34,7 @@ call :misc || exit /b 1
 call :select || exit /b 1
 call :title || exit /b 1
 call :arcade || exit /b 1
+call :team || exit /b 1
 call :run buttons 80 --quickstart || exit /b 1
 call :run commands 260 --quickstart || exit /b 1
 call :run states 330 --quickstart || exit /b 1
@@ -66,6 +67,11 @@ findstr /c:"title: ARCADE > SINGLE MODE" tests\out\latest_arcade.log >nul || (ec
 findstr /c:"arcade: match 1 of 2" tests\out\latest_arcade.log >nul || (echo FAIL: Arcade did not build its roster route & exit /b 1)
 findstr /c:"versus: done at" tests\out\latest_arcade.log >nul || (echo FAIL: Arcade did not show its VS screen & exit /b 1)
 findstr /c:"match: round 1" tests\out\latest_arcade.log >nul || (echo FAIL: Arcade did not start its first match & exit /b 1)
+findstr /c:"title: VS MODE > TEAM VERSUS" tests\out\latest_team.log >nul || (echo FAIL: TEAM VERSUS did not start from the title & exit /b 1)
+findstr /c:"select: p1 member 2" tests\out\latest_team.log >nul || (echo FAIL: player 1 did not select two team members & exit /b 1)
+findstr /c:"select: p2 member 2" tests\out\latest_team.log >nul || (echo FAIL: player 2 did not select two team members & exit /b 1)
+findstr /c:"turns: p1 member 1 of 2 vs p2 member 1 of 2" tests\out\latest_team.log >nul || (echo FAIL: Turns did not start its first pairing & exit /b 1)
+findstr /c:"turns: p1 member 1 of 2 vs p2 member 2 of 2" tests\out\latest_team.log >nul || (echo FAIL: Turns did not advance the losing side's next member & exit /b 1)
 findstr /c:"state 1002 -> 1009" tests\out\latest_misc.log >nul || (echo FAIL: 7d controllers and triggers did not all check out & exit /b 1)
 findstr /c:"helper 88 state 1200" tests\out\latest_helper.log >nul || (echo FAIL: nested Helper was not created & exit /b 1)
 findstr /c:"state 1000 -> 1002" tests\out\latest_helper.log >nul || (echo FAIL: Helper parent/root redirects or NumHelper failed & exit /b 1)
@@ -150,6 +156,12 @@ exit /b 0
 echo     arcade
 "%EXE%" --title --input tests\inputs\arcade.txt --quit 500 --trace %SHOW% >nul || exit /b 1
 copy /y m360.log tests\out\latest_arcade.log >nul
+exit /b 0
+
+:team
+echo     team versus
+"%EXE%" --title --input tests\inputs\team.txt --input2 tests\inputs\team_p2.txt --quickstart --p2life 1 --quit 1600 --trace %SHOW% >nul || exit /b 1
+copy /y m360.log tests\out\latest_team.log >nul
 exit /b 0
 
 :misc

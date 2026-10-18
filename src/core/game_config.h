@@ -8,6 +8,10 @@ namespace m360 {
 // The content mounted into the engine. Keeping these paths in data/mugen360.ini lets a PC or console package swap
 // characters and stages without recompiling the executable.
 struct GameConfig {
+	struct Fighter {
+		std::string def;
+		int palette = 1;
+	};
 	std::string player1 = "data/chars/kfm/kfm.def";
 	std::string player2 = "data/chars/kfm/kfm.def";
 	std::string stage = "data/stages/kfm.def";
@@ -26,6 +30,8 @@ struct GameConfig {
 	// "kfm/kfm.def" or a path under data/). Empty: no select screen, the fight above starts at once.
 	std::vector<std::string> characters;
 	std::vector<std::string> stages;
+	// Team modes. Empty means the single player1/player2 above; Turns uses the indexed active member on each side.
+	std::vector<Fighter> team1, team2;
 
 	// A missing file keeps the defaults. Values present under [Game] replace their corresponding defaults.
 	bool load(const std::string &path, std::string &error);

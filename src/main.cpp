@@ -276,7 +276,10 @@ public:
 		// The screenpack's fight screen sets the round's timings; without one, the plain HUD and default timings.
 		const std::string &fightError = assets_.fightError;
 		if (assets_.fightScreenLoaded) {
-			match_.setTimings(fightScreen_.timings());
+			RoundTimings timings = fightScreen_.timings();
+			if (config.mode == "turns")
+				timings.matchWins = 1;
+			match_.setTimings(timings);
 			const View area = stage_.view(0, 0);
 			fightScreen_.setViewport(area.originX, area.width);
 			fightScreen_.setMatchInfo(config.mode, config.winCount);
@@ -320,6 +323,11 @@ public:
 	{
 		for (Character &c : players_)
 			c.power = std::clamp(value, 0, 3000);
+	}
+	void setTestLife(int side, int32_t value)
+	{
+		if (side >= 0 && side < 2)
+			players_[side].life = std::clamp(value, 1, players_[side].lifeMax());
 	}
 
 	// A round begins: camera, stage and characters back to the start (Ikemen's resetRound).
@@ -841,7 +849,7 @@ int main(int argc, char **argv)
 	std::string inputPath, input2Path, forcedMode;
 	std::map<uint32_t, std::string> shots;
 	uint32_t quitFrame = UINT32_MAX;
-	int32_t testPower = -1;
+	int32_t testPower = -1, testP2Life = -1;
 	bool trace = false, quickStart = false, cpu = false, show = false, forceSelect = false, forceTitle = false;
 	for (int i = 1; i < argc; i++) {
 		const std::string arg = argv[i];
@@ -871,6 +879,8 @@ int main(int argc, char **argv)
 			forceTitle = forceSelect = true;
 		else if (arg == "--power" && i + 1 < argc)
 			testPower = text::atoi(argv[++i]);
+		else if (arg == "--p2life" && i + 1 < argc)
+			testP2Life = text::atoi(argv[++i]);
 		else if (arg == "--p1" && i + 1 < argc)
 			config.player1 = argv[++i];
 		else if (arg == "--p2" && i + 1 < argc)
@@ -881,7 +891,7 @@ int main(int argc, char **argv)
 	const bool testRun = !inputPath.empty() || !shots.empty() || quitFrame != UINT32_MAX;
 	if (!platform::init(testRun && !show))
 		return 1;
-	logf("mugen360: milestone 10a, arcade and training");
+	logf("mugen360: milestone 10b, Turns teams");
 	if (!configLoaded)
 		logf("mugen360: %s", configError.c_str());
 	logf("game: p1=%s p2=%s stage=%s", config.player1.c_str(), config.player2.c_str(), config.stage.c_str());
@@ -923,6 +933,10 @@ int main(int argc, char **argv)
 			mode = SelectMode::Training;
 		else if (forcedMode == "quick" || forcedMode == "freebattle")
 			mode = SelectMode::QuickMatch, modeCpu = true;
+		else if (forcedMode == "teamarcade" || forcedMode == "turnsarcade")
+			mode = SelectMode::TeamArcade, modeCpu = true;
+		else if (forcedMode == "teamversus" || forcedMode == "turns")
+			mode = SelectMode::TeamVersus;
 		// A new character selection, on whichever select screen there is.
 		auto resetSelect = [&](bool secondController) {
 			if (motifSelectLoaded)
@@ -935,6 +949,8 @@ int main(int argc, char **argv)
 		// A fight with these characters and stage.
 		// Matches won in a row on each side, kept from one fight to the next.
 		int winCounts[2] = { 0, 0 };
+		GameConfig selectedFight;
+		TurnsSeries turns;
 		// Loaded with the first fight, then reused.
 		FightAssets fightAssets;
 		auto startFight = [&](const GameConfig &picked) {
@@ -942,13 +958,26 @@ int main(int argc, char **argv)
 			fight.mode = mode == SelectMode::QuickMatch ? "freebattle"
 				: mode == SelectMode::Arcade            ? "arcade"
 				: mode == SelectMode::Training          ? "training"
+				: mode == SelectMode::TeamVersus || mode == SelectMode::TeamArcade ? "turns"
 														: "versus";
+			if (fight.mode == "turns" && !fight.team1.empty() && !fight.team2.empty()) {
+				const GameConfig::Fighter &p1 = fight.team1[(size_t)turns.active(0)];
+				const GameConfig::Fighter &p2 = fight.team2[(size_t)turns.active(1)];
+				fight.player1 = p1.def;
+				fight.p1Palette = p1.palette;
+				fight.player2 = p2.def;
+				fight.p2Palette = p2.palette;
+				logf("turns: p1 member %d of %d vs p2 member %d of %d", turns.active(0) + 1, turns.size(0),
+					turns.active(1) + 1, turns.size(1));
+			}
 			fight.winCount[0] = winCounts[0];
 			fight.winCount[1] = winCounts[1];
 			stage = std::make_unique<StageDemo>(fightAssets);
 			stageLoaded = stage->load(fight, error, trace, quickStart, cpu || modeCpu);
 			if (stageLoaded && testPower >= 0)
 				stage->setTestPower(testPower);
+			if (stageLoaded && testP2Life >= 0)
+				stage->setTestLife(1, testP2Life);
 			if (!stageLoaded)
 				logf("mugen360: %s", error.c_str());
 			if (selectLoaded)
@@ -958,7 +987,7 @@ int main(int argc, char **argv)
 		if (titleLoaded) {
 			screen = Screen::Title;
 		} else if (selectLoaded) {
-			resetSelect(platform::pad(1).connected);
+			resetSelect(inputPath.empty() ? platform::pad(1).connected : !input2Path.empty());
 			screen = Screen::Select;
 		} else {
 			startFight(config);
@@ -1005,7 +1034,10 @@ int main(int argc, char **argv)
 		};
 		for (uint32_t frame = 0; frame <= quitFrame && platform::beginFrame(BACKGROUND); frame++) {
 			const platform::Pad pad = inputPath.empty() ? platform::pad(0) : script.at(frame);
+			// A missing --input2 is a connected, idle dummy during scripted fights. Selection separately uses the path's
+			// presence so player 1 still picks the opponent, matching the documented headless-test behavior.
 			const platform::Pad pad2 = inputPath.empty() ? platform::pad(1) : script2.at(frame);
+			const bool secondController = inputPath.empty() ? pad2.connected : !input2Path.empty();
 			// Back: out of a fight to the select screen, out of the select screen to the title, else quit. The title
 			// handles it itself (it moves to Exit).
 			const bool back = buttons.back.update(pad.back);
@@ -1013,7 +1045,7 @@ int main(int argc, char **argv)
 			const bool selectHandlesBack = screen == Screen::Select && motifSelectLoaded;
 			if (back && screen == Screen::Stage && selectLoaded) {
 				stage.reset();
-				resetSelect(pad2.connected);
+				resetSelect(secondController);
 				screen = gameScreen = Screen::Select;
 			} else if (back && screen == Screen::Select && titleLoaded && !selectHandlesBack) {
 				title.reset();
@@ -1066,12 +1098,15 @@ int main(int argc, char **argv)
 					break;
 				if (choice != TitleChoice::None) {
 					// Arcade and Quick Match force a CPU opponent. Training leaves player 2 as a stationary dummy.
-					modeCpu = choice == TitleChoice::Arcade || choice == TitleChoice::QuickMatch;
+					modeCpu = choice == TitleChoice::Arcade || choice == TitleChoice::TeamArcade ||
+						choice == TitleChoice::QuickMatch;
 					mode = choice == TitleChoice::QuickMatch ? SelectMode::QuickMatch
 						: choice == TitleChoice::Arcade      ? SelectMode::Arcade
+						: choice == TitleChoice::TeamArcade  ? SelectMode::TeamArcade
+						: choice == TitleChoice::TeamVersus  ? SelectMode::TeamVersus
 						: choice == TitleChoice::Training    ? SelectMode::Training
 															 : SelectMode::Versus;
-					resetSelect(pad2.connected);
+					resetSelect(secondController);
 					screen = gameScreen = Screen::Select;
 				}
 				continue;
@@ -1081,7 +1116,10 @@ int main(int argc, char **argv)
 				motifSelect.draw();
 				finishFrame();
 				if (motifSelect.done()) {
-					startFight(motifSelect.fight());
+					selectedFight = motifSelect.fight();
+					if (mode == SelectMode::TeamVersus || mode == SelectMode::TeamArcade)
+						turns.reset((int32_t)selectedFight.team1.size(), (int32_t)selectedFight.team2.size());
+					startFight(selectedFight);
 					screen = gameScreen = Screen::Stage;
 				} else if (motifSelect.cancelled()) {
 					if (!titleLoaded)
@@ -1111,18 +1149,36 @@ int main(int argc, char **argv)
 				stage->draw();
 				// Match over: back to pick again.
 				if (stage->finished()) {
-					const int winner = stage->winner();
+					int winner = stage->winner();
 					winCounts[0] = stage->winCount(0);
 					winCounts[1] = stage->winCount(1);
 					stage.reset();
-					if (mode == SelectMode::Arcade && winner == 0 && motifSelectLoaded && motifSelect.nextArcadeMatch()) {
-						logf("arcade: player advances");
-					} else {
-						if (mode == SelectMode::Arcade)
-							logf("arcade: %s", winner == 0 ? "route complete" : "route lost");
-						resetSelect(pad2.connected);
+					bool nextTurn = false;
+					if (mode == SelectMode::TeamVersus || mode == SelectMode::TeamArcade) {
+						nextTurn = turns.result(winner);
+						if (nextTurn) {
+							startFight(selectedFight);
+							musicFor.clear();
+						} else {
+							winner = turns.winner();
+							if (winner >= 0)
+								logf("turns: team %d wins", winner + 1);
+							else
+								logf("turns: draw");
+						}
 					}
-					screen = gameScreen = Screen::Select;
+					const bool arcadeMode = mode == SelectMode::Arcade || mode == SelectMode::TeamArcade;
+					if (nextTurn) {
+						screen = gameScreen = Screen::Stage;
+					} else if (arcadeMode && winner == 0 && motifSelectLoaded && motifSelect.nextArcadeMatch()) {
+						logf("arcade: player advances");
+						screen = gameScreen = Screen::Select;
+					} else {
+						if (arcadeMode)
+							logf("arcade: %s", winner == 0 ? "route complete" : "route lost");
+						resetSelect(secondController);
+						screen = gameScreen = Screen::Select;
+					}
 				}
 			} else if (screen == Screen::Animations) {
 				animViewer.update(buttons, gameplayPad);

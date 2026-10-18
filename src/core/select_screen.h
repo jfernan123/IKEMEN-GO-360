@@ -19,7 +19,7 @@
 namespace m360 {
 
 // The game mode the select screen is for: it decides the title and who picks player 2.
-enum class SelectMode : uint8_t { Versus, QuickMatch, Arcade, Training };
+enum class SelectMode : uint8_t { Versus, QuickMatch, Arcade, Training, TeamVersus, TeamArcade };
 
 // Ikemen's select screen, from a screenpack's [Select Info] and SelectBG (Ikemen's start.lua: the start.t_grid
 // build, getCellOverride, f_cellMovement, f_drawCursor, updateDrawList, f_selectMenu, f_palMenu, f_stageMenu,
@@ -115,6 +115,8 @@ private:
 		// opponent, which appears once picked.
 		bool shown = false;
 		int32_t chosen = -1, palette = 1;
+		std::vector<int32_t> teamChosen;
+		std::vector<int32_t> teamPalettes;
 		int32_t palIndex = 1, randomPreview = 1, randomPalCount = 0;
 		// The random cell's character on show, and its switch timer.
 		int32_t randomShown = -1, randomCount = 0;
@@ -163,7 +165,7 @@ private:
 	int32_t randomSwitch_ = 4, palRandomSwitch_ = 4;
 	std::vector<std::pair<std::string, CellOverride>> overrides_;
 	TextLayout title_;
-	std::string titles_[4];
+	std::string titles_[6];
 	int32_t cancelSnd_[2] = { -1, 0 };
 	ScreenFade fadeIn_, fadeOut_;
 	// The stage line.

@@ -188,9 +188,12 @@ int run8cTests()
 	if (menu.size() > 1)
 		for (const TitleScreen::Item &item : menu[1].children)
 			versus += item.name + "|";
-	expect(versus == "versus|freebattle|back|", "VS MODE: 1P VS 2P, QUICK MATCH, BACK");
-	const TitleScreen::Item *arcade = menu.empty() ? nullptr : TitleScreen::singleAction(menu[0]);
-	expect(arcade && arcade->name == "arcade", "ARCADE runs its one mode directly");
+	expect(versus == "versus|teamversus|freebattle|back|", "VS MODE includes single, team, Quick Match and Back");
+	std::string arcade;
+	if (!menu.empty())
+		for (const TitleScreen::Item &item : menu[0].children)
+			arcade += item.name + "|";
+	expect(arcade == "arcade|teamarcade|back|", "ARCADE includes single and team routes");
 	expect(menu.size() > 2 && !TitleScreen::singleAction(menu[1]), "VS MODE opens as a submenu");
 
 	// Wait out the fade, then down five times wraps back to the top, and up once goes to the end.
@@ -214,9 +217,11 @@ int run8cTests()
 	platform::Pad confirm;
 	confirm.a = true;
 	title.update(confirm, idle);
+	title.update(idle, idle);
+	title.update(confirm, idle);
 	for (int i = 0; i < 20; i++)
 		title.update(idle, idle);
-	expect(title.result() == TitleChoice::Arcade, "ARCADE starts directly instead of showing the Stage 10 notice");
+	expect(title.result() == TitleChoice::Arcade, "ARCADE > SINGLE MODE starts without a placeholder notice");
 
 	std::printf("8c title screen: %d passed, %d failed\n", passed, failed);
 	return failed;

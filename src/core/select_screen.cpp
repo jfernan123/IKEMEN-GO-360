@@ -123,9 +123,12 @@ bool MotifSelect::load(Motif &motif, const GameConfig &config, std::string &erro
 	s.ints("portrait.spr", { &portraitSpr_[0], &portraitSpr_[1] });
 	s.readInt("palmenu.random.switchtime", palRandomSwitch_);
 	title_.read("title.", s);
-	const char *modes[4] = { "versus", "freebattle", "arcade", "training" };
-	for (int i = 0; i < 4; i++)
+	const char *modes[6] = { "versus", "freebattle", "arcade", "training", "versus", "arcade" };
+	for (int i = 0; i < 6; i++)
 		titles_[i] = s.text(std::string("title.") + modes[i] + ".text");
+	// Ikemen's team menu leads to the same select screen, but these labels keep the chosen sub-mode visible.
+	titles_[(int)SelectMode::TeamVersus] = "TEAM VERSUS";
+	titles_[(int)SelectMode::TeamArcade] = "TEAM ARCADE";
 	s.ints("cancel.snd", { &cancelSnd_[0], &cancelSnd_[1] });
 	fadeIn_.read("fadein.", s);
 	fadeOut_.read("fadeout.", s);
@@ -446,8 +449,11 @@ void MotifSelect::reset(SelectMode mode, bool secondController)
 		side.screenDelay = 0;
 		side.randomShown = -1;
 		// Player 2 picks alongside player 1 only in 1P vs 2P with a second controller; otherwise it waits.
-		side.active = i == 0 || (mode == SelectMode::Versus && secondController);
-		side.shown = i == 0 || mode != SelectMode::Arcade;
+		side.teamChosen.clear();
+		side.teamPalettes.clear();
+		const bool humanTeams = mode == SelectMode::Versus || mode == SelectMode::TeamVersus;
+		side.active = i == 0 || (humanTeams && secondController);
+		side.shown = i == 0 || (mode != SelectMode::Arcade && mode != SelectMode::TeamArcade);
 	}
 	// A button still held from the last screen doesn't count as a press.
 	for (platform::Pad &p : before_) {
@@ -492,11 +498,23 @@ void MotifSelect::setFace(Side &side, int32_t entry, bool done)
 void MotifSelect::confirmPick(int index)
 {
 	Side &side = sides_[index];
+	const bool teamMode = mode_ == SelectMode::TeamVersus || mode_ == SelectMode::TeamArcade;
+	side.teamChosen.push_back(side.chosen);
+	side.teamPalettes.push_back(side.palette);
+	logf("select: p%d member %zu %s palette %d", index + 1, side.teamChosen.size(),
+		roster_[(size_t)side.chosen].name.c_str(), (int)side.palette);
+	if (teamMode && side.teamChosen.size() < 2) {
+		side.state = 0;
+		side.chosen = -1;
+		side.faceDone = false;
+		side.screenDelay = 0;
+		return;
+	}
 	side.state = 3;
 	setFace(side, side.chosen, true);
 	logf("select: p%d %s palette %d", index + 1, roster_[(size_t)side.chosen].name.c_str(), (int)side.palette);
 	if (index == 0 && !sides_[1].active && sides_[1].chosen < 0) {
-		if (mode_ == SelectMode::Arcade) {
+		if (mode_ == SelectMode::Arcade || mode_ == SelectMode::TeamArcade) {
 			// Arcade: make one shuffled route through the real roster, then take its first opponent.
 			std::vector<int32_t> real;
 			for (int32_t i = 0; i < (int32_t)roster_.size(); i++) {
@@ -621,15 +639,16 @@ void MotifSelect::update(const platform::Pad &pad1, const platform::Pad &pad2)
 			break;
 		if (sides_[0].state != 3)
 			updateSide(0, pad1, before_[0]);
-		else if (sides_[1].active && sides_[1].state != 3 && !(mode_ == SelectMode::Versus && secondController_))
+		else if (sides_[1].active && sides_[1].state != 3 &&
+			!((mode_ == SelectMode::Versus || mode_ == SelectMode::TeamVersus) && secondController_))
 			updateSide(1, pad1, before_[0]); // player 1 picks for the computer
-		if (mode_ == SelectMode::Versus && secondController_ && sides_[1].state != 3)
+		if ((mode_ == SelectMode::Versus || mode_ == SelectMode::TeamVersus) && secondController_ && sides_[1].state != 3)
 			updateSide(1, pad2, before_[1]);
 		if (cancelled_)
 			break;
 		if (sides_[0].state == 3 && sides_[1].state == 3) {
 			// Arcade picks its stage; the other modes choose one.
-			if (mode_ == SelectMode::Arcade) {
+			if (mode_ == SelectMode::Arcade || mode_ == SelectMode::TeamArcade) {
 				stage_ = 1 + random((int32_t)stages_.size());
 				logf("select: stage %s", stageNames_[(size_t)stage_ - 1].c_str());
 				logf("arcade: match %d of %d", arcade_.matchNo(), arcade_.matchCount());
@@ -680,7 +699,8 @@ void MotifSelect::update(const platform::Pad &pad1, const platform::Pad &pad2)
 	case Phase::Versus:
 		// Once the "done" animations have had their time, fade out; then the VS screen.
 		if (versusStarted_) {
-			const bool humans[2] = { true, mode_ == SelectMode::Versus && secondController_ };
+			const bool humans[2] = { true,
+				(mode_ == SelectMode::Versus || mode_ == SelectMode::TeamVersus) && secondController_ };
 			versus_.update(pad1, pad2, humans);
 			if (versus_.done())
 				phase_ = Phase::Done;
@@ -704,17 +724,22 @@ void MotifSelect::setArcadeOpponent(const std::vector<int32_t> &real)
 	if (!arcade_.active() || arcade_.opponent() >= (int32_t)real.size())
 		return;
 	Side &cpu = sides_[1];
-	cpu.state = 0;
-	cpu.chosen = real[(size_t)arcade_.opponent()];
-	const Entry &entry = roster_[(size_t)cpu.chosen];
-	cpu.palette = entry.palettes[(size_t)random((int32_t)entry.palettes.size())];
-	cpu.shown = true;
-	confirmPick(1);
+	const int members = mode_ == SelectMode::TeamArcade ? 2 : 1;
+	cpu.teamChosen.clear();
+	cpu.teamPalettes.clear();
+	for (int member = 0; member < members; member++) {
+		cpu.state = 0;
+		cpu.chosen = member == 0 ? real[(size_t)arcade_.opponent()] : real[(size_t)random((int32_t)real.size())];
+		const Entry &entry = roster_[(size_t)cpu.chosen];
+		cpu.palette = entry.palettes[(size_t)random((int32_t)entry.palettes.size())];
+		cpu.shown = true;
+		confirmPick(1);
+	}
 }
 
 bool MotifSelect::nextArcadeMatch()
 {
-	if (mode_ != SelectMode::Arcade || !arcade_.advance())
+	if ((mode_ != SelectMode::Arcade && mode_ != SelectMode::TeamArcade) || !arcade_.advance())
 		return false;
 	std::vector<int32_t> real;
 	for (int32_t i = 0; i < (int32_t)roster_.size(); i++)
@@ -737,7 +762,9 @@ void MotifSelect::startVersus()
 {
 	VersusScreen::Fighter fighters[2];
 	for (int i = 0; i < 2; i++) {
-		const Entry &e = roster_[(size_t)sides_[i].chosen];
+		const int32_t chosen = sides_[i].teamChosen.empty() ? sides_[i].chosen : sides_[i].teamChosen.front();
+		const int32_t palette = sides_[i].teamPalettes.empty() ? sides_[i].palette : sides_[i].teamPalettes.front();
+		const Entry &e = roster_[(size_t)chosen];
 		VersusScreen::Fighter &f = fighters[i];
 		f.name = e.name;
 		f.sff = e.sff.get();
@@ -747,7 +774,7 @@ void MotifSelect::startVersus()
 		f.resFix = e.resFix;
 		f.sizeScaleX = e.sizeScaleX;
 		f.sizeScaleY = e.sizeScaleY;
-		f.palette = sides_[i].palette;
+		f.palette = palette;
 	}
 	VersusScreen::StagePick stage;
 	const size_t s = (size_t)std::max(0, stage_ - 1);
@@ -755,7 +782,8 @@ void MotifSelect::startVersus()
 	stage.number = stage_;
 	stage.renderer = stagePortraits_[s].renderer.get();
 	stage.resFix = stagePortraits_[s].resFix;
-	versus_.start(fighters, stage, mode_ == SelectMode::Arcade ? arcade_.matchNo() : 0);
+	versus_.start(fighters, stage,
+		mode_ == SelectMode::Arcade || mode_ == SelectMode::TeamArcade ? arcade_.matchNo() : 0);
 	versusStarted_ = true;
 }
 
@@ -766,6 +794,18 @@ GameConfig MotifSelect::fight() const
 	c.player2 = roster_[(size_t)sides_[1].chosen].def;
 	c.p1Palette = sides_[0].palette;
 	c.p2Palette = sides_[1].palette;
+	for (size_t i = 0; i < sides_[0].teamChosen.size(); i++)
+		c.team1.push_back({ roster_[(size_t)sides_[0].teamChosen[i]].def, sides_[0].teamPalettes[i] });
+	for (size_t i = 0; i < sides_[1].teamChosen.size(); i++)
+		c.team2.push_back({ roster_[(size_t)sides_[1].teamChosen[i]].def, sides_[1].teamPalettes[i] });
+	if (!c.team1.empty()) {
+		c.player1 = c.team1[0].def;
+		c.p1Palette = c.team1[0].palette;
+	}
+	if (!c.team2.empty()) {
+		c.player2 = c.team2[0].def;
+		c.p2Palette = c.team2[0].palette;
+	}
 	c.stage = stages_[(size_t)std::max(0, stage_ - 1)];
 	return c;
 }
