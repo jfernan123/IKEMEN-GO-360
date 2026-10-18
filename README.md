@@ -213,7 +213,12 @@ paths use forward slashes.
      screen stays as the fallback. Memory for the 360: SFF v2 sprites now stay packed and decode only while a texture
      is made (ikemen1's system.sff was 426 MB decoded, more than the console has), and all textures together stay
      under a 160 MB budget, the least recently drawn freed first (the 360 frees them a few frames later, once no draw
-     in flight uses them). Not yet: the VS screen (8e), team modes, the select timer, stage portraits.
+     in flight uses them). Not yet: the VS screen (8e), team modes, the select timer.
+   - Checked against real Ikemen-GO screenshots (a scripted copy of the release): focal lengths are in Ikemen's
+     240-high game space; select elements draw by layerno around SelectBG layer 1; both sides show from the start;
+     the stage portrait shows in its frame. In the fight a 4:3 stage is pillarboxed at 960x720 as Ikemen keeps the
+     stage's shape, with the fight screen fitted to that area; `[WinCount]` shows matches won in a row; stage
+     `[Reflection]` mirrors the fighters on the floor; the debug text starts hidden (Q / LB).
 
 ## Asset notice
 
