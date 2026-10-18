@@ -20,6 +20,7 @@
 // Tab / LB+Start switches screen; Back (Esc) quits. Start remains available to the character as MUGEN's s button.
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <map>
 #include <memory>
@@ -229,23 +230,51 @@ const char *transName(Trans t)
 	}
 }
 
+// What every fight uses and no fight changes: the shared effects (fightfx), the shared sounds (common.snd) and the
+// screenpack's fight screen. Loaded with the first fight and kept, so later fights don't read them again (the 360's
+// drives are slow); each fight resets their state.
+struct FightAssets {
+	FightEffects effects;
+	SoundBank commonSound;
+	FightScreen fightScreen;
+	bool loaded = false, fightScreenLoaded = false;
+	std::string fightError;
+
+	bool load(const GameConfig &config, std::string &error)
+	{
+		if (loaded)
+			return true;
+		if (!effects.load(FIGHTFX_SFF, FIGHTFX_AIR, error) || !commonSound.load(COMMON_SND, error))
+			return false;
+		fightScreenLoaded = !config.fight.empty() && fightScreen.load(config.fight, fightError);
+		if (config.fight.empty())
+			fightError = "none";
+		loaded = true;
+		return true;
+	}
+};
+
 // The stage with two Kung Fu Men on it, each run by his own state files (milestone 5): everything he does comes from
 // kfm.cns, kfm.cmd and common1.cns.
 class StageDemo {
 public:
 	// quickStart: no intros or announcement, the fight starts at once (for scripted tests).
 	// cpu: player 2 is the computer even with a controller (or a test script) for it.
+	explicit StageDemo(FightAssets &assets)
+		: fightScreen_(assets.fightScreen), effects_(assets.effects), commonSound_(assets.commonSound), assets_(assets)
+	{
+	}
+
 	bool load(const GameConfig &config, std::string &error, bool trace, bool quickStart, bool cpu)
 	{
 		if (!stage_.load(config.stage, error))
 			return false;
-		if (!effects_.load(FIGHTFX_SFF, FIGHTFX_AIR, error))
+		if (!assets_.load(config, error))
 			return false;
-		if (!commonSound_.load(COMMON_SND, error))
-			return false;
+		effects_.clear();
 		// The screenpack's fight screen sets the round's timings; without one, the plain HUD and default timings.
-		std::string fightError;
-		if (!config.fight.empty() && fightScreen_.load(config.fight, fightError)) {
+		const std::string &fightError = assets_.fightError;
+		if (assets_.fightScreenLoaded) {
 			match_.setTimings(fightScreen_.timings());
 			const View area = stage_.view(0, 0);
 			fightScreen_.setViewport(area.originX, area.width);
@@ -578,10 +607,11 @@ private:
 	Camera camera_;
 	FightWorld world_;
 	Match match_;
-	FightScreen fightScreen_;
+	FightScreen &fightScreen_;
 	FightHud hud_;
-	FightEffects effects_;
-	SoundBank commonSound_;
+	FightEffects &effects_;
+	SoundBank &commonSound_;
+	FightAssets &assets_;
 	float speed_ = 0;
 	bool quickStart_ = false;
 	// The computer player for player 2 (MUGEN's button jamming), at the hardest level.
@@ -850,6 +880,8 @@ int main(int argc, char **argv)
 		// A fight with these characters and stage.
 		// Matches won in a row on each side, kept from one fight to the next.
 		int winCounts[2] = { 0, 0 };
+		// Loaded with the first fight, then reused.
+		FightAssets fightAssets;
 		auto startFight = [&](const GameConfig &picked) {
 			GameConfig fight = picked;
 			fight.mode = mode == SelectMode::QuickMatch ? "freebattle"
@@ -858,7 +890,7 @@ int main(int argc, char **argv)
 														: "versus";
 			fight.winCount[0] = winCounts[0];
 			fight.winCount[1] = winCounts[1];
-			stage = std::make_unique<StageDemo>();
+			stage = std::make_unique<StageDemo>(fightAssets);
 			stageLoaded = stage->load(fight, error, trace, quickStart, cpu || modeCpu);
 			if (stageLoaded && testPower >= 0)
 				stage->setTestPower(testPower);
@@ -888,6 +920,31 @@ int main(int argc, char **argv)
 		// Where the debug screens go back to.
 		Screen gameScreen = screen;
 
+		// Every 600 frames (10 seconds), a line in the log on how long frames took to update and draw (not counting the
+		// wait for the screen), and the textures made meanwhile: the console's log shows where time goes.
+		using Clock = std::chrono::steady_clock;
+		Clock::time_point frameStart = Clock::now();
+		uint64_t frameSum = 0, frameWorst = 0;
+		uint32_t frameCount = 0, frameSlow = 0;
+		auto finishFrame = [&]() {
+			const uint64_t us = (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - frameStart).count();
+			frameSum += us;
+			frameWorst = std::max(frameWorst, us);
+			frameSlow += us > 16000 ? 1 : 0;
+			if (++frameCount == 600) {
+				size_t made = 0;
+				uint64_t madeUs = 0;
+				SpriteRenderer::takeCreationStats(made, madeUs);
+				logf("perf: 600 frames, avg %.1f ms, worst %.1f ms, %u over 16 ms; %zu textures made in %.1f ms; %zu MB "
+					 "of textures",
+					frameSum / 600 / 1000.0, frameWorst / 1000.0, frameSlow, made, madeUs / 1000.0,
+					SpriteRenderer::totalTextureBytes() >> 20);
+				frameSum = frameWorst = 0;
+				frameCount = frameSlow = 0;
+			}
+			platform::endFrame();
+			frameStart = Clock::now();
+		};
 		for (uint32_t frame = 0; frame <= quitFrame && platform::beginFrame(BACKGROUND); frame++) {
 			const platform::Pad pad = inputPath.empty() ? platform::pad(0) : script.at(frame);
 			const platform::Pad pad2 = inputPath.empty() ? platform::pad(1) : script2.at(frame);
@@ -925,7 +982,7 @@ int main(int argc, char **argv)
 			if (screen == Screen::Title) {
 				title.update(gameplayPad, pad2);
 				title.draw();
-				platform::endFrame();
+				finishFrame();
 				const TitleChoice choice = title.result();
 				if (choice == TitleChoice::Exit)
 					break;
@@ -944,7 +1001,7 @@ int main(int argc, char **argv)
 			if (screen == Screen::Select && motifSelectLoaded) {
 				motifSelect.update(gameplayPad, pad2);
 				motifSelect.draw();
-				platform::endFrame();
+				finishFrame();
 				if (motifSelect.done()) {
 					startFight(motifSelect.fight());
 					screen = gameScreen = Screen::Stage;
@@ -963,7 +1020,7 @@ int main(int argc, char **argv)
 					startFight(select.fight());
 					screen = gameScreen = Screen::Stage;
 				}
-				platform::endFrame();
+				finishFrame();
 				continue;
 			}
 			const bool loaded = screen == Screen::Stage ? stageLoaded : kfmLoaded;
@@ -989,7 +1046,7 @@ int main(int argc, char **argv)
 				spriteViewer.update(buttons, gameplayPad);
 				spriteViewer.draw();
 			}
-			platform::endFrame();
+			finishFrame();
 		}
 	}
 

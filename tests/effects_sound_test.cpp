@@ -54,6 +54,19 @@ void m360::platform::drawTexture(Texture *, float, float, float, float, Blend) {
 void m360::platform::fillRect(float, float, float, float, uint32_t) {}
 void m360::platform::setClip(int, int, int, int) {}
 void m360::platform::clearClip() {}
+bool m360::platform::readWholeFile(const char *path, std::vector<uint8_t> &out)
+{
+	std::FILE *f = std::fopen(path, "rb");
+	if (!f)
+		return false;
+	out.clear();
+	uint8_t chunk[65536];
+	size_t n;
+	while ((n = std::fread(chunk, 1, sizeof chunk, f)) > 0)
+		out.insert(out.end(), chunk, chunk + n);
+	std::fclose(f);
+	return true;
+}
 
 int run6dTests()
 {

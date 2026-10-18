@@ -195,8 +195,7 @@ bool Font::loadV2(const std::string &text, const std::string &path, std::string 
 	}
 	// Next to the .def, else under font/ or data/.
 	for (const std::string &candidate : { directoryOf(path) + file, "data/font/" + file, "font/" + file, "data/" + file }) {
-		std::vector<uint8_t> probe;
-		if (readFile(candidate, probe))
+		if (fileExists(candidate))
 			return glyphs_.load(candidate, error);
 	}
 	error = path + ": can't find " + file;

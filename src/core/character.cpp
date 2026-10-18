@@ -23,9 +23,8 @@ constexpr int MAX_STATE_LOOP = 2500;
 // A file next to the character, else under data/ (where common1.cns lives), else as given.
 std::string findFile(const std::string &dir, const std::string &name)
 {
-	std::vector<uint8_t> probe;
 	for (const std::string &path : { dir + name, "data/" + name, name }) {
-		if (readFile(path, probe))
+		if (fileExists(path))
 			return path;
 	}
 	return dir + name;

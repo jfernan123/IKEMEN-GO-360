@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <cstddef>
+#include <vector>
 
 // The engine's only view of the machine. src/platform/pc implements it with SDL3, src/platform/x360 with xsdk.
 // The engine draws in a fixed 1280x720 screen space, top left (0,0); each platform scales that to its display.
@@ -71,6 +72,10 @@ bool requestScreenshot(const char *path);
 // A copied 48 kHz stereo floating-point sound. A nonnegative MUGEN channel replaces the sound already on it.
 void playSound(const float *stereo, size_t frames, int channel = -1);
 void stopSound(int channel);
+
+// Reads a whole file in as few disk reads as the platform allows (one on the 360: its drives are slow per request).
+// The path is relative to the game's folder, with '/'.
+bool readWholeFile(const char *path, std::vector<uint8_t> &out);
 
 // Writes a line to the platform's log.
 void logLine(const char *line);

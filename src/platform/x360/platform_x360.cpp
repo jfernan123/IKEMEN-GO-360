@@ -9,6 +9,10 @@
 #include <ctime>
 #include <vector>
 
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include "platform/platform.h"
 
 extern "C" {
@@ -478,6 +482,31 @@ Pad pad(int player)
 bool requestScreenshot(const char *)
 {
 	return false;
+}
+
+bool readWholeFile(const char *path, std::vector<uint8_t> &out)
+{
+	// open / fstat / read go straight to NtCreateFile / NtReadFile (xsdk file.c): the whole file in one request,
+	// where stdio would ask the drive for it a buffer at a time.
+	const int fd = open(path, O_RDONLY);
+	if (fd < 0)
+		return false;
+	struct stat info;
+	if (fstat(fd, &info) != 0) {
+		close(fd);
+		return false;
+	}
+	out.resize((size_t)info.st_size);
+	size_t done = 0;
+	while (done < out.size()) {
+		const ssize_t got = read(fd, out.data() + done, out.size() - done);
+		if (got <= 0)
+			break;
+		done += (size_t)got;
+	}
+	close(fd);
+	out.resize(done);
+	return done == (size_t)info.st_size;
 }
 
 void logLine(const char *line)
