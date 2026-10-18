@@ -4,6 +4,7 @@ rem "run_all.bat show" plays every test in a visible window instead of hidden.
 set "SHOW="
 if /i "%~1"=="show" set "SHOW=--show"
 cd /d "%~dp0\.."
+if not exist tests\out mkdir tests\out
 rem MUGEN360_BUILD=pc_test runs the second copy (build_pc_test.bat) while build\pc\mugen360.exe is open.
 if not defined MUGEN360_BUILD set "MUGEN360_BUILD=pc"
 set "EXE=build\%MUGEN360_BUILD%\mugen360.exe"

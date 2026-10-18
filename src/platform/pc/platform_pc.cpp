@@ -22,6 +22,7 @@ SDL_Renderer *renderer;
 SDL_Gamepad *gamepads[2];
 FILE *log_file;
 Uint64 next_frame_ns;
+bool unpaced = false;
 // Premultiplied "over", and "subtract": see platform::Blend.
 SDL_BlendMode blend_over, blend_subtract;
 // Where to save this frame, if asked.
@@ -97,6 +98,7 @@ bool init(bool hidden)
 	else if (!hidden)
 		logLine(SDL_GetError());
 	next_frame_ns = SDL_GetTicksNS();
+	unpaced = hidden;
 	return true;
 }
 
@@ -176,6 +178,9 @@ void endFrame()
 		screenshot_path.clear();
 	}
 	SDL_RenderPresent(renderer);
+	// A hidden test run goes as fast as it can: nobody is watching, and the game counts frames, not time.
+	if (unpaced)
+		return;
 	// 60 frames a second, as on the 360, whatever the monitor's rate.
 	const Uint64 frame_ns = 1000000000ull / 60;
 	next_frame_ns += frame_ns;
