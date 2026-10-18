@@ -37,6 +37,7 @@
 #include "core/fight_screen.h"
 #include "core/hud.h"
 #include "core/motif.h"
+#include "core/select_screen.h"
 #include "core/title_screen.h"
 #include "core/log.h"
 #include "core/match.h"
@@ -789,7 +790,7 @@ int main(int argc, char **argv)
 	const bool testRun = !inputPath.empty() || !shots.empty() || quitFrame != UINT32_MAX;
 	if (!platform::init(testRun && !show))
 		return 1;
-	logf("mugen360: milestone 8c, title screen");
+	logf("mugen360: milestone 8d, select screen");
 	if (!configLoaded)
 		logf("mugen360: %s", configError.c_str());
 	logf("game: p1=%s p2=%s stage=%s", config.player1.c_str(), config.player2.c_str(), config.stage.c_str());
@@ -808,15 +809,30 @@ int main(int argc, char **argv)
 		const bool selectLoaded = useSelect && select.load(config, error);
 		if (useSelect && !selectLoaded)
 			logf("mugen360: %s", error.c_str());
-		// The title screen and its menu come first when the screenpack has one (test runs only with --title).
+		// The screenpack: Ikemen's select screen, and the title screen and its menu first (test runs only with --title).
 		Motif motif;
+		const bool motifLoaded = selectLoaded && !config.motif.empty() && motif.load(config.motif, error);
+		if (selectLoaded && !config.motif.empty() && !motifLoaded)
+			logf("mugen360: %s", error.c_str());
+		MotifSelect motifSelect;
+		const bool motifSelectLoaded = motifLoaded && motifSelect.load(motif, config, error);
+		if (motifLoaded && !motifSelectLoaded)
+			logf("mugen360: %s; using the plain select screen", error.c_str());
 		TitleScreen title;
-		const bool useTitle = selectLoaded && !config.motif.empty() && (!testRun || forceTitle);
-		const bool titleLoaded = useTitle && motif.load(config.motif, error) && title.load(motif, error);
+		const bool useTitle = motifLoaded && (!testRun || forceTitle);
+		const bool titleLoaded = useTitle && title.load(motif, error);
 		if (useTitle && !titleLoaded)
 			logf("mugen360: %s", error.c_str());
 		// The mode picked on the title: whether the computer plays player 2.
 		bool modeCpu = false;
+		SelectMode mode = SelectMode::Versus;
+		// A new character selection, on whichever select screen there is.
+		auto resetSelect = [&](bool secondController) {
+			if (motifSelectLoaded)
+				motifSelect.reset(mode, secondController && !cpu);
+			else
+				select.reset(cpu || modeCpu || !secondController);
+		};
 		std::unique_ptr<StageDemo> stage;
 		bool stageLoaded = false;
 		// A fight with these characters and stage.
@@ -834,7 +850,7 @@ int main(int argc, char **argv)
 		if (titleLoaded) {
 			screen = Screen::Title;
 		} else if (selectLoaded) {
-			select.reset(cpu || !platform::pad(1).connected);
+			resetSelect(platform::pad(1).connected);
 			screen = Screen::Select;
 		} else {
 			startFight(config);
@@ -857,14 +873,16 @@ int main(int argc, char **argv)
 			// Back: out of a fight to the select screen, out of the select screen to the title, else quit. The title
 			// handles it itself (it moves to Exit).
 			const bool back = buttons.back.update(pad.back);
+			// The screenpack select screen handles Back itself (out of the palette menu, else back to the title).
+			const bool selectHandlesBack = screen == Screen::Select && motifSelectLoaded;
 			if (back && screen == Screen::Stage && selectLoaded) {
 				stage.reset();
-				select.reset(cpu || modeCpu || !pad2.connected);
+				resetSelect(pad2.connected);
 				screen = gameScreen = Screen::Select;
-			} else if (back && screen == Screen::Select && titleLoaded) {
+			} else if (back && screen == Screen::Select && titleLoaded && !selectHandlesBack) {
 				title.reset();
 				screen = gameScreen = Screen::Title;
-			} else if (back && screen != Screen::Title) {
+			} else if (back && screen != Screen::Title && !selectHandlesBack) {
 				break;
 			}
 			if (const auto shot = shots.find(frame); shot != shots.end())
@@ -893,8 +911,27 @@ int main(int argc, char **argv)
 				if (choice != TitleChoice::None) {
 					// 1P vs 2P: player 2 is controller 2 when there is one; the other modes are against the computer.
 					modeCpu = choice != TitleChoice::Versus;
-					select.reset(cpu || modeCpu || !pad2.connected);
+					mode = choice == TitleChoice::QuickMatch ? SelectMode::QuickMatch
+						: choice == TitleChoice::Arcade      ? SelectMode::Arcade
+						: choice == TitleChoice::Training    ? SelectMode::Training
+															 : SelectMode::Versus;
+					resetSelect(pad2.connected);
 					screen = gameScreen = Screen::Select;
+				}
+				continue;
+			}
+			if (screen == Screen::Select && motifSelectLoaded) {
+				motifSelect.update(gameplayPad, pad2);
+				motifSelect.draw();
+				platform::endFrame();
+				if (motifSelect.done()) {
+					startFight(motifSelect.fight());
+					screen = gameScreen = Screen::Stage;
+				} else if (motifSelect.cancelled()) {
+					if (!titleLoaded)
+						break;
+					title.reset();
+					screen = gameScreen = Screen::Title;
 				}
 				continue;
 			}
@@ -919,7 +956,7 @@ int main(int argc, char **argv)
 				// Match over: back to pick again.
 				if (stage->finished()) {
 					stage.reset();
-					select.reset(cpu || modeCpu || !pad2.connected);
+					resetSelect(pad2.connected);
 					screen = gameScreen = Screen::Select;
 				}
 			} else if (screen == Screen::Animations) {
@@ -933,7 +970,7 @@ int main(int argc, char **argv)
 		}
 	}
 
-	logf("mugen360: bye");
+	logf("mugen360: bye (textures %zu MB on a 360)", SpriteRenderer::totalTextureBytes() >> 20);
 	platform::shutdown();
 	return 0;
 }

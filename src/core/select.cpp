@@ -52,6 +52,9 @@ bool SelectScreen::load(const GameConfig &config, std::string &error)
 	base_ = config;
 	roster_.clear();
 	for (const std::string &def : config.characters) {
+		// The random cell is only on the screenpack select screen.
+		if (def == "randomselect")
+			continue;
 		Entry e;
 		e.def = def;
 		e.name = infoName(def, true);

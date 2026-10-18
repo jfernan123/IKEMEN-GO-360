@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -21,13 +22,19 @@ struct Sprite {
 	int16_t axisY = 0;
 	// The palette list index an indexed sprite uses.
 	int palette = 0;
-	// Palette indices, width * height, for an indexed sprite; empty for a true-colour one.
-	std::vector<uint8_t> indices;
+	// Palette indices, width * height, for an indexed sprite; empty for a true-colour one. An SFF v2 sprite keeps
+	// these empty until Sff::decode (see packed).
+	mutable std::vector<uint8_t> indices;
 	// 0xAARRGGBB pixels for a true-colour sprite (PNG24/32 in SFF v2).
-	std::vector<Argb> argb;
+	mutable std::vector<Argb> argb;
+	// An SFF v2 sprite's compressed pixels, where they are in the file: decoded only while a texture is made from
+	// them, as a screenpack's full-colour sprites take hundreds of MB decoded and the 360 has about 450.
+	bool packed = false, trueColor = false;
+	uint8_t format = 0, depth = 0;
+	uint32_t packedOffset = 0, packedSize = 0;
 
-	bool isTrueColor() const { return !argb.empty(); }
-	bool isBlank() const { return width == 0 || height == 0 || (indices.empty() && argb.empty()); }
+	bool isTrueColor() const { return trueColor || !argb.empty(); }
+	bool isBlank() const { return width == 0 || height == 0 || (!packed && indices.empty() && argb.empty()); }
 	// The sprite's pixels as straight 0xAARRGGBB through a palette. With mask (characters always), index 0 is
 	// transparent; without it (a background's "mask = 0"), index 0 draws as its palette colour, opaque.
 	std::vector<Argb> toArgb(const Palette &palette, bool mask = true) const;
@@ -53,6 +60,9 @@ public:
 	void keepOnly(const std::vector<std::pair<uint16_t, uint16_t>> &keys);
 
 	const Sprite *get(uint16_t group, uint16_t number) const;
+	// A packed sprite's pixels, decoded into it (false if they won't decode); release() drops them again.
+	bool decode(const Sprite &sprite) const;
+	void release(const Sprite &sprite) const;
 	const std::vector<Sprite> &sprites() const { return sprites_; }
 	const std::vector<Palette> &palettes() const { return palettes_; }
 	// The palette list index for palette group,number (a character's palette 1 is 1,1), or -1.
@@ -61,6 +71,9 @@ public:
 
 private:
 	std::vector<Sprite> sprites_;
+	// The SFF v2 file, which packed sprites decode from.
+	std::shared_ptr<const std::vector<uint8_t>> file_;
+	std::string path_;
 	std::map<uint32_t, size_t> byKey_;
 	std::vector<Palette> palettes_;
 	std::map<uint32_t, int> paletteByKey_;

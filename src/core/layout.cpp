@@ -57,6 +57,42 @@ void Layout::read(const std::string &prefix, const IniSection &section)
 	section.floats(prefix + "scale", { &scaleX, &scaleY });
 	section.readFloat(prefix + "angle", angle);
 	section.readFloat(prefix + "xshear", xshear);
+	section.readFloat(prefix + "xangle", xangle);
+	section.readFloat(prefix + "yangle", yangle);
+	section.readFloat(prefix + "focallength", focalLength);
+	if (section.has(prefix + "projection"))
+		perspective = text::startsWith(text::toLower(section.text(prefix + "projection")), "perspective");
+	float w[4] = { 0, 0, 0, 0 };
+	if (section.floats(prefix + "window", { &w[0], &w[1], &w[2], &w[3] })) {
+		hasWindow = true;
+		window[0] = std::min(w[0], w[2]);
+		window[1] = std::min(w[1], w[3]);
+		window[2] = std::max(w[0], w[2]);
+		window[3] = std::max(w[1], w[3]);
+	}
+}
+
+void Layout::apply(SpriteDraw &how, const ScreenSpace &space) const
+{
+	how.angle = angle;
+	// Ikemen shears by -xshear about the sprite's top, then moves it back by the shear at the axis: a shear about the
+	// axis, which is what SpriteDraw's is.
+	how.shear = -xshear;
+	how.xangle = xangle;
+	how.yangle = yangle;
+	how.perspective = perspective;
+	how.focalLength = focalLength * space.scale;
+}
+
+bool Layout::windowRect(const ScreenSpace &space, ClipRect &out) const
+{
+	if (!hasWindow)
+		return false;
+	out.x = (int32_t)space.x(window[0]);
+	out.y = (int32_t)space.y(window[1]);
+	out.width = (int32_t)((window[2] - window[0] + 1) * space.scale);
+	out.height = (int32_t)((window[3] - window[1] + 1) * space.scale);
+	return true;
 }
 
 void PalFX::read(const std::string &prefix, const IniSection &section)
@@ -175,13 +211,14 @@ void AnimLayout::draw(float x, float y, int32_t layer, SpriteRenderer &renderer,
 	if (!present || layout.layer != layer)
 		return;
 	SpriteDraw how;
+	layout.apply(how, space);
 	how.scaleX = layout.scaleX * fillX;
 	how.scaleY = layout.scaleY * fillY * layout.vfacing;
-	how.angle = layout.angle;
-	// Ikemen shears by -xshear about the sprite's top, then moves it back by the shear at the axis: a shear about the
-	// axis, which is what SpriteDraw's is.
-	how.shear = -layout.xshear;
 	palfx.apply(how);
+	// A bar's fill rectangle, else the layout's own window.
+	ClipRect window;
+	if (!clip && layout.windowRect(space, window))
+		clip = &window;
 	if (clip)
 		platform::setClip(clip->x, clip->y, clip->width, clip->height);
 	renderer.drawAnimation(anim, space.x(x + layout.offsetX), space.y(y + layout.offsetY), space.scale, layout.facing,

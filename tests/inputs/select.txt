@@ -1,10 +1,21 @@
-# The select screen: player 1 moves to the second character and picks palette 1 (a), the computer picks for player 2,
-# player 1 confirms the stage, then the VS screen and the fight.
-#   build\pc\mugen360.exe --select --cpu --input tests\inputs\select.txt --quit 400 --trace
+# Ikemen's select screen: player 1 moves to the second character, picks it and confirms palette 1 in the Color menu;
+# with no second controller player 1 then picks player 2's character too (up a palette to 2 first); then confirms the
+# stage, and after the fade and the VS screen the fight starts.
+#   build\pc\mugen360.exe --select --cpu --input tests\inputs\select.txt --quit 600 --trace
+# Expect in m360.log: "select: p1 Kung Fu Man palette 1", "select: p2 Kung Fu Man palette 2", "select: stage",
+# "char: data/chars/kfm720/kfm720.def", "match: round 1".
 20 -
 2 R
 10 -
 2 a
+10 -
+2 a
+10 -
+2 a
+10 -
+2 U
+10 -
+2 a
 20 -
 2 a
-200 -
+300 -

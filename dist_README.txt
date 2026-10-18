@@ -1,5 +1,10 @@
-MUGEN360 - milestone 8c: title screen (homebrew test build)
-===========================================================
+MUGEN360 - milestone 8d: select screen (homebrew test build)
+============================================================
+
+New: Ikemen's select screen (tilted 3D grid, big portraits, Color menu), and
+a memory fix: the last build ran out of memory on a real console (missing
+letters and portraits, then a crash in the fight). The skin's sprites now
+stay compressed until drawn, and textures are kept under a budget.
 
 The game opens on Ikemen's title screen and main menu. VS MODE > 1P VS 2P
 is a match against controller 2 (or the computer without one); QUICK MATCH,
@@ -58,8 +63,10 @@ CONTROLS (title menu)
 
 CONTROLS (select screen)
   D-pad              move the cursor; on the stage screen, change stage
-  A B RT X Y RB      pick the character with colours 1-6; confirm the stage
-  Back               back to the title menu
+  A B RT X Y RB      pick the character, then confirm its colour; confirm the stage
+  D-pad (Color menu) next / previous colour;  Start: random colour
+  Back               out of the Color menu; else back to the title menu
+  Against the computer you pick its character after yours.
 
 CONTROLS (stage)
   D-pad              walk, jump, crouch (controller 2 plays player 2)

@@ -203,6 +203,17 @@ paths use forward slashes.
      quick match and training are a versus match against the computer until stages 10 and 11, options shows a notice.
      Back leaves a fight for the select screen and the select screen for the title. `--title` runs it in a test
      (`tests/inputs/title.txt`). Not yet: the logo storyboard, demo and attract modes, the info box, music.
+   - 8d select screen (done): `core/select_screen` (`MotifSelect`) is Ikemen's select screen from `[Select Info]` and
+     SelectBG (start.lua): the grid with ikemen1's per-row overrides (spacing, offset, scale, 3D tilt), each side's
+     eased cursor, the big portraits (the character's stance animation and 9000,1 turned in perspective, then its
+     181 "done" animation), names, the mode's title, the Color palette menu (next / previous / "?" random), the stage
+     line with its blinking font, fades. A `randomselect` roster entry is the "?" cell. Against the computer, player 1
+     picks player 2's character too (Ikemen's rule); Arcade picks a random opponent. The renderer gained 3D turning
+     (xangle / yangle, perspective from a focal length, drawn in strips) and layouts their `.window` clip. The plain
+     screen stays as the fallback. Memory for the 360: SFF v2 sprites now stay packed and decode only while a texture
+     is made (ikemen1's system.sff was 426 MB decoded, more than the console has), and all textures together stay
+     under a 160 MB budget, the least recently drawn freed first (the 360 frees them a few frames later, once no draw
+     in flight uses them). Not yet: the VS screen (8e), team modes, the select timer, stage portraits.
 
 ## Asset notice
 

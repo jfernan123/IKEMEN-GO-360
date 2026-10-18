@@ -44,6 +44,11 @@ bool GameConfig::load(const std::string &path, std::string &error)
 		if (section == "[characters]") {
 			// "kfm" is data/chars/kfm/kfm.def; "kfm/kfm720.def" is under data/chars.
 			const std::string lower = text::toLower(entry);
+			// "randomselect": the select screen's random cell.
+			if (lower == "randomselect") {
+				characters.push_back(lower);
+				continue;
+			}
 			const bool isDef = lower.size() > 4 && lower.compare(lower.size() - 4, 4, ".def") == 0;
 			if (!text::startsWith(entry, "data/"))
 				entry = isDef ? "data/chars/" + entry : "data/chars/" + entry + "/" + entry + ".def";

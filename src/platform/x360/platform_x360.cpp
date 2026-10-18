@@ -108,6 +108,12 @@ struct Draw {
 };
 std::vector<float> frame_floats;
 std::vector<Draw> frame_draws;
+// Textures waiting to be freed, and the frame they were given up in.
+struct Retired {
+	Texture *texture;
+	uint32_t frame;
+};
+std::vector<Retired> retired;
 // The clip rectangle draws are recorded with (setClip).
 Clip current_clip = { 0, 0, -1, -1 };
 
@@ -297,6 +303,17 @@ bool beginFrame(uint32_t clear_argb)
 	}
 	frame_floats.clear();
 	frame_draws.clear();
+	// Textures given up at least BUFFERS frames ago: no draw in flight uses them now.
+	size_t kept = 0;
+	for (const Retired &r : retired) {
+		if (frame - r.frame >= BUFFERS) {
+			xsdk_texture_free(&r.texture->texture);
+			delete r.texture;
+		} else {
+			retired[kept++] = r;
+		}
+	}
+	retired.resize(kept);
 	current_clip = Clip{ 0, 0, -1, -1 };
 	clear_color = clear_argb;
 	// eDRAM still holds whatever the last resolve cleared it to; a full-screen rectangle sets this frame's colour.
@@ -372,8 +389,8 @@ void destroyTexture(Texture *texture)
 {
 	if (!texture)
 		return;
-	xsdk_texture_free(&texture->texture);
-	delete texture;
+	// This frame's draws and the frames still in flight may use it: freed BUFFERS frames from now (beginFrame).
+	retired.push_back(Retired{ texture, frame });
 }
 
 void drawQuad(Texture *texture, const Vertex c[4], Blend blend)

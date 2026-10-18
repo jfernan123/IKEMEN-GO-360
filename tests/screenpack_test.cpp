@@ -1,6 +1,7 @@
 // Milestone 8a: screenpack foundations. Loads the 6x9 font as FNT v1 (.fnt) and FNT v2 (.def + .sff), loads one of
 // the ikemen1 fonts, and reads system.def's title backgrounds.
 
+#include <cmath>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -12,7 +13,10 @@
 #include "core/ini.h"
 #include "core/fight_screen.h"
 #include "core/layout.h"
+#include "core/game_config.h"
 #include "core/motif.h"
+#include "core/select_screen.h"
+#include "core/sprite_renderer.h"
 #include "core/title_screen.h"
 #include "core/sff.h"
 
@@ -203,5 +207,66 @@ int run8cTests()
 	expect(title.selected() == "exit", "up from the top wraps to the end");
 
 	std::printf("8c title screen: %d passed, %d failed\n", passed, failed);
+	return failed;
+}
+
+// Milestone 8d: the select screen. The renderer's 3D turn, ikemen1's grid with its per-row overrides, the cursor's
+// movement, the palette menu's cycling and the random cell.
+int run8dTests()
+{
+	passed = failed = 0;
+	std::string error;
+
+	// A point 50 right and 20 below an axis at (400, 300).
+	SpriteDraw flat;
+	float ox = 0, oy = 0;
+	SpriteRenderer::turnPoint(flat, 400, 300, 450, 320, ox, oy);
+	expect(ox == 450 && oy == 320, "no angles: points stay put");
+	SpriteDraw edgeOn;
+	edgeOn.yangle = 90;
+	SpriteRenderer::turnPoint(edgeOn, 400, 300, 450, 320, ox, oy);
+	expect(std::fabs(ox - 400) < 0.01f && oy == 320, "yangle 90, flat: the width collapses");
+	SpriteDraw turned;
+	turned.yangle = 70;
+	turned.perspective = true;
+	turned.focalLength = 400;
+	float nearTop = 0, nearBottom = 0, farTop = 0, farBottom = 0, x = 0;
+	SpriteRenderer::turnPoint(turned, 400, 300, 350, 200, x, nearTop);
+	SpriteRenderer::turnPoint(turned, 400, 300, 350, 400, x, nearBottom);
+	SpriteRenderer::turnPoint(turned, 400, 300, 450, 200, x, farTop);
+	SpriteRenderer::turnPoint(turned, 400, 300, 450, 400, x, farBottom);
+	expect(farBottom - farTop < nearBottom - nearTop, "yangle 70 in perspective: the far edge is shorter");
+
+	Motif motif;
+	expect(motif.load("data/ikemen1/system.def", error), "system.def loads");
+	GameConfig config;
+	config.characters = { "data/chars/kfm/kfm.def", "data/chars/kfm720/kfm720.def", "randomselect" };
+	MotifSelect select;
+	expect(select.load(motif, config, error), "[Select Info] and the roster load");
+	expect(select.rosterSize() == 3 && select.isRandom(2) && !select.isRandom(0), "randomselect is the third cell");
+
+	// ikemen1: cell.size 24; "cell.*-0" spacing 7.5 (both ways), offset -11,-46; "cell.*-9" spacing 23,5, scale 0.46.
+	const MotifSelect::Point first = select.cellPosition(0, 0), last = select.cellPosition(3, 9);
+	expect(first.x == -11 && first.y == -46, "cell 0,0 position with its row's offset");
+	expect(last.x == 3 * (24 + 23) - 73 && last.y == 9 * (24 + 5), "cell 3,9 position with its row's spacing");
+	expect(std::fabs(select.cellScale(3, 9) - 0.46f) < 0.001f, "row 9 cells are scaled 0.46");
+
+	int32_t cx = 7, cy = 0;
+	select.cellMovement(cx, cy, 1, 0);
+	expect(cx == 0 && cy == 0, "right from the last column wraps");
+	cx = 0;
+	cy = 9;
+	select.cellMovement(cx, cy, 0, 1);
+	expect(cx == 0 && cy == 0, "down from the last row wraps");
+	cx = 2;
+	cy = 0;
+	select.cellMovement(cx, cy, 1, 0);
+	expect(cx == 3 && cy == 0, "the cursor moves onto an empty cell");
+
+	// Three palettes: 1, 2, 3, then "?" (4).
+	expect(MotifSelect::cyclePalette(3, 3, 1) == 4 && MotifSelect::cyclePalette(4, 3, 1) == 1, "palette menu: next wraps through ?");
+	expect(MotifSelect::cyclePalette(1, 3, -1) == 4, "palette menu: previous from 1 goes to ?");
+
+	std::printf("8d select screen: %d passed, %d failed\n", passed, failed);
 	return failed;
 }

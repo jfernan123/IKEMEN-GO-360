@@ -30,9 +30,11 @@ void loadFonts(const IniSection &files, const std::string &defPath, FontTable &o
 // The fonts loaded by file name, and the table ids they were given.
 using FontFiles = std::map<std::string, int32_t>;
 
+struct ClipRect;
+
 // Where and how a screenpack element is drawn: the ".offset / .facing / .vfacing / .layerno / .scale / .angle /
-// .xshear" keys after a prefix ("p1.bg0.", "menu.item."). Ikemen's Layout (Read), without 3D angles, projection or
-// windows.
+// .xshear / .xangle / .yangle / .projection / .focallength / .window" keys after a prefix ("p1.bg0.", "menu.item.").
+// Ikemen's Layout (Read).
 struct Layout {
 	float offsetX = 0, offsetY = 0;
 	int32_t facing = 1, vfacing = 1;
@@ -41,7 +43,17 @@ struct Layout {
 	float angle = 0;
 	// How far the sprite's bottom slants from its top, per pixel of height (Ikemen draws it negated).
 	float xshear = 0;
+	// Turned in 3D (see SpriteDraw), the focal length in the screenpack's units.
+	float xangle = 0, yangle = 0, focalLength = 2048;
+	bool perspective = false;
+	// ".window = x1, y1, x2, y2": drawn only inside, in the screenpack's units.
+	bool hasWindow = false;
+	float window[4] = { 0, 0, 0, 0 };
 	void read(const std::string &prefix, const IniSection &section);
+	// Puts the scale, angles, shear and projection into a draw.
+	void apply(SpriteDraw &how, const ScreenSpace &space) const;
+	// The window in screen pixels, if it has one.
+	bool windowRect(const ScreenSpace &space, ClipRect &out) const;
 };
 
 // A screenpack element's colour effect: ".palfx.time / add / mul / sinadd / sinmul" (Ikemen's ReadPalFX and
