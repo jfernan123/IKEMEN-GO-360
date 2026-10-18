@@ -76,4 +76,13 @@ void Motif::play(const int32_t snd[2]) const
 		snd_.play(snd[0], snd[1]);
 }
 
+MusicTrack Motif::music(const std::string &screen) const
+{
+	MusicTrack track;
+	if (const IniSection *s = section("music"))
+		track.readMotif(screen + ".bgm", *s);
+	track.resolve(path_);
+	return track;
+}
+
 } // namespace m360

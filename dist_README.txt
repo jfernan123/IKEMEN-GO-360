@@ -1,9 +1,16 @@
-MUGEN360 - milestone 8e: VS screen (homebrew test build)
-========================================================
+MUGEN360 - milestone 8f: music (homebrew test build)
+====================================================
 
 New: Ikemen's VS screen between select and the fight (both fighters in their
 colours, names, the next stage and its picture, "Match 1" in Arcade). It
 lasts about 7 seconds; any attack button or Start skips it.
+New: music. The game plays MP3, OGG or WAV songs, but none come with it (the
+Ikemen release has none). To add some, put them at:
+  data/ikemen1/sound/Title.mp3     title menu (loops)
+  data/ikemen1/sound/Select.mp3    select screen (loops)
+  data/ikemen1/sound/Versus.mp3    VS screen (plays once)
+  and for the fight, set "bgmusic =" under [Music] in data/stages/kfm.def to
+  an .mp3 or .ogg next to it (its kfm.mid is MIDI, which isn't supported).
 Also: less disk loading and texture stutter (it ran slow, worst from the
 hard drive), and a perf line in default.log every 10 seconds.
 

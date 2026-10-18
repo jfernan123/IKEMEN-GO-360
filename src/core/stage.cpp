@@ -73,6 +73,10 @@ bool Stage::load(const std::string &defPath, std::string &error)
 		r->readInt("intensity", reflection);
 		reflection = std::clamp(reflection, 0, 255);
 	}
+	music = MusicTrack{};
+	if (const IniSection *m = findSection(sections, "music"))
+		music.readStage(*m);
+	music.resolve(defPath);
 
 	// The sprites: [BGdef] spr, next to the .def, else under data/.
 	const IniSection *bgdef = findSection(sections, "bgdef");

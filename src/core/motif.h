@@ -10,6 +10,7 @@
 #include "core/camera.h"
 #include "core/ini.h"
 #include "core/layout.h"
+#include "core/music.h"
 #include "core/sff.h"
 #include "core/sound.h"
 #include "core/sprite_renderer.h"
@@ -44,6 +45,9 @@ public:
 	// A layout that names its font by file gets that font (see resolveFontFile).
 	void resolveFont(TextLayout &text) { resolveFontFile(text, fonts_, fontFiles_, path_); }
 	void play(const int32_t snd[2]) const;
+	// A screen's song from [Music] ("title", "select", "vs"): "<screen>.bgm" and its settings, found next to the
+	// system.def, as given, or under data/ or sound/.
+	MusicTrack music(const std::string &screen) const;
 
 private:
 	std::string path_;
