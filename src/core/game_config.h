@@ -13,6 +13,9 @@ struct GameConfig {
 	std::string stage = "data/stages/kfm.def";
 	// The screenpack's fight screen (lifebars, round calls); missing or unreadable: the plain built-in one.
 	std::string fight = "data/fight.def";
+	// The screenpack's system.def: the title screen and main menu. Missing or unreadable: the game starts at the
+	// select screen.
+	std::string motif = "data/ikemen1/system.def";
 	// Palettes 1-12 for each player (the select screen's pick; 1 and 2 by default).
 	int p1Palette = 1, p2Palette = 2;
 	// The select screen's roster and stages ([Characters] and [Stages], one per line as in MUGEN's select.def: "kfm",

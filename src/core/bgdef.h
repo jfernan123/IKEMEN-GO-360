@@ -39,6 +39,9 @@ struct BgElement {
 	bool positionlink = false;
 	// Where velocity has moved it so far.
 	float offsetX = 0, offsetY = 0;
+	// "sin.x" / "sin.y = radius, period, phase": a swing of radius over period ticks (Ikemen's bgAction).
+	float sinRadius[2] = { 0, 0 }, sinOffset[2] = { 0, 0 };
+	int32_t sinPeriod[2] = { 0, 0 }, sinTime[2] = { 0, 0 }, sinStart[2] = { 0, 0 };
 };
 
 // A set of background elements: a stage's, or a screenpack screen's. The elements are the sections named
@@ -57,6 +60,7 @@ public:
 	// Draws the elements of one layer (0 behind the players, 1 in front).
 	void draw(int32_t layer, const View &view);
 	size_t size() const { return bgs_.size(); }
+	const BgElement &element(size_t i) const { return bgs_[i]; }
 
 private:
 	void drawElement(const BgElement &bg, const View &view);

@@ -52,24 +52,6 @@ template <class T> struct Tiers {
 	}
 };
 
-// Ikemen's Fade: the round's fade in from and fade out to a colour (fadein. / fadeout.), without animations.
-struct ScreenFade {
-	int32_t time = 30;
-	uint32_t colour = 0;
-	int32_t snd[2] = { -1, 0 };
-	bool active = false, fadeIn = false;
-	int32_t totalTime = 0, timeRemaining = 0;
-
-	void read(const std::string &prefix, const IniSection &section);
-	int32_t duration() const { return time > 0 ? time : 0; }
-	void start(bool in);
-	void stop() { active = false; }
-	bool isActive() const { return active && timeRemaining >= 0 && totalTime > 0; }
-	// One tick; returns the sound to play on its first tick, if any.
-	bool step();
-	void draw() const;
-};
-
 // Ikemen's fight screen, read from a screenpack's fight.def: lifebars, power bars, portraits, names, win icons, the
 // clock, the combo counter, and the round calls with their fades. Translated from Ikemen-GO src/fightscreen.go
 // (LifeBar, PowerBar, FightScreenFace / Name / WinIcon / Time / Combo / Round, FightScreen step / draw), for one

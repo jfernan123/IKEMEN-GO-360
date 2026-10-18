@@ -27,6 +27,8 @@ using FontTable = std::map<int32_t, std::unique_ptr<Font>>;
 // Loads [Files] font1..font<n>, each looked for next to the def, then under data/ and data/font/. A font that's
 // missing or TrueType is logged and left out, so text naming it isn't drawn.
 void loadFonts(const IniSection &files, const std::string &defPath, FontTable &out);
+// The fonts loaded by file name, and the table ids they were given.
+using FontFiles = std::map<std::string, int32_t>;
 
 // Where and how a screenpack element is drawn: the ".offset / .facing / .vfacing / .layerno / .scale / .angle /
 // .xshear" keys after a prefix ("p1.bg0.", "menu.item."). Ikemen's Layout (Read), without 3D angles, projection or
@@ -91,12 +93,14 @@ struct AnimLayout {
 };
 
 // A line of text: ".font = n, bank, align, r, g, b, a" and ".text", with its layout. "\n" in the text starts a new
-// line. Ikemen's FSText (readFSText) and AnimTextSnd's text drawing.
+// line. Ikemen's FSText (readFSText) and AnimTextSnd's text drawing. An Ikemen motif can name a font file instead of
+// a number ("default-3x5.def, 0, 1"): see resolveFontFile.
 struct TextLayout {
 	Layout layout;
 	int32_t font = -1, bank = 0, align = 0;
 	uint32_t colour = 0xFFFFFFFF;
 	std::string text;
+	std::string fontFile;
 	// Last: right after font, GCC merged their defaults into an instruction Xenia skips (see xenia_scan).
 	PalFX palfx;
 	void read(const std::string &prefix, const IniSection &section, int32_t defaultAlign = 0, int32_t layer = 0);
@@ -106,6 +110,28 @@ struct TextLayout {
 	void draw(float x, float y, int32_t layer, const FontTable &fonts, const ScreenSpace &space) const;
 	void draw(const std::string &line, float x, float y, int32_t layer, const FontTable &fonts,
 		const ScreenSpace &space) const;
+};
+
+// Ikemen's Fade: a screen's fade in from and fade out to a colour ("fadein." / "fadeout."), without animations.
+// Points a layout that names its font by file at that font, loading it into the table the first time (ids from
+// 1000, clear of [Files]' numbers). A font that won't load leaves the text undrawn.
+void resolveFontFile(TextLayout &text, FontTable &fonts, FontFiles &files, const std::string &defPath);
+
+struct ScreenFade {
+	int32_t time = 30;
+	uint32_t colour = 0;
+	int32_t snd[2] = { -1, 0 };
+	bool active = false, fadeIn = false;
+	int32_t totalTime = 0, timeRemaining = 0;
+
+	void read(const std::string &prefix, const IniSection &section);
+	int32_t duration() const { return time > 0 ? time : 0; }
+	void start(bool in);
+	void stop() { active = false; }
+	bool isActive() const { return active && timeRemaining >= 0 && totalTime > 0; }
+	// One tick; returns the sound to play on its first tick, if any.
+	bool step();
+	void draw() const;
 };
 
 } // namespace m360
