@@ -65,8 +65,8 @@ public:
 	// One game tick, before the characters act (Ikemen runs stepRoundState first). Returns NextRound or MatchOver
 	// once the round's ending has played out. The announcer can hold the round (see RoundAnnouncer).
 	Event step(Character &p1, Character &p2, RoundAnnouncer &announcer);
-	// The same with every fighter (Simul): player i is on team i % 2.
-	Event step(Character *const *fighters, int count, RoundAnnouncer &announcer);
+	// The same with every fighter (Simul): sides[i] is fighter i's team (i % 2 without it).
+	Event step(Character *const *fighters, int count, RoundAnnouncer &announcer, const int *sides = nullptr);
 	// What the characters see of it.
 	void fillWorld(FightWorld &w) const;
 	// How fast the game runs now: slowed after a KO.
@@ -97,7 +97,7 @@ public:
 	}
 
 private:
-	bool decide(Character *const *fighters, int count);
+	bool decide(Character *const *fighters, int count, const int *sides);
 	bool decisive(int side) const { return decisive_[side]; }
 
 	RoundTimings timings_;

@@ -66,6 +66,12 @@ public:
 	// The area the fight is drawn in (a 4:3 stage is pillarboxed): the fight screen fits its width there, from its
 	// top, as Ikemen's FightScreen.setScale fits it to the game's viewport.
 	void setViewport(float originX, float width);
+	// Each side's Simul partner, or null for a side of one (a new fight sets them).
+	void setPartners(const Character *partner1, const Character *partner2)
+	{
+		partner_[0] = partner1;
+		partner_[1] = partner2;
+	}
 	bool loaded() const { return loaded_; }
 	const RoundTimings &timings() const { return timings_; }
 
@@ -170,6 +176,10 @@ private:
 	};
 
 	void readLifeBar(LifeBar &bar, const std::string &prefix, const IniSection &section);
+	void readFace(Face &face, const std::string &prefix, const IniSection &section);
+	void readName(Name &name, const std::string &prefix, const IniSection &section);
+	void stepFaceName(Face &face, Name &name);
+	void drawName(const Name &name, int32_t layer, const Character &c);
 	void readPowerBar(PowerBar &bar, const std::string &prefix, const IniSection &section);
 	void readRound(const IniSection &section);
 	void readCombo(Combo &combo, const std::string &prefix, const IniSection &section, int side);
@@ -200,6 +210,12 @@ private:
 	RoundTimings timings_;
 
 	LifeBar life_[2];
+	// Simul: [Simul Lifebar] / [Simul Face] / [Simul Name], p1 and p3 for team 1's leader and partner, p2 and p4 for
+	// team 2's. A side with a partner uses these; a side of one keeps the bars above.
+	LifeBar simulLife_[4];
+	Face simulFace_[4];
+	Name simulName_[4];
+	const Character *partner_[2] = { nullptr, nullptr };
 	PowerBar power_[2];
 	Face face_[2];
 	Name name_[2];

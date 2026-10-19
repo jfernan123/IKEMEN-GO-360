@@ -1,4 +1,4 @@
-# Stage 10b Team Versus: VS MODE > TEAM VERSUS, choose two members and palettes for each side, choose stage 1,
+# Stage 10b Team Versus: VS MODE > TEAM VERSUS, choose Turns in each side's team menu, then two members and palettes, choose stage 1,
 # skip the VS screen, and start the first Turns pairing.
 #   build\pc\mugen360.exe --title --input tests\inputs\team.txt --input2 tests\inputs\team_p2.txt --quickstart --p2life 1 --quit 1600 --trace
 # Expect four "member" picks, the first pairing, a KO, then P2's second member entering the next pairing.
@@ -11,6 +11,13 @@
 10 -
 2 a
 30 -
+# Team menu: Turns (down twice, confirm).
+2 D
+5 -
+2 D
+5 -
+2 a
+10 -
 # P1 member 1: KFM.
 2 a
 10 -

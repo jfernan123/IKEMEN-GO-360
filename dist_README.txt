@@ -1,5 +1,10 @@
-MUGEN360 - milestone 10d: Survival (homebrew test build)
-========================================================
+MUGEN360 - milestone 10f: Simul and the team menu (homebrew test build)
+=======================================================================
+
+New: TEAM VERSUS and TEAM ARCADE ask each side for a team mode first: Single
+(one fighter), Simul (two fighters on screen at once, your partner played by
+the computer) or Turns (two fighters, one after the other). Up/down to choose,
+an attack button to confirm. Simul shows a lifebar for each fighter.
 
 Which build is this? During a fight the version shows faintly in the
 bottom-right corner, like V2026.10.18-1701 7F39FDD. The V part matches the

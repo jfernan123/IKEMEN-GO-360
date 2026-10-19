@@ -1,6 +1,15 @@
 # Player 2 selects two team members alongside player 1, then stands still in both fights.
 # This is paired with team.txt; its initial wait covers the title menu and select fade.
 86 -
+# Wait out the select screen's fade in alongside player 1.
+12 -
+# Team menu: Turns (down twice, confirm).
+2 D
+5 -
+2 D
+5 -
+2 a
+10 -
 # Member 1.
 2 a
 10 -

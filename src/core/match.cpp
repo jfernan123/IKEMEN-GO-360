@@ -68,22 +68,23 @@ float Match::speed() const
 
 // The round is over when one side is KO or the clock runs out (Ikemen's roundEndDecision). A team is KO when all its
 // members are.
-bool Match::decide(Character *const *fighters, int count)
+bool Match::decide(Character *const *fighters, int count, const int *sides)
 {
 	if (intro_ > 0)
 		return false;
 	bool ko[2] = { true, true };
 	int members[2] = { 0, 0 };
+	const auto side = [&](int i) { return sides ? sides[i] : i % 2; };
 	for (int i = 0; i < count; i++) {
-		members[i % 2]++;
+		members[side(i)]++;
 		if (fighters[i]->alive())
-			ko[i % 2] = false;
+			ko[side(i)] = false;
 	}
 	if (time_ == 0) {
 		// Time over: the side with more life (as a share of the most, averaged over a Simul team) wins.
 		float life[2] = { 0, 0 };
 		for (int i = 0; i < count; i++)
-			life[i % 2] += (float)fighters[i]->life / (float)fighters[i]->lifeMax() / (float)members[i % 2];
+			life[side(i)] += (float)fighters[i]->life / (float)fighters[i]->lifeMax() / (float)members[side(i)];
 		const float l0 = life[0], l1 = life[1];
 		if (std::lround(l0 * 1000) != std::lround(l1 * 1000)) {
 			finish_ = Finish::TimeOver;
@@ -112,7 +113,7 @@ Match::Event Match::step(Character &p1, Character &p2, RoundAnnouncer &announcer
 	return step(both, 2, announcer);
 }
 
-Match::Event Match::step(Character *const *fighters, int count, RoundAnnouncer &announcer)
+Match::Event Match::step(Character *const *fighters, int count, RoundAnnouncer &announcer, const int *sides)
 {
 	const std::vector<Character *> p(fighters, fighters + count);
 	const auto anyAsserts = [&](uint32_t flag) {
@@ -153,7 +154,7 @@ Match::Event Match::step(Character *const *fighters, int count, RoundAnnouncer &
 	if (!training_ && intro_ == 0 && !anyAsserts(Special::TimerFreeze) && time_ > 0)
 		time_--;
 
-	if (intro_ < -timings_.overHit || decide(fighters, count)) {
+	if (intro_ < -timings_.overHit || decide(fighters, count, sides)) {
 		const int32_t rs4 = -timings_.overWait;
 		intro_--;
 		if (slowTime_ > 0 && time_ != 0)
@@ -195,7 +196,7 @@ Match::Event Match::step(Character *const *fighters, int count, RoundAnnouncer &
 		if (winposeTime_ <= 0) {
 			for (int i = 0; i < count; i++) {
 				Character &c = *p[(size_t)i];
-				const int team = i % 2;
+				const int team = sides ? sides[i] : i % 2;
 				if (!c.overAlive() && c.alive() && !c.hitPause())
 					c.startOverState(winTeam_ == team ? 180 : winTeam_ == 1 - team ? 170 : 175);
 			}

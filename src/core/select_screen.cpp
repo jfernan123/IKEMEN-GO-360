@@ -147,9 +147,22 @@ bool MotifSelect::load(Motif &motif, const GameConfig &config, std::string &erro
 	s.ints("stage.portrait.spr", { &stagePortraitSpr_[0], &stagePortraitSpr_[1] });
 	readSide(sides_[0], "p1.", s);
 	readSide(sides_[1], "p2.", s);
+	const char *teamKeys[3] = { "single", "simul", "turns" };
+	for (int i = 0; i < 3; i++) {
+		const std::string name = s.text(std::string("teammenu.itemname.") + teamKeys[i]);
+		if (!name.empty())
+			teamNames_[i] = name;
+	}
+	if (s.readInt("teammenu.move.wrapping", v))
+		teamWrap_ = v != 0;
 	for (TextLayout *t : { &title_, &stageActive_, &stageActive2_, &stageDone_, &sides_[0].name, &sides_[1].name,
 			 &sides_[0].palText, &sides_[1].palText, &sides_[0].palNumber, &sides_[1].palNumber })
 		motif.resolveFont(*t);
+	for (Side &side : sides_) {
+		for (TextLayout *t : { &side.teamSelfTitle, &side.teamEnemyTitle, &side.teamItem, &side.teamItemActive,
+				 &side.teamItemActive2 })
+			motif.resolveFont(*t);
+	}
 
 	// "cell.<column>-<row>.<key>", either part "*" (Ikemen's getCellOverride).
 	overrides_.clear();
@@ -325,6 +338,28 @@ void MotifSelect::readSide(Side &side, const std::string &p, const IniSection &s
 	s.ints(p + "palmenu.value.snd", { &side.palValueSnd[0], &side.palValueSnd[1] });
 	s.ints(p + "palmenu.done.snd", { &side.palDoneSnd[0], &side.palDoneSnd[1] });
 	s.ints(p + "palmenu.cancel.snd", { &side.palCancelSnd[0], &side.palCancelSnd[1] });
+	const std::string t = p + "teammenu.";
+	s.floats(t + "pos", { &side.teamPos[0], &side.teamPos[1] });
+	side.teamSelfTitle.read(t + "selftitle.", s);
+	side.teamEnemyTitle.read(t + "enemytitle.", s);
+	side.teamItem.read(t + "item.", s);
+	side.teamItemActive.read(t + "item.active.", s);
+	side.teamItemActive2.read(t + "item.active2.", s);
+	// The active item takes the item's offset where it sets none of its own.
+	for (TextLayout *active : { &side.teamItemActive, &side.teamItemActive2 }) {
+		if (!s.has(t + (active == &side.teamItemActive ? "item.active.offset" : "item.active2.offset"))) {
+			active->layout.offsetX = side.teamItem.layout.offsetX;
+			active->layout.offsetY = side.teamItem.layout.offsetY;
+		}
+	}
+	s.floats(t + "item.spacing", { &side.teamItemSpacing[0], &side.teamItemSpacing[1] });
+	s.readInt(t + "item.active.switchtime", side.teamSwitch);
+	side.teamCursor.read(t + "item.cursor.", s, anims);
+	side.teamValueIcon.read(t + "value.icon.", s, anims);
+	side.teamValueEmpty.read(t + "value.empty.icon.", s, anims);
+	s.floats(t + "value.spacing", { &side.teamValueSpacing[0], &side.teamValueSpacing[1] });
+	s.ints(t + "move.snd", { &side.teamMoveSnd[0], &side.teamMoveSnd[1] });
+	s.ints(t + "done.snd", { &side.teamDoneSnd[0], &side.teamDoneSnd[1] });
 }
 
 const MotifSelect::CellOverride *MotifSelect::override(int32_t column, int32_t row) const
@@ -425,7 +460,7 @@ int32_t MotifSelect::random(int32_t n)
 	return n > 0 ? (int32_t)(random_ % (uint32_t)n) : 0;
 }
 
-void MotifSelect::reset(SelectMode mode, bool secondController)
+void MotifSelect::reset(SelectMode mode, bool secondController, int32_t presetTeam)
 {
 	mode_ = mode;
 	secondController_ = secondController;
@@ -441,7 +476,14 @@ void MotifSelect::reset(SelectMode mode, bool secondController)
 		side.x = std::clamp(side.startX, 0, columns_ - 1);
 		side.y = std::clamp(side.startY, 0, rows_ - 1);
 		side.cursorPlaced = false;
-		side.state = 0;
+		// Team modes start with the team menu (Ikemen's f_teamMenu), unless a test presets the mode.
+		const bool teamMenu = (mode == SelectMode::TeamVersus || mode == SelectMode::TeamArcade) && presetTeam < 0;
+		side.state = teamMenu ? -1 : 0;
+		side.teamMode = presetTeam >= 0 ? presetTeam : TEAM_SINGLE;
+		side.numChars = side.teamMode == TEAM_SINGLE ? 1 : 2;
+		side.teamMenu = 0;
+		side.teamBlinkCount = 0;
+		side.teamBlink = false;
 		side.chosen = -1;
 		side.palette = 1;
 		side.faceShownFor = -2;
@@ -498,12 +540,12 @@ void MotifSelect::setFace(Side &side, int32_t entry, bool done)
 void MotifSelect::confirmPick(int index)
 {
 	Side &side = sides_[index];
-	const bool teamMode = mode_ == SelectMode::TeamVersus || mode_ == SelectMode::TeamArcade;
+	const bool teamMode = teamModes();
 	side.teamChosen.push_back(side.chosen);
 	side.teamPalettes.push_back(side.palette);
 	logf("select: p%d member %zu %s palette %d", index + 1, side.teamChosen.size(),
 		roster_[(size_t)side.chosen].name.c_str(), (int)side.palette);
-	if (teamMode && side.teamChosen.size() < 2) {
+	if (teamMode && (int32_t)side.teamChosen.size() < side.numChars) {
 		side.state = 0;
 		side.chosen = -1;
 		side.faceDone = false;
@@ -553,6 +595,28 @@ void MotifSelect::updateSide(int index, const platform::Pad &now, const platform
 	const bool left = pressed(now.left, before.left), right = pressed(now.right, before.right);
 	const bool done = pressed(doneButton(now), doneButton(before));
 	const bool start = pressed(now.start, before.start), cancel = pressed(now.back, before.back);
+	if (side.state == -1) {
+		// Ikemen's f_teamMenu: up / down choose Single, Simul or Turns; the member counts are fixed at what mugen360
+		// fights (one, or two a side), so add / subtract change nothing; done confirms; Back leaves the screen.
+		if (up || down) {
+			const int32_t next = side.teamMenu + (down ? 1 : -1);
+			if (next >= 0 && next < 3)
+				side.teamMenu = next;
+			else if (teamWrap_)
+				side.teamMenu = next < 0 ? 2 : 0;
+			motif_->play(side.teamMoveSnd);
+		} else if (cancel) {
+			motif_->play(cancelSnd_);
+			cancelled_ = true;
+		} else if (done || start) {
+			side.teamMode = side.teamMenu;
+			side.numChars = side.teamMode == TEAM_SINGLE ? 1 : 2;
+			side.state = 0;
+			motif_->play(side.teamDoneSnd);
+			logf("select: p%d team %s", index + 1, teamNames_[side.teamMode].c_str());
+		}
+		return;
+	}
 	if (side.state == 0) {
 		const int32_t oldX = side.x, oldY = side.y;
 		cellMovement(side.x, side.y, right ? 1 : left ? -1 : 0, down ? 1 : up ? -1 : 0);
@@ -649,7 +713,12 @@ void MotifSelect::update(const platform::Pad &pad1, const platform::Pad &pad2)
 	case Phase::Characters:
 		if (fadeIn_.isActive())
 			break;
-		if (sides_[0].state != 3)
+		// Team menus first: player 1's, then the other side's, which player 1 sets too without a second controller.
+		if (sides_[0].state == -1)
+			updateSide(0, pad1, before_[0]);
+		else if (sides_[1].state == -1 && !((mode_ == SelectMode::Versus || mode_ == SelectMode::TeamVersus) && secondController_))
+			updateSide(1, pad1, before_[0]);
+		else if (sides_[0].state != 3)
 			updateSide(0, pad1, before_[0]);
 		else if (sides_[1].active && sides_[1].state != 3 &&
 			!((mode_ == SelectMode::Versus || mode_ == SelectMode::TeamVersus) && secondController_))
@@ -738,7 +807,7 @@ void MotifSelect::setArcadeOpponent(const std::vector<int32_t> &real)
 	if (!arcade_.active() || arcade_.opponent() >= (int32_t)real.size())
 		return;
 	Side &cpu = sides_[1];
-	const int members = mode_ == SelectMode::TeamArcade ? 2 : 1;
+	const int members = mode_ == SelectMode::TeamArcade ? sides_[1].numChars : 1;
 	cpu.teamChosen.clear();
 	cpu.teamPalettes.clear();
 	for (int member = 0; member < members; member++) {
@@ -898,7 +967,8 @@ void MotifSelect::drawFaces(int index)
 {
 	Side &side = sides_[index];
 	const int32_t shown = shownEntry(side);
-	if (!side.shown || shown < 0 || roster_[(size_t)shown].random)
+	// Nothing of the side shows until its team mode is chosen (Ikemen adds its select command after the team menu).
+	if (!side.shown || side.state < 0 || shown < 0 || roster_[(size_t)shown].random)
 		return;
 	const Entry &e = roster_[(size_t)shown];
 	const ScreenSpace &space = motif_->space();
@@ -957,6 +1027,49 @@ void MotifSelect::drawPalMenu(int index)
 													 : std::to_string(roster_[(size_t)side.chosen].palettes[(size_t)side.palIndex - 1]);
 	if (inPass(side.palNumber.layout.layer))
 		side.palNumber.draw(number, side.palPos[0], side.palPos[1], side.palNumber.layout.layer, motif_->fonts(), space);
+}
+
+// Ikemen's f_teamMenu drawing: the title (the enemy's for a side player 1 sets for the computer), each item in its
+// font (the chosen one blinking between two), the cursor at the chosen item, and the member icons.
+void MotifSelect::drawTeamMenu(int index)
+{
+	Side &side = sides_[index];
+	if (side.state != -1)
+		return;
+	Motif &m = *motif_;
+	const ScreenSpace &space = m.space();
+	const float x = side.teamPos[0], y = side.teamPos[1];
+	const bool enemy = index == 1 && !((mode_ == SelectMode::Versus || mode_ == SelectMode::TeamVersus) && secondController_);
+	const TextLayout &title = enemy ? side.teamEnemyTitle : side.teamSelfTitle;
+	if (inPass(title.layout.layer))
+		title.draw(x, y, title.layout.layer, m.fonts(), space);
+	if (++side.teamBlinkCount > side.teamSwitch) {
+		side.teamBlinkCount = 0;
+		side.teamBlink = !side.teamBlink;
+	}
+	const float cx = x + side.teamItemSpacing[0] * (float)side.teamMenu;
+	const float cy = y + side.teamItemSpacing[1] * (float)side.teamMenu;
+	if (side.teamCursor.present && inPass(side.teamCursor.layout.layer))
+		side.teamCursor.draw(cx + side.teamItem.layout.offsetX, cy + side.teamItem.layout.offsetY,
+			side.teamCursor.layout.layer, m.renderer(), space);
+	for (int i = 0; i < 3; i++) {
+		const float ix = x + side.teamItemSpacing[0] * (float)i, iy = y + side.teamItemSpacing[1] * (float)i;
+		const TextLayout &font = i != side.teamMenu ? side.teamItem : side.teamBlink ? side.teamItemActive2
+																					 : side.teamItemActive;
+		if (inPass(font.layout.layer))
+			font.draw(teamNames_[i], ix, iy, font.layout.layer, m.fonts(), space);
+		if (i == TEAM_SINGLE)
+			continue;
+		// Two member icons: what mugen360 fights in Simul and Turns.
+		for (int j = 0; j < 2; j++) {
+			const AnimLayout &icon = side.teamValueIcon;
+			if (!icon.present || !inPass(icon.layout.layer))
+				continue;
+			icon.draw(ix + side.teamValueSpacing[0] * (float)j + side.teamItem.layout.offsetX,
+				iy + side.teamValueSpacing[1] * (float)j + side.teamItem.layout.offsetY, icon.layout.layer, m.renderer(),
+				space);
+		}
+	}
 }
 
 void MotifSelect::drawStage()
@@ -1048,7 +1161,7 @@ void MotifSelect::drawElements()
 	// Cursors, eased toward their cells (Ikemen's f_drawCursor); a side that has picked shows its "done" cursor.
 	for (int i = 0; i < 2; i++) {
 		Side &side = sides_[i];
-		if (!side.shown)
+		if (!side.shown || side.state < 0)
 			continue;
 		const Point p = cellPosition(side.x, side.y);
 		const float targetX = posX_ + p.x, targetY = posY_ + p.y;
@@ -1066,11 +1179,14 @@ void MotifSelect::drawElements()
 	for (int i = 0; i < 2; i++) {
 		const Side &side = sides_[i];
 		const int32_t shown = shownEntry(side);
-		if (side.shown && shown >= 0 && !roster_[(size_t)shown].random && inPass(side.name.layout.layer))
+		if (side.shown && side.state >= 0 && shown >= 0 && !roster_[(size_t)shown].random &&
+			inPass(side.name.layout.layer))
 			side.name.draw(roster_[(size_t)shown].name, 0, 0, side.name.layout.layer, m.fonts(), space);
 	}
 	for (int i = 0; i < 2; i++)
 		drawPalMenu(i);
+	for (int i = 0; i < 2; i++)
+		drawTeamMenu(i);
 	drawStage();
 }
 
