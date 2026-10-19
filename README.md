@@ -354,6 +354,19 @@ paths use forward slashes.
      that row "Not used" (menu.valuename.nokey), saved that way in [Joystick_Pn]. Directions stay on the d-pad.
      `tests/inputs/keys.txt` gives player 1's A to RB and saves.
 
+12. Performance on a real 360: waits on a console log (stage 13 goes first).
+
+13. Compatibility (in progress): MUGEN games from their own folder.
+   - 13a game folders (done): `--game <folder>` or `game =` in `data/mugen360.ini` plays a MUGEN game as MUGEN /
+     Ikemen start it: the motif from `data/mugen.cfg` [Options] motif (or Ikemen's `save/config.ini` [Config] Motif,
+     else `data/system.def`), its [Files] select and fight looked up from the motif's folder, the game and `data/`,
+     then select.def's [Characters] (stage .defs, includestage, slot = { a | b }, exclude = 1, randomselect) and
+     [ExtraStages], with the characters' stages after the extra ones. Files are found with Ikemen's SearchFile
+     (`core/file`'s `searchFile`: "kfm" is chars/kfm/kfm.def or data/chars/...), and the folder is the file root:
+     the game's files first, mugen360's own (fonts, common1.cns) for anything it lacks. A folder that can't be read
+     falls back to mugen360's content. `tests/game` is a small game folder using the bundled characters.
+     Not yet: dummyslot / skipslot / blank cells, per-character music and arcade order, mugen.cfg's other options.
+
 ## Asset notice
 
 Kung Fu Man, his stage, `common1.cns`, and the shared fight resources are Elecbyte/Ikemen release assets included

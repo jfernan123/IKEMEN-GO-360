@@ -28,6 +28,7 @@ int run8eTests();
 int run8fTests();
 int run9Tests();
 int run11Tests();
+int run13Tests();
 int run10aTests();
 
 // The tests have no platform: the log goes to the console.
@@ -309,6 +310,7 @@ int main()
 	failures += run9Tests();
 	failures += run10aTests();
 	failures += run11Tests();
+	failures += run13Tests();
 
 	std::printf("\n%d passed, %d failed\n", passes, failures);
 	return failures ? 1 : 0;

@@ -947,7 +947,7 @@ int main(int argc, char **argv)
 	std::string configError;
 	const bool configLoaded = config.load("data/mugen360.ini", configError);
 	// Test-run options (see InputScript).
-	std::string inputPath, input2Path, forcedMode;
+	std::string inputPath, input2Path, forcedMode, p1Arg, p2Arg, stageArg;
 	std::map<uint32_t, std::string> shots;
 	uint32_t quitFrame = UINT32_MAX;
 	int32_t testPower = -1, testP2Life = -1;
@@ -987,16 +987,18 @@ int main(int argc, char **argv)
 		else if (arg == "--p2life" && i + 1 < argc)
 			testP2Life = text::atoi(argv[++i]);
 		else if (arg == "--p1" && i + 1 < argc)
-			config.player1 = argv[++i];
+			p1Arg = argv[++i];
 		else if (arg == "--p2" && i + 1 < argc)
-			config.player2 = argv[++i];
+			p2Arg = argv[++i];
 		else if (arg == "--stage" && i + 1 < argc)
-			config.stage = argv[++i];
+			stageArg = argv[++i];
+		else if (arg == "--game" && i + 1 < argc)
+			config.game = argv[++i];
 	}
 	const bool testRun = !inputPath.empty() || !shots.empty() || quitFrame != UINT32_MAX;
 	if (!platform::init(testRun && !show))
 		return 1;
-	logf("mugen360: milestone 11, options and saving, build %s", buildVersion());
+	logf("mugen360: milestone 13a, game folders, build %s", buildVersion());
 	// The options, saved in save/config.ini. Test runs keep Ikemen's defaults, so a player's saved options never
 	// change a test's result.
 	Settings settings;
@@ -1008,6 +1010,25 @@ int main(int argc, char **argv)
 	SoundBank::setVolume(settings.soundGain());
 	if (!configLoaded)
 		logf("mugen360: %s", configError.c_str());
+	// A MUGEN game's own folder (13a): its system.def, fight.def and select.def replace mugen360's content. If it
+	// can't be read, mugen360's own content plays instead.
+	if (!config.game.empty()) {
+		GameConfig fromGame = config;
+		std::string gameError;
+		if (fromGame.loadGame(config.game, gameError)) {
+			config = fromGame;
+		} else {
+			logf("game: %s; playing mugen360's own content", gameError.c_str());
+			setGameRoot("");
+			config.game.clear();
+		}
+	}
+	if (!p1Arg.empty())
+		config.player1 = p1Arg;
+	if (!p2Arg.empty())
+		config.player2 = p2Arg;
+	if (!stageArg.empty())
+		config.stage = stageArg;
 	logf("game: p1=%s p2=%s stage=%s", config.player1.c_str(), config.player2.c_str(), config.stage.c_str());
 	InputScript script, script2;
 	if (!inputPath.empty() && !script.load(inputPath))
