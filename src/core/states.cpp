@@ -363,8 +363,19 @@ bool StateTable::load(const std::string &path, std::string &error)
 				i++;
 				continue;
 			}
-			if (!stateHeader(head))
+			if (!stateHeader(head)) {
+				// Ikemen's SectionName: a "[" line without its "]" ("[State 1201, VarSet)") isn't a section; it and
+				// its keys are skipped, and the state goes on at the next header.
+				if (head.back() != ']') {
+					for (i++; i < lines.size(); i++) {
+						const std::string next = uncommented(lines[i]);
+						if (!next.empty() && next[0] == '[')
+							break;
+					}
+					continue;
+				}
 				break;
+			}
 			StateController sc;
 			sc.file = path;
 			sc.line = (int)i + 1;

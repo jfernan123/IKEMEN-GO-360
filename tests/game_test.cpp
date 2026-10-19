@@ -8,6 +8,7 @@
 #include "core/expr.h"
 #include "core/file.h"
 #include "core/game_config.h"
+#include "core/states.h"
 
 using namespace m360;
 
@@ -118,6 +119,14 @@ int run13Tests()
 	expect(evalInt("StageVar(info.name) = \"mountainside temple\"") == 1, "StageVar(info.name) compares without case");
 	expect(evalInt("StageVar(info.name) != \"Training Room\"") == 1, "StageVar(info.name) !=");
 	expect(evalInt("WinKO + Const240p(10)") == 21, "WinKO and Const240p parse and evaluate");
+
+	// A malformed controller header skips that controller only (Ikemen's SectionName), not the rest of the state.
+	StateTable table;
+	std::string tableError;
+	const bool tableLoaded = table.load("tests/fixtures/malformed.cns", tableError);
+	const StateDef *odd = table.find(9901);
+	expect(tableLoaded && odd && odd->ctrls.size() == 2 && odd->ctrls[1].type == CtrlType::ChangeState,
+		"a \"[State ...)\" header drops one controller, the state keeps the rest");
 
 	GameConfig missing;
 	expect(!missing.loadGame("tests/no_such_game", error), "a folder with no game fails");
