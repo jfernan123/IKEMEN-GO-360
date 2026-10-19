@@ -38,6 +38,7 @@ call :team || exit /b 1
 call :survival || exit /b 1
 call :simul || exit /b 1
 call :watch || exit /b 1
+call :options || exit /b 1
 call :run buttons 80 --quickstart || exit /b 1
 call :run commands 260 --quickstart || exit /b 1
 call :run states 330 --quickstart || exit /b 1
@@ -82,6 +83,11 @@ findstr /c:"select: SURVIVAL" tests\out\latest_survival.log >nul || (echo FAIL: 
 findstr /c:"survival: match 1" tests\out\latest_survival.log >nul || (echo FAIL: Survival did not start its first match & exit /b 1)
 findstr /c:"survival: player advances" tests\out\latest_survival.log >nul || (echo FAIL: Survival did not advance after a win & exit /b 1)
 findstr /c:"survival: match 2" tests\out\latest_survival.log >nul || (echo FAIL: Survival did not start its second match & exit /b 1)
+findstr /c:"title: OPTIONS" tests\out\latest_options.log >nul || (echo FAIL: OPTIONS did not open from the title & exit /b 1)
+findstr /c:"options: difficulty 7" tests\out\latest_options.log >nul || (echo FAIL: the options screen did not raise Difficulty & exit /b 1)
+findstr /c:"options: roundtime 98" tests\out\latest_options.log >nul || (echo FAIL: the options screen did not lower Time Limit & exit /b 1)
+findstr /c:"settings: saved to tests/out/config.ini" tests\out\latest_options.log >nul || (echo FAIL: Save and Return did not save & exit /b 1)
+findstr /c:"Difficulty = 7" tests\out\config.ini >nul || (echo FAIL: the saved file lacks the new Difficulty & exit /b 1)
 findstr /c:"select: WATCH MODE" tests\out\latest_watch.log >nul || (echo FAIL: Watch did not open its select screen & exit /b 1)
 findstr /c:"select: p2 Kung Fu Man" tests\out\latest_watch.log >nul || (echo FAIL: player 1 did not pick player 2 in Watch & exit /b 1)
 findstr /r /c:"^p1 frame [1-9][0-9]*: state 0 -> [1-9]" tests\out\latest_watch.log >nul || (echo FAIL: the computer did not play player 1 in Watch & exit /b 1)
@@ -173,6 +179,12 @@ exit /b 0
 echo     arcade
 "%EXE%" --title --input tests\inputs\arcade.txt --quit 500 --trace %SHOW% >nul || exit /b 1
 copy /y m360.log tests\out\latest_arcade.log >nul
+exit /b 0
+
+:options
+echo     options
+"%EXE%" --title --input tests\inputs\options.txt --quit 520 --trace %SHOW% >nul || exit /b 1
+copy /y m360.log tests\out\latest_options.log >nul
 exit /b 0
 
 :watch

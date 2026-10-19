@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <string>
 
+#include "core/font.h"
 #include "core/input.h"
 #include "core/settings.h"
 
@@ -71,6 +72,13 @@ int run11Tests()
 	loaded.toInput(1, pad, two);
 	expect(one.z && !one.a, "player 1: RB is z, LB is nothing");
 	expect(two.a && two.z, "player 2: LB is a, RB is still z");
+
+	// The options screen's TrueType font (ikemen1's font7, Open Sans) loads and measures text.
+	Font openSans;
+	std::string error;
+	expect(openSans.load("data/font/Open_Sans.def", error), "a TrueType font loads (Open Sans)");
+	expect(openSans.textWidth("Game Settings", 0) > openSans.textWidth("Game", 0) && openSans.textWidth("Game", 0) > 0,
+		"TrueType text widths grow with the text");
 
 	std::printf("11 options: %d passed, %d failed\n", passed, failed);
 	return failed;

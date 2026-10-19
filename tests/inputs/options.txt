@@ -1,0 +1,43 @@
+# Stage 11b options: the title's OPTIONS, Game Settings, Difficulty up twice (5 -> 7), Time Limit down once (99 -> 98),
+# back out through Back, then Save and Return (a test run saves to tests\out\config.ini), back on the title.
+#   build\pc\mugen360.exe --title --input tests\inputs\options.txt --quit 520 --trace
+# Expect "title: OPTIONS", "options: difficulty 7", "options: roundtime 98", "settings: saved to tests/out/config.ini".
+30 -
+# Down to OPTIONS (ARCADE, VS MODE, PRACTICE, MISSION, WATCH MODE, OPTIONS).
+2 D
+5 -
+2 D
+5 -
+2 D
+5 -
+2 D
+5 -
+2 D
+5 -
+2 a
+60 -
+# Game Settings.
+2 a
+10 -
+2 R
+5 -
+2 R
+5 -
+2 D
+5 -
+2 L
+5 -
+# Up from Difficulty wraps to Back.
+2 U
+5 -
+2 U
+5 -
+2 a
+10 -
+# From Game Settings, up wraps to Return Without Saving, then Save and Return.
+2 U
+5 -
+2 U
+5 -
+2 a
+200 -

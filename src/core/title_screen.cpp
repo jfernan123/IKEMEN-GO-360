@@ -33,7 +33,7 @@ const char *const TITLE_DEFAULTS[][2] = {
 	{ "footer.info.font", "f-4x6.def, 0, 0, 191, 191, 191, 255" },
 	{ "footer.info.text", "" },
 	{ "footer.version.font", "f-4x6.def, 0, -1, 191, 191, 191, 255" },
-	{ "footer.version.text", "MILESTONE 10" },
+	{ "footer.version.text", "MILESTONE 11" },
 	{ "footer.overlay.col", "0, 0, 64" },
 	{ "footer.overlay.alpha", "255, 100" },
 };
@@ -266,11 +266,8 @@ void TitleScreen::choose(const Item &item, const std::string &path)
 		return;
 	}
 	motif_->play(doneSnd_);
-	if (item.name == "options") {
-		notice("OPTIONS COME IN STAGE 11", 120);
-		return;
-	}
-	pending_ = item.name == "arcade" ? TitleChoice::Arcade
+	pending_ = item.name == "options" ? TitleChoice::Options
+		: item.name == "arcade"        ? TitleChoice::Arcade
 		: item.name == "teamarcade"    ? TitleChoice::TeamArcade
 		: item.name == "teamversus"    ? TitleChoice::TeamVersus
 		: item.name == "training"     ? TitleChoice::Training

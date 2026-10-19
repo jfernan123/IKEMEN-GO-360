@@ -67,7 +67,8 @@ void Settings::clamp()
 	matchWins = std::clamp(matchWins, 1, 10);
 	maxDrawGames = std::clamp(maxDrawGames, -2, 10);
 	simulWins = std::clamp(simulWins, 1, 10);
-	for (int32_t *v : { &masterVolume, &wavVolume, &bgmVolume })
+	masterVolume = std::clamp(masterVolume, 0, 200);
+	for (int32_t *v : { &wavVolume, &bgmVolume })
 		*v = std::clamp(*v, 0, 100);
 	for (auto &player : buttons)
 		for (uint8_t &b : player)

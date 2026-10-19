@@ -1,5 +1,10 @@
-MUGEN360 - milestone 10: match modes and teams (homebrew test build)
-=====================================================================
+MUGEN360 - milestone 11: options (homebrew test build)
+======================================================
+
+New: OPTIONS on the title works: difficulty, time limit, life, game speed,
+rounds to win, volumes. Up/down to pick, left/right to change, an attack
+button to open or run, Back to leave. "Save and Return" keeps them for next
+time (in save/config.ini).
 
 New: WATCH MODE > CPU MATCH. Pick both fighters (and their team modes) and a
 stage, then the computer plays both sides.

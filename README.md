@@ -339,6 +339,14 @@ paths use forward slashes.
      Ikemen applies them: rounds to win and draws replace fight.def's match.wins ("Replaced by ingame options"), the
      clock is Time x framespercount, life is scaled, game speed changes ticks a second, volumes scale music and
      sounds, the pads go through the mapping. Test runs keep the defaults whatever is saved.
+   - 11b options screen (done): the title's OPTIONS opens Ikemen's options screen (`core/options_screen`, from
+     [Option Info] and OptionBG; options.lua's menu and handlers, main.lua's f_menuCommonDraw): Game Settings
+     (Difficulty, Time Limit, Life, Game Speed, Rounds to Win, Max Draw Games, Simul Settings), Audio Settings
+     (Master / BGM / SFX volume, applied at once), Input Settings (Default), Default Values, Save and Return, Return
+     Without Saving, with the value column, the dimmed box and the pulsing box cursor. Fonts: TrueType .def fonts now
+     load (stb_truetype; ikemen1's Open Sans for the options and info text, its .ttf and licence in
+     `data/font/Open_Sans/`), glyphs rasterized at the size drawn. `tests/inputs/options.txt` changes two options and
+     saves (a test run saves to tests/out/config.ini).
 
 ## Asset notice
 

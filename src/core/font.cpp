@@ -10,7 +10,14 @@
 #include "core/log.h"
 #include "core/text.h"
 
+#include "stb_truetype/stb_truetype.h"
+
 namespace m360 {
+
+struct Font::TrueType {
+	std::vector<uint8_t> bytes;
+	stbtt_fontinfo info;
+};
 
 namespace {
 
@@ -182,10 +189,8 @@ bool Font::loadV1(const std::vector<uint8_t> &file, const std::string &path, std
 bool Font::loadV2(const std::string &text, const std::string &path, std::string &error)
 {
 	readDef(text);
-	if (type_ == "truetype") {
-		error = path + ": TrueType fonts aren't supported";
-		return false;
-	}
+	if (type_ == "truetype")
+		return loadTrueType(text, path, error);
 	const std::vector<IniSection> ini = parseIni(text);
 	const IniSection *def = findSection(ini, "def");
 	const std::string file = def ? def->text("file") : std::string();
@@ -200,6 +205,118 @@ bool Font::loadV2(const std::string &text, const std::string &path, std::string 
 	}
 	error = path + ": can't find " + file;
 	return false;
+}
+
+Font::Font() = default;
+
+Font::~Font()
+{
+	for (auto &[key, g] : glyphCache_) {
+		if (g.texture)
+			platform::destroyTexture(g.texture);
+	}
+}
+
+// Ikemen's LoadFntTtf: the .ttf found as SearchFile finds it (next to the .def, the motif, as given, data/, font/).
+bool Font::loadTrueType(const std::string &text, const std::string &path, std::string &error)
+{
+	const std::vector<IniSection> ini = parseIni(text);
+	const IniSection *def = findSection(ini, "def");
+	const std::string file = def ? def->text("file") : std::string();
+	auto ttf = std::make_unique<TrueType>();
+	for (const std::string &candidate : { directoryOf(path) + file, "data/font/" + file, "font/" + file, "data/" + file, file }) {
+		if (!file.empty() && readFile(candidate, ttf->bytes))
+			break;
+	}
+	if (ttf->bytes.empty() || !stbtt_InitFont(&ttf->info, ttf->bytes.data(), stbtt_GetFontOffsetForIndex(ttf->bytes.data(), 0))) {
+		error = path + ": can't load TrueType font " + file;
+		return false;
+	}
+	if (sizeY_ <= 0)
+		sizeY_ = 16;
+	ttf_ = std::move(ttf);
+	return true;
+}
+
+// A glyph rasterized at pixelHeight, coloured: white coverage times the colour, premultiplied as the renderer's
+// textures are (see platform::Blend).
+const Font::Glyph &Font::glyph(uint32_t code, int pixelHeight, uint32_t colour) const
+{
+	const auto key = std::make_tuple(code, pixelHeight, colour);
+	const auto found = glyphCache_.find(key);
+	if (found != glyphCache_.end())
+		return found->second;
+	Glyph &g = glyphCache_[key];
+	const float scale = stbtt_ScaleForPixelHeight(&ttf_->info, (float)pixelHeight);
+	int advance = 0, bearing = 0;
+	stbtt_GetCodepointHMetrics(&ttf_->info, (int)code, &advance, &bearing);
+	g.advance = (float)advance * scale;
+	unsigned char *bitmap = stbtt_GetCodepointBitmap(&ttf_->info, scale, scale, (int)code, &g.width, &g.height,
+		&g.offsetX, &g.offsetY);
+	if (bitmap && g.width > 0 && g.height > 0) {
+		const uint32_t a0 = colour >> 24, r = colour >> 16 & 0xFF, gr = colour >> 8 & 0xFF, b = colour & 0xFF;
+		std::vector<uint32_t> pixels((size_t)g.width * (size_t)g.height);
+		for (size_t i = 0; i < pixels.size(); i++) {
+			const uint32_t a = bitmap[i] * a0 / 255;
+			pixels[i] = a << 24 | (r * a / 255) << 16 | (gr * a / 255) << 8 | (b * a / 255);
+		}
+		g.texture = platform::createTexture(g.width, g.height, pixels.data());
+	}
+	if (bitmap)
+		stbtt_FreeBitmap(bitmap, nullptr);
+	return g;
+}
+
+// UTF-8 to code points; a broken sequence reads as its bytes.
+static std::vector<uint32_t> codePoints(const std::string &text)
+{
+	std::vector<uint32_t> out;
+	for (size_t i = 0; i < text.size();) {
+		const uint8_t c = (uint8_t)text[i];
+		int extra = c >= 0xF0 ? 3 : c >= 0xE0 ? 2 : c >= 0xC0 ? 1 : 0;
+		if (i + (size_t)extra >= text.size())
+			extra = 0;
+		uint32_t code = extra == 0 ? c : c & (0x3F >> extra);
+		for (int k = 1; k <= extra; k++)
+			code = code << 6 | ((uint8_t)text[i + (size_t)k] & 0x3F);
+		out.push_back(code);
+		i += (size_t)extra + 1;
+	}
+	return out;
+}
+
+float Font::trueTypeWidth(const std::string &text) const
+{
+	const float scale = stbtt_ScaleForPixelHeight(&ttf_->info, (float)sizeY_);
+	float width = 0;
+	for (uint32_t code : codePoints(text)) {
+		int advance = 0, bearing = 0;
+		stbtt_GetCodepointHMetrics(&ttf_->info, (int)code, &advance, &bearing);
+		width += (float)advance * scale;
+	}
+	return width;
+}
+
+// Ikemen's Printf: aligned by the line's width, each glyph at its bearing from the baseline at y.
+void Font::drawTrueType(const std::string &text, float x, float y, float scaleX, float scaleY, int align,
+	uint32_t colour) const
+{
+	const float width = trueTypeWidth(text) * scaleX;
+	if (align == 0)
+		x -= width * 0.5f;
+	else if (align < 0)
+		x -= width;
+	x += (float)offsetX_ * scaleX;
+	// Rasterized at the height it's drawn, so it stays sharp; positions scale from that size back to the font's.
+	const int pixelHeight = std::max(1, (int)std::lround((float)sizeY_ * scaleY));
+	const float toScreenX = scaleX * (float)sizeY_ / (float)pixelHeight, toScreenY = scaleY * (float)sizeY_ / (float)pixelHeight;
+	for (uint32_t code : codePoints(text)) {
+		const Glyph &g = glyph(code, pixelHeight, colour);
+		if (g.texture)
+			platform::drawTexture(g.texture, x + (float)g.offsetX * toScreenX, y + (float)g.offsetY * toScreenY,
+				(float)g.width * toScreenX, (float)g.height * toScreenY, platform::Blend::Over);
+		x += g.advance * toScreenX;
+	}
 }
 
 int Font::paletteFor(int32_t bank) const
@@ -222,6 +339,8 @@ int32_t Font::charWidth(uint32_t c, int32_t bank) const
 
 int32_t Font::textWidth(const std::string &text, int32_t bank) const
 {
+	if (ttf_)
+		return (int32_t)std::lround(trueTypeWidth(text));
 	int32_t w = 0;
 	for (size_t i = 0; i < text.size(); i++) {
 		const uint8_t c = (uint8_t)text[i];
@@ -240,6 +359,10 @@ int32_t Font::textWidth(const std::string &text, int32_t bank) const
 void Font::draw(const std::string &text, float x, float y, float scaleX, float scaleY, int32_t bank, int align,
 	uint32_t colour, const SpriteDraw &effects) const
 {
+	if (ttf_ && !text.empty() && scaleX != 0 && scaleY != 0) {
+		drawTrueType(text, x, y, scaleX, scaleY, align, colour);
+		return;
+	}
 	if (!renderer_ || text.empty() || scaleX == 0 || scaleY == 0)
 		return;
 	if (!spriteBanks_ && (bank < 0 || bank >= std::max(banks_, 1) + 64))
