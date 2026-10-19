@@ -1031,7 +1031,7 @@ int main(int argc, char **argv)
 	const bool testRun = !inputPath.empty() || !shots.empty() || quitFrame != UINT32_MAX || checkRun;
 	if (!platform::init(testRun && !show))
 		return 1;
-	logf("mugen360: milestone 13b, compatibility report, build %s", buildVersion());
+	logf("mugen360: milestone 13c, compatibility gaps, build %s", buildVersion());
 	// The options, saved in save/config.ini. Test runs keep Ikemen's defaults, so a player's saved options never
 	// change a test's result.
 	Settings settings;

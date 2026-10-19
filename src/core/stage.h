@@ -63,12 +63,13 @@ public:
 	} shadow;
 	// [Reflection] intensity: the fighters mirrored on the floor, 0 (none) to 255.
 	int32_t reflection = 0;
-	// [Reflection] color (the reflection mixed toward it by the intensity), yscale and offset.
-	uint32_t reflectionColour = 0xFFFFFF;
-	float reflectionYScale = 1, reflectionOffsetX = 0, reflectionOffsetY = 0;
-	// [StageInfo] autoturn (fighters turn to face their opponent) and xscale / yscale (StageVar only).
-	bool autoTurn = true;
-	float scaleX = 1, scaleY = 1;
+	// [Reflection] color (the reflection mixed toward it by the intensity), yscale and offset; [StageInfo] autoturn
+	// (fighters turn to face their opponent) and xscale / yscale (StageVar only). Set by load(): default values
+	// here made GCC build them with an instruction Xenia skips (see xenia_scan).
+	uint32_t reflectionColour;
+	float reflectionYScale, reflectionOffsetX, reflectionOffsetY;
+	bool autoTurn;
+	float scaleX, scaleY;
 	// [Music] bgmusic and its settings, found as Ikemen's SearchFile finds it.
 	MusicTrack music;
 

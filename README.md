@@ -374,6 +374,21 @@ paths use forward slashes.
      themselves when they run. A character's files are now found as Ikemen's char.go finds them (next to the .def,
      the game's root, data/). `tests/game/chars/oddkfm` is KFM's files plus a state with an unknown controller and
      trigger, which the report must find.
+   - 13c compatibility gaps (done), the ones a big roster will hit without needing the game to find them:
+     - Helpers can be hit (Ikemen's hitDetectionPlayer checks every character on the other side, nearest first):
+       assists and summons. `tests/fixtures/assist` calls a standing helper that P1 punches.
+     - Targets are lists (an enemy, both in Simul, a helper): Target* controllers act on every target of the id,
+       TargetDrop follows Ikemen's targetDrop (excludeid, keepone), NumTarget counts, Target(id) / BindToTarget pick
+       the first of the id, and a bare Target / Helper redirect means any. `tests/fixtures/targets` checks them on a
+       hit helper.
+     - ProjCancelTime (a projectile cancelled in a clash); projectile triggers take id 0 as any.
+     - The rest of MUGEN 1.1's triggers: WinKO, WinTime, WinPerfect, LoseKO, LoseTime, Const240p, Const480p,
+       CameraZoom, StageVar (Ikemen's keys; the info ones compare like Name). Win / Lose use playerNo & 1.
+     - select.def's dummyslot and skipslot cells; portraits find a character's files as the fight does.
+     - Stages: [Shadow] color (Ikemen's subtracted second pass, off for MUGEN 1.1 stages) and offset;
+       [Reflection] color (Ikemen's tint), yscale and offset; [StageInfo] autoturn, xscale, yscale.
+     Every MUGEN 1.1 controller type has an implementation (checked against the CtrlType list).
+     Not yet: HitDef affectteam (friendly fire), Ikemen's Z axis ([Scaling], topbound / botbound), attachedchar.
 
 ## Asset notice
 

@@ -11,13 +11,22 @@ namespace m360 {
 
 bool Stage::load(const std::string &defPath, std::string &error)
 {
+	// Ikemen's defaults for the settings without in-class values (see stage.h). The 1.0 values are set apart, between
+	// calls: stored side by side, GCC builds them as one 64-bit constant with an instruction Xenia skips.
+	reflectionColour = 0xFFFFFF;
+	reflectionOffsetX = 0;
+	reflectionOffsetY = 0;
+	autoTurn = true;
+	scaleX = 1;
 	std::vector<uint8_t> bytes;
 	if (!readFile(defPath, bytes)) {
 		error = "can't read " + defPath;
 		return false;
 	}
+	scaleY = 1;
 	const std::string body(bytes.begin(), bytes.end());
 	const std::vector<IniSection> sections = parseIni(body);
+	reflectionYScale = 1;
 	// The stage's own animations, for "type = anim" elements.
 	anims_.parse(defPath, body);
 
