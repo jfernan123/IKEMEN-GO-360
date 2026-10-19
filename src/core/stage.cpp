@@ -2,6 +2,7 @@
 
 #include <cmath>
 
+#include "core/compat.h"
 #include "core/file.h"
 #include "core/log.h"
 #include "core/text.h"
@@ -171,14 +172,17 @@ void Stage::logUnread(const std::vector<IniSection> &sections, const std::string
 			known = s.lower == k.section ? &k : known;
 		if (!known) {
 			report += (report.empty() ? "[" : "; [") + s.name + "]";
+			compat::note(compat::Kind::Stage, "[" + s.lower + "]");
 			continue;
 		}
 		const std::vector<std::string> keys = unreadKeys(s, known->keys);
 		if (keys.empty())
 			continue;
 		report += (report.empty() ? "[" : "; [") + s.name + "]";
-		for (size_t i = 0; i < keys.size(); i++)
+		for (size_t i = 0; i < keys.size(); i++) {
 			report += (i == 0 ? " " : ", ") + keys[i];
+			compat::note(compat::Kind::Stage, "[" + s.lower + "] " + keys[i]);
+		}
 	}
 	if (!report.empty())
 		logf("stage: %s: not read yet: %s", defPath.c_str(), report.c_str());

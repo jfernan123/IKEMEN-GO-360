@@ -1,0 +1,11 @@
+; Odd KFM's own state: one controller type and one trigger that don't exist, for the report to find.
+[Statedef 9900]
+type = S
+
+[State 9900, unknown controller]
+type = MakeRainbow
+trigger1 = 1
+
+[State 9900, unknown trigger]
+type = Null
+trigger1 = RainbowCount > 0

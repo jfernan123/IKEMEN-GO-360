@@ -17,3 +17,5 @@ Thumbs.db
 save/
 # MUGEN games played with --game stay out of the repository (their art belongs to others).
 games/
+# --check reports.
+compat_*.txt

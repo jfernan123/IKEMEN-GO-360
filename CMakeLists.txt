@@ -18,6 +18,7 @@ set(CORE_SOURCES
 	src/core/effects.cpp
 	src/core/expr.cpp
 	src/core/fight_screen.cpp
+	src/core/compat.cpp
 	src/core/file.cpp
 	src/core/font.cpp
 	src/core/game_flow.cpp
@@ -84,7 +85,7 @@ else()
 	# Unit tests for the engine's core, no platform: build\pc\mugen360_tests.exe, run from this folder.
 	add_executable(mugen360_tests tests/expr_test.cpp tests/states_test.cpp tests/effects_sound_test.cpp tests/combat_test.cpp tests/game_flow_test.cpp
 		tests/legacy_test.cpp tests/music_test.cpp tests/screenpack_test.cpp tests/stage_test.cpp tests/settings_test.cpp tests/game_test.cpp
-		src/core/expr.cpp src/core/air.cpp src/core/bgdef.cpp src/core/camera.cpp src/core/character.cpp src/core/fight_screen.cpp src/core/match.cpp src/core/motif.cpp src/core/music.cpp src/core/options_screen.cpp src/core/select_screen.cpp src/core/settings.cpp src/core/title_screen.cpp src/core/versus_screen.cpp src/core/effects.cpp src/core/file.cpp src/core/font.cpp src/core/game_flow.cpp src/core/game_config.cpp src/core/hitdef.cpp src/core/ini.cpp src/core/input.cpp src/core/layout.cpp src/core/log.cpp src/core/sff.cpp src/core/sound.cpp src/core/stage.cpp
+		src/core/expr.cpp src/core/air.cpp src/core/bgdef.cpp src/core/camera.cpp src/core/character.cpp src/core/fight_screen.cpp src/core/match.cpp src/core/motif.cpp src/core/music.cpp src/core/options_screen.cpp src/core/select_screen.cpp src/core/settings.cpp src/core/title_screen.cpp src/core/versus_screen.cpp src/core/effects.cpp src/core/compat.cpp src/core/file.cpp src/core/font.cpp src/core/game_flow.cpp src/core/game_config.cpp src/core/hitdef.cpp src/core/ini.cpp src/core/input.cpp src/core/layout.cpp src/core/log.cpp src/core/sff.cpp src/core/sound.cpp src/core/stage.cpp
 		src/core/projectile.cpp src/core/sprite_renderer.cpp src/core/states.cpp src/core/text.cpp third_party/lodepng/lodepng.cpp
 		third_party/audio_decoders.c third_party/truetype.c)
 	target_include_directories(mugen360_tests PRIVATE src third_party third_party/lodepng)

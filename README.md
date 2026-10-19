@@ -366,6 +366,14 @@ paths use forward slashes.
      the game's files first, mugen360's own (fonts, common1.cns) for anything it lacks. A folder that can't be read
      falls back to mugen360's content. `tests/game` is a small game folder using the bundled characters.
      Not yet: dummyslot / skipslot / blank cells, per-character music and arcade order, mugen.cfg's other options.
+   - 13b compatibility report (done): `mugen360 --check [folder]` loads a game's screenpack, fight screen, every
+     character and every stage without playing, and writes `compat_<game>.txt`: what loads (or why not), packed
+     sprite sizes, and the features mugen360 lacks, ranked by how many characters / stages use them. The loaders
+     note into `core/compat`: unknown controller types and triggers, expressions that don't parse, SFF versions,
+     stage keys and background types / trans / BGCtrl types not read yet; controllers that run as no-ops note
+     themselves when they run. A character's files are now found as Ikemen's char.go finds them (next to the .def,
+     the game's root, data/). `tests/game/chars/oddkfm` is KFM's files plus a state with an unknown controller and
+     trigger, which the report must find.
 
 ## Asset notice
 
