@@ -1,5 +1,5 @@
 // Milestone 11: options and saving. 11a: the settings' defaults (Ikemen's defaultConfig.ini), their ranges, a save
-// and load through save/config.ini's format, and the button mapping.
+// and load through save/config.ini's format, and the button mapping. 11c: unused buttons.
 
 #include <cstdio>
 #include <string>
@@ -72,6 +72,19 @@ int run11Tests()
 	loaded.toInput(1, pad, two);
 	expect(one.z && !one.a, "player 1: RB is z, LB is nothing");
 	expect(two.a && two.z, "player 2: LB is a, RB is still z");
+
+	// 11c: a MUGEN button with no pad button saves as "Not used", loads back that way and plays nothing.
+	Settings unbound;
+	unbound.buttons[0][5] = Settings::BUTTON_NONE;
+	expect(unbound.save(path) && loaded.load(path) && loaded.buttons[0][5] == Settings::BUTTON_NONE,
+		"an unused button survives a save and load");
+	InputState none;
+	loaded.toInput(0, pad, none);
+	expect(!none.z, "an unused button plays nothing");
+	platform::Pad held;
+	expect(Settings::heldButton(held) == Settings::BUTTON_NONE, "no pad button held");
+	held.lt = true;
+	expect(Settings::heldButton(held) == Settings::ButtonLT, "the key config sees LT held");
 
 	// The options screen's TrueType font (ikemen1's font7, Open Sans) loads and measures text.
 	Font openSans;

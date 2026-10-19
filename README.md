@@ -330,7 +330,7 @@ paths use forward slashes.
      Single sides is a normal Arcade fight. `tests/inputs/watch.txt` checks that the computer plays player 1.
    - Not included in stage 10: Tag teams (an Ikemen system), more than two members a side, the smarter AI option.
 
-11. Options and saving (in progress): Ikemen's options and config.ini.
+11. Options and saving (done): Ikemen's options and config.ini.
    - 11a settings (done): `core/settings` holds the options mugen360 uses, with Ikemen's defaults and ranges
      (defaultConfig.ini, config.go): Difficulty (the computer's AI level; 5, where mugen360 used 8 before), Life %,
      Time (counts, -1 none, drawn as "o"), GameSpeed, Match.Wins, Match.MaxDrawGames, Simul.Match.Wins, Master / Wav
@@ -347,6 +347,12 @@ paths use forward slashes.
      load (stb_truetype; ikemen1's Open Sans for the options and info text, its .ttf and licence in
      `data/font/Open_Sans/`), glyphs rasterized at the size drawn. `tests/inputs/options.txt` changes two options and
      saves (a test run saves to tests/out/config.ini).
+   - 11c joystick config (done): Input Settings > Joystick Config is Ikemen's key menu (options.lua f_keyCfg,
+     [Option Info] keymenu.*, which inherit the menu.* keys): a pane per player with Config all, A B C X Y Z Start
+     and Back; left / right switch the player, a button on a row waits for every button to be let go and takes the
+     next pad button pressed, Config all goes down every row. A button another row of the same player had leaves
+     that row "Not used" (menu.valuename.nokey), saved that way in [Joystick_Pn]. Directions stay on the d-pad.
+     `tests/inputs/keys.txt` gives player 1's A to RB and saves.
 
 ## Asset notice
 

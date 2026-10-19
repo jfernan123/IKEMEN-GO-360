@@ -1,0 +1,55 @@
+# Stage 11c joystick config: the title's OPTIONS, Input Settings, Joystick Config; player 1's A row takes RB (the
+# script's z), which leaves Z "Not used"; Back, Back, then Save and Return (tests\out\config.ini).
+#   build\pc\mugen360.exe --title --input tests\inputs\keys.txt --quit 600 --trace
+# Expect "options: p1 A = RB", "settings: saved to tests/out/config.ini"; the file has "A = RB" and "Z = Not used".
+30 -
+# Down to OPTIONS (ARCADE, VS MODE, PRACTICE, MISSION, WATCH MODE, OPTIONS).
+2 D
+5 -
+2 D
+5 -
+2 D
+5 -
+2 D
+5 -
+2 D
+5 -
+2 a
+60 -
+# Input Settings, then Joystick Config.
+2 D
+5 -
+2 D
+5 -
+2 a
+10 -
+2 a
+10 -
+# Down to A, choose it, let go, then press RB.
+2 D
+5 -
+2 a
+10 -
+4 z
+10 -
+# Up twice wraps to Back, which leaves the key config.
+2 U
+5 -
+2 U
+5 -
+2 a
+10 -
+# Input Settings: past Default to Back.
+2 D
+5 -
+2 D
+5 -
+2 a
+10 -
+# From Input Settings down past Default Values to Save and Return.
+2 D
+5 -
+2 D
+5 -
+2 a
+200 -

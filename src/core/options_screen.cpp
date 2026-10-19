@@ -39,6 +39,40 @@ const char *const OPTION_DEFAULTS[][2] = {
 	{ "menu.valuename.normal", "Normal" },
 	{ "menu.valuename.slow", "Slow %i" },
 	{ "menu.valuename.fast", "Fast %i" },
+	{ "menu.valuename.nokey", "Not used" },
+	{ "menu.valuename.presskey", "Press a key" },
+	{ "menu.valuename.f", "(F%i)" },
+	{ "menu.valuename.esc", "(Esc)" },
+	{ "keymenu.p1.menuoffset", "39, 33" },
+	{ "keymenu.p1.playerno.font", "f-6x9.def, 0, 0, 0, 247, 247, 255" },
+	{ "keymenu.p1.playerno.offset", "52, 0" },
+	{ "keymenu.p1.playerno.text", "PLAYER %i" },
+	{ "keymenu.p2.menuoffset", "178, 33" },
+	{ "keymenu.p2.playerno.font", "f-6x9.def, 0, 0, 247, 0, 0, 255" },
+	{ "keymenu.p2.playerno.offset", "52, 0" },
+	{ "keymenu.p2.playerno.text", "PLAYER %i" },
+	{ "keymenu.pos", "0, 0" },
+	{ "keymenu.item.font", "f-6x9.def, 0, 1, 191, 191, 191, 255" },
+	{ "keymenu.item.spacing", "0, 12" },
+	{ "keymenu.item.active.font", "f-6x9.def, 0, 1, 255, 255, 255, 255" },
+	{ "keymenu.item.value.font", "f-6x9.def, 0, -1, 191, 191, 191, 255" },
+	{ "keymenu.item.value.offset", "101, 0" },
+	{ "keymenu.item.value.active.font", "f-6x9.def, 0, -1, 255, 255, 255, 255" },
+	{ "keymenu.item.value.active.offset", "101, 0" },
+	{ "keymenu.item.info.font", "f-6x9.def, 0, -1, 247, 247, 0, 255" },
+	{ "keymenu.item.info.offset", "101, 0" },
+	{ "keymenu.item.info.active.font", "f-6x9.def, 0, -1, 247, 247, 0, 255" },
+	{ "keymenu.item.info.active.offset", "101, 0" },
+	{ "keymenu.boxcursor.coords", "-5, -9, 106, 2" },
+	{ "keymenu.itemname.configall", "Config all" },
+	{ "keymenu.itemname.a", "A" },
+	{ "keymenu.itemname.b", "B" },
+	{ "keymenu.itemname.c", "C" },
+	{ "keymenu.itemname.x", "X" },
+	{ "keymenu.itemname.y", "Y" },
+	{ "keymenu.itemname.z", "Z" },
+	{ "keymenu.itemname.start", "Start" },
+	{ "keymenu.itemname.back", "Back" },
 	{ "cursor.move.snd", "100, 0" },
 	{ "cursor.done.snd", "100, 1" },
 	{ "cancel.snd", "100, 2" },
@@ -66,6 +100,7 @@ const char *const OPTION_ITEMS[][2] = {
 	{ "menuaudio.spacer1", "-" },
 	{ "menuaudio.back", "Back" },
 	{ "menuinput", "Input Settings" },
+	{ "menuinput.gamepad", "Joystick Config" },
 	{ "menuinput.spacer1", "-" },
 	{ "menuinput.inputdefault", "Default" },
 	{ "menuinput.back", "Back" },
@@ -159,6 +194,53 @@ bool OptionsScreen::load(Motif &motif, Settings &settings, std::string &error)
 	fadeIn_.read("fadein.", s);
 	fadeOut_.read("fadeout.", s);
 
+	// The key config's layout (Ikemen's motif inheritance): keymenu's defaults, the screenpack's menu keys over them,
+	// then its own keymenu keys.
+	IniSection k = s;
+	if (own) {
+		for (const auto &[key, value] : own->values) {
+			if (text::startsWith(key, "menu."))
+				k.values["keymenu." + key.substr(5)] = value;
+		}
+		for (const auto &[key, value] : own->values) {
+			if (text::startsWith(key, "keymenu."))
+				k.values[key] = value;
+		}
+	}
+	float spacing[2] = { 0, 12 };
+	k.floats("keymenu.item.spacing", { &spacing[0], &spacing[1] });
+	keySpacingY_ = spacing[1];
+	float keyMenuPos[2] = { 0, 0 };
+	k.floats("keymenu.pos", { &keyMenuPos[0], &keyMenuPos[1] });
+	for (int p = 0; p < 2; p++) {
+		const std::string pn = "keymenu.p" + std::to_string(p + 1) + ".";
+		keyPos_[p][0] = keyPos_[p][1] = 0;
+		k.floats(pn + "menuoffset", { &keyPos_[p][0], &keyPos_[p][1] });
+		keyPos_[p][0] += keyMenuPos[0];
+		keyPos_[p][1] += keyMenuPos[1];
+		playerNo_[p].read(pn + "playerno.", k);
+		playerNoText_[p] = k.text(pn + "playerno.text");
+	}
+	keyItem_.read("keymenu.item.", k);
+	keyActive_.read("keymenu.item.active.", k);
+	keyValue_.read("keymenu.item.value.", k);
+	keyValueActive_.read("keymenu.item.value.active.", k);
+	keyInfo_.read("keymenu.item.info.", k);
+	keyInfoActive_.read("keymenu.item.info.active.", k);
+	for (TextLayout *t : { &keyItem_, &keyActive_, &keyValue_, &keyValueActive_, &keyInfo_, &keyInfoActive_, &playerNo_[0],
+			 &playerNo_[1] })
+		motif.resolveFont(*t);
+	for (int i = 0; i < 4; i++)
+		keyBox_[i] = boxCoords_[i];
+	k.ints("keymenu.boxcursor.coords", { &keyBox_[0], &keyBox_[1], &keyBox_[2], &keyBox_[3] });
+	const char *rows[9] = { "configall", "a", "b", "c", "x", "y", "z", "start", "back" };
+	for (int i = 0; i < 9; i++)
+		keyNames_[i] = k.text(std::string("keymenu.itemname.") + rows[i]);
+	nokey_ = s.text("menu.valuename.nokey");
+	presskey_ = s.text("menu.valuename.presskey");
+	configAllInfo_ = s.text("menu.valuename.f");
+	escInfo_ = s.text("menu.valuename.esc");
+
 	// The menu tree; a screenpack can rename items with its own "menu.itemname." keys.
 	menu_.clear();
 	for (const auto &pair : OPTION_ITEMS) {
@@ -196,6 +278,7 @@ void OptionsScreen::reset()
 	fadeIn_.start(true);
 	fadeOut_.stop();
 	closing_ = done_ = false;
+	keys_ = capture_ = false;
 	cursorPlaced_ = false;
 	cursorY_ = pulsePhase_ = 0;
 	for (bool &h : held_)
@@ -313,6 +396,12 @@ void OptionsScreen::run(const std::string &name)
 		motif_->play(doneSnd_);
 		applyVolumes();
 		logf("options: default values");
+	} else if (name == "gamepad") {
+		motif_->play(doneSnd_);
+		keys_ = true;
+		capture_ = false;
+		keyPlayer_ = 0;
+		keyRow_ = 0;
 	} else if (name == "inputdefault") {
 		const Settings defaults;
 		std::copy(&defaults.buttons[0][0], &defaults.buttons[0][0] + 2 * Settings::MUGEN_BUTTONS, &s.buttons[0][0]);
@@ -351,6 +440,10 @@ void OptionsScreen::update(const platform::Pad &pad1, const platform::Pad &pad2)
 	}
 	if (fadeIn_.isActive())
 		return;
+	if (keys_) {
+		updateKeys(pad1, pad2, up, down, left, right, confirm, cancel);
+		return;
+	}
 	Level &level = levels_.back();
 	if (up || down) {
 		motif_->play(moveSnd_);
@@ -389,12 +482,135 @@ void OptionsScreen::update(const platform::Pad &pad1, const platform::Pad &pad2)
 			sub.item++;
 		levels_.push_back(sub);
 	} else {
+		// The key config's title is its item's name (Ikemen's f_keyCfgInit).
+		if (item.name == "gamepad")
+			keyTitle_ = titleUppercase_ ? upper(item.display) : item.display;
 		run(item.name);
 	}
 }
 
+// Rows: 0 "Config all", 1-7 MUGEN's a b c x y z s, 8 "Back".
+void OptionsScreen::assign(int player, int row, uint8_t button)
+{
+	uint8_t *map = settings_->buttons[player];
+	// The button leaves any other row of this player's (Ikemen marks that one "Not used").
+	for (int i = 0; i < Settings::MUGEN_BUTTONS; i++) {
+		if (map[i] == button)
+			map[i] = Settings::BUTTON_NONE;
+	}
+	map[row - 1] = button;
+	logf("options: p%d %s = %s", player + 1, Settings::mugenButtonName(row - 1), Settings::buttonName(button));
+}
+
+void OptionsScreen::updateKeys(const platform::Pad &pad1, const platform::Pad &pad2, bool up, bool down, bool left,
+	bool right, bool confirm, bool cancel)
+{
+	if (capture_) {
+		if (cancel) {
+			motif_->play(cancelSnd_);
+			capture_ = captureAll_ = false;
+			return;
+		}
+		// The player's own pad; player 2 without one uses player 1's (the keyboard on PC).
+		const platform::Pad &pad = keyPlayer_ == 1 && pad2.connected ? pad2 : pad1;
+		const uint8_t held = Settings::heldButton(pad);
+		// Wait for everything to be let go, then take the next button pressed.
+		if (held == Settings::BUTTON_NONE) {
+			captureReleased_ = true;
+			return;
+		}
+		if (!captureReleased_)
+			return;
+		captureReleased_ = false;
+		motif_->play(doneSnd_);
+		assign(keyPlayer_, keyRow_, held);
+		if (captureAll_ && keyRow_ < Settings::MUGEN_BUTTONS) {
+			keyRow_++;
+		} else {
+			capture_ = false;
+			if (captureAll_)
+				keyRow_ = 0;
+			captureAll_ = false;
+		}
+		return;
+	}
+	if (cancel || (confirm && keyRow_ == 8)) {
+		motif_->play(cancelSnd_);
+		keys_ = false;
+		return;
+	}
+	if (up || down) {
+		motif_->play(moveSnd_);
+		keyRow_ = (keyRow_ + (down ? 1 : -1) + 9) % 9;
+	} else if ((left && keyPlayer_ == 1) || (right && keyPlayer_ == 0)) {
+		motif_->play(moveSnd_);
+		keyPlayer_ = right ? 1 : 0;
+	} else if (confirm) {
+		motif_->play(doneSnd_);
+		capture_ = true;
+		captureReleased_ = false;
+		captureAll_ = keyRow_ == 0;
+		if (captureAll_)
+			keyRow_ = 1;
+	}
+}
+
+// One player's pane at keymenu.pos + keymenu.pN.menuoffset (f_menuCommonDraw): rows, values, the box and, if active, the cursor.
+void OptionsScreen::drawKeyPane(int player, float offsetX, float offsetY, bool active)
+{
+	Motif &m = *motif_;
+	const ScreenSpace &space = m.space();
+	const float baseX = offsetX, baseY = offsetY;
+	const float boxW = (float)(keyBox_[2] - keyBox_[0] + 1), boxH = (float)(keyBox_[3] - keyBox_[1] + 1);
+	if (boxBg_)
+		platform::fillRect(space.x(baseX + (float)keyBox_[0]), space.y(baseY + (float)keyBox_[1]), boxW * space.scale,
+			(boxH + 8 * keySpacingY_) * space.scale, boxBgColour_);
+	for (int row = 0; row < 9; row++) {
+		const bool on = active && row == keyRow_;
+		const float y = baseY + (float)row * keySpacingY_;
+		const TextLayout &label = on ? keyActive_ : keyItem_;
+		label.draw(keyNames_[row], baseX, y, label.layout.layer, m.fonts(), space);
+		if (row == 0 || row == 8) {
+			const std::string info = row == 0 ? replaceFirst(configAllInfo_, "%i", std::to_string(player + 1)) : escInfo_;
+			const TextLayout &font = on ? keyInfoActive_ : keyInfo_;
+			font.draw(info, baseX, y, font.layout.layer, m.fonts(), space);
+			continue;
+		}
+		const uint8_t button = settings_->buttons[player][row - 1];
+		const std::string value = on && capture_ ? presskey_ : button == Settings::BUTTON_NONE ? nokey_ : Settings::buttonName(button);
+		const TextLayout &font = on ? keyValueActive_ : keyValue_;
+		font.draw(value, baseX, y, font.layout.layer, m.fonts(), space);
+	}
+	if (active && boxCursor_) {
+		const float alpha = (float)pulse_[0] + (float)pulse_[1] * std::sin(pulsePhase_);
+		const uint32_t a = (uint32_t)std::clamp((int)std::lround(alpha), 0, 255);
+		platform::fillRect(space.x(baseX + (float)keyBox_[0]), space.y(baseY + (float)keyBox_[1] + (float)keyRow_ * keySpacingY_),
+			boxW * space.scale, boxH * space.scale, a << 24 | boxCursorColour_);
+	}
+	playerNo_[player].draw(replaceFirst(playerNoText_[player], "%i", std::to_string(player + 1)), baseX, baseY,
+		playerNo_[player].layout.layer, m.fonts(), space);
+}
+
+void OptionsScreen::drawKeys()
+{
+	Motif &m = *motif_;
+	platform::fillRect(0, 0, platform::SCREEN_WIDTH, platform::SCREEN_HEIGHT, clearColour_);
+	const View view = m.view();
+	bg_.draw(0, view);
+	title_.draw(keyTitle_, 0, 0, title_.layout.layer, m.fonts(), m.space());
+	if (pulse_[2] > 0)
+		pulsePhase_ += 2 * 3.14159265f / (float)pulse_[2];
+	for (int p = 0; p < 2; p++)
+		drawKeyPane(p, keyPos_[p][0], keyPos_[p][1], p == keyPlayer_);
+	bg_.draw(1, view);
+}
+
 void OptionsScreen::draw()
 {
+	if (keys_) {
+		drawKeys();
+		return;
+	}
 	Motif &m = *motif_;
 	const ScreenSpace &space = m.space();
 	platform::fillRect(0, 0, platform::SCREEN_WIDTH, platform::SCREEN_HEIGHT, clearColour_);

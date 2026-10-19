@@ -27,6 +27,10 @@ struct Settings {
 
 	// The pad buttons, and which one plays each MUGEN button (a b c x y z s) for player 1 and 2 ([Joystick_Pn]).
 	enum Button : uint8_t { ButtonA, ButtonB, ButtonX, ButtonY, ButtonLB, ButtonRB, ButtonLT, ButtonRT, ButtonStart, ButtonBack, BUTTON_COUNT };
+	// A MUGEN button no pad button plays (Ikemen's "Not used").
+	static constexpr uint8_t BUTTON_NONE = 0xFF;
+	// The pad button held now, BUTTON_NONE for none (the key config's capture).
+	static uint8_t heldButton(const platform::Pad &pad);
 	static constexpr int MUGEN_BUTTONS = 7;
 	uint8_t buttons[2][MUGEN_BUTTONS];
 
