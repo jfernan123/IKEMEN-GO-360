@@ -14,6 +14,7 @@
 #include "core/sff.h"
 #include "core/sprite_renderer.h"
 #include "core/versus_screen.h"
+#include "core/victory_screen.h"
 #include "platform/platform.h"
 
 namespace m360 {
@@ -51,6 +52,12 @@ public:
 	bool nextArcadeMatch();
 	// A won Survival fight: the next opponent on the same stage, through its VS screen.
 	bool nextSurvivalMatch();
+	// After a match (13e): the victory screen with the winning side's character and quote, if the screenpack shows
+	// one now. False when it doesn't.
+	bool startVictory(int winnerSide, const std::string &quote, bool computerWon);
+	void updateVictory(const platform::Pad &pad1, const platform::Pad &pad2) { victory_.update(pad1, pad2); }
+	void drawVictory() { victory_.draw(); }
+	bool victoryDone() const { return victory_.done(); }
 	int32_t survivalWins() const { return survival_.wins(); }
 	int32_t arcadeMatchNo() const { return arcade_.matchNo(); }
 	int32_t arcadeMatchCount() const { return arcade_.matchCount(); }
@@ -218,6 +225,7 @@ private:
 	int32_t stagePortraitSpr_[2] = { 9000, 1 };
 	Side sides_[2];
 	VersusScreen versus_;
+	VictoryScreen victory_;
 	bool versusStarted_ = false;
 
 	SelectMode mode_ = SelectMode::Versus;

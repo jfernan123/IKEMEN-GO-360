@@ -96,6 +96,7 @@ bool MotifSelect::load(Motif &motif, const GameConfig &config, std::string &erro
 	}
 	motif.loadBg("selectbg", bg_, clearColour_);
 	versus_.load(motif);
+	victory_.load(motif);
 	IniSection s;
 	for (const auto &pair : SELECT_DEFAULTS)
 		s.values[pair[0]] = pair[1];
@@ -252,6 +253,10 @@ bool MotifSelect::load(Motif &motif, const GameConfig &config, std::string &erro
 		}
 		if (versus_.faceSprite(0) >= 0)
 			keep.emplace_back((uint16_t)versus_.faceSprite(0), (uint16_t)versus_.faceSprite(1));
+		for (int slot = 0; slot < 2; slot++) {
+			if (victory_.sprite(slot, 0) >= 0)
+				keep.emplace_back((uint16_t)victory_.sprite(slot, 0), (uint16_t)victory_.sprite(slot, 1));
+		}
 		if (charAnims.load(findBesideDef(dir, files->text("anim")), animError)) {
 			e.hasStance = sides_[0].faceAnim >= 0 && charAnims.get(sides_[0].faceAnim, e.stance);
 			e.hasDone = sides_[0].faceDoneAnim >= 0 && charAnims.get(sides_[0].faceDoneAnim, e.done);
@@ -906,6 +911,32 @@ void MotifSelect::startVersus()
 																					 : 0;
 	versus_.start(fighters, stage, matchNo);
 	versusStarted_ = true;
+}
+
+bool MotifSelect::startVictory(int winnerSide, const std::string &quote, bool computerWon)
+{
+	if (winnerSide < 0 || winnerSide > 1 ||
+		!victory_.wanted(computerWon, mode_ == SelectMode::Versus || mode_ == SelectMode::TeamVersus))
+		return false;
+	// The winner in the first slot, the loser in the second (Ikemen without keepside).
+	VersusScreen::Fighter fighters[2];
+	for (int i = 0; i < 2; i++) {
+		const Side &side = sides_[i == 0 ? winnerSide : 1 - winnerSide];
+		const int32_t chosen = side.teamChosen.empty() ? side.chosen : side.teamChosen.front();
+		if (chosen < 0 || chosen >= (int32_t)roster_.size())
+			return false;
+		const Entry &e = roster_[(size_t)chosen];
+		VersusScreen::Fighter &f = fighters[i];
+		f.name = e.name;
+		f.sff = e.sff.get();
+		f.renderer = e.renderer.get();
+		f.resFix = e.resFix;
+		f.sizeScaleX = e.sizeScaleX;
+		f.sizeScaleY = e.sizeScaleY;
+		f.palette = side.teamPalettes.empty() ? side.palette : side.teamPalettes.front();
+	}
+	victory_.start(fighters, quote);
+	return true;
 }
 
 GameConfig MotifSelect::fight() const

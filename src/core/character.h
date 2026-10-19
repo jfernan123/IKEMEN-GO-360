@@ -283,6 +283,13 @@ private:
 	Character *target() const { return targets_.empty() ? nullptr : targets_.front(); }
 	std::vector<Character *> targetsWithId(int32_t id) const;
 	bool projectileContact(int32_t id) const;
+
+public:
+	// The victory screen's quote (Ikemen's getVictoryQuote): the one VictoryQuote picked, else a random one of the
+	// character's; empty when it has none.
+	std::string victoryQuote();
+
+private:
 	bool stageVar(const std::string &key, Value &out, std::string &textOut) override;
 	bool runTargetController(const StateController &sc);
 	void runTargetControllerOn(const StateController &sc, Character &target);
@@ -297,6 +304,10 @@ private:
 	AnimationTable anims_;
 	StateTable states_;
 	std::map<std::string, Value> constants_;
+	// [Quotes] victory0..victory99 from the constants file (Ikemen's gi.quotes); empty where unset.
+	std::vector<std::string> quotes_;
+	// The VictoryQuote controller's choice this match, -1 for none (a random one is shown).
+	int32_t winQuote_ = -1;
 	std::string defPath_;
 	std::unique_ptr<SpriteRenderer> renderer_;
 	SoundBank sound_;

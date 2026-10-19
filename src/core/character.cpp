@@ -234,6 +234,11 @@ void Character::loadConstants(const std::string &cnsPath)
 	if (!readFile(cnsPath, bytes))
 		return;
 	const std::vector<IniSection> sections = parseIni(std::string(bytes.begin(), bytes.end()));
+	source_->quotes_.assign(100, std::string());
+	if (const IniSection *q = findSection(sections, "quotes")) {
+		for (int i = 0; i < 100; i++)
+			source_->quotes_[(size_t)i] = q->text("victory" + std::to_string(i));
+	}
 	for (const char *group : { "data", "size", "velocity", "movement" }) {
 		const IniSection *s = findSection(sections, group);
 		if (!s)
@@ -300,8 +305,10 @@ void Character::startRound(float px, float py, int face, bool newMatch)
 	posReset();
 	ctrl = false;
 	life = lifeMax();
-	if (newMatch)
+	if (newMatch) {
 		power = 0;
+		winQuote_ = -1;
+	}
 	ko_ = overAlive_ = overKo_ = false;
 	powerGain_ = 0;
 	attackMul_ = 1;
@@ -1184,9 +1191,13 @@ bool Character::runMiscController(const StateController &sc)
 	case CtrlType::BGPalFX:
 		runGlobalPalFX(sc, false);
 		return true;
-	// Accepted with nothing to do here: rumble, the winner's quote and sound panning.
-	case CtrlType::ForceFeedback:
 	case CtrlType::VictoryQuote:
+		// The quote the victory screen shows (Ikemen's victoryQuote: the root's winquote).
+		if (paramI(sc, "value", 0, i))
+			(root_ ? root_ : this)->winQuote_ = i;
+		return true;
+	// Accepted with nothing to do here: rumble and sound panning.
+	case CtrlType::ForceFeedback:
 	case CtrlType::SndPan:
 		return true;
 	case CtrlType::DisplayToClipboard:
@@ -3379,7 +3390,7 @@ void Character::hitDetectionAgainst(Character &target)
 			 "animtype %d%s%s",
 			traceLabel.c_str(), world_ ? world_->gameTime : 0, stateNo, result == 2 ? "guarded" : "hits", v.damage,
 			hitPauseTime_, v.hitshaketime, v.hittime, v.slidetime, v.xvel, v.yvel, (int)v.animtype,
-			g->root_ ? ", on " : "", g->root_ ? g->traceLabel.c_str() : "");
+			g->parent_ ? ", on " : "", g->parent_ ? g->traceLabel.c_str() : "");
 	}
 }
 
@@ -3835,6 +3846,24 @@ bool Character::stageVar(const std::string &key, Value &out, std::string &textOu
 		return false;
 	}
 	return true;
+}
+
+std::string Character::victoryQuote()
+{
+	const std::vector<std::string> &quotes = source_->quotes_;
+	int32_t index = winQuote_;
+	if (index < 0 || index >= (int32_t)quotes.size() || quotes[(size_t)index].empty()) {
+		std::vector<int32_t> available;
+		for (int32_t q = 0; q < (int32_t)quotes.size(); q++) {
+			if (!quotes[(size_t)q].empty())
+				available.push_back(q);
+		}
+		if (available.empty())
+			return {};
+		random_ = random_ * 1103515245u + 12345u;
+		index = available[(random_ >> 16) % available.size()];
+	}
+	return quotes[(size_t)index];
 }
 
 // Ikemen's projTimeTrigger: the last projectile contact is of this id (0 for any).
