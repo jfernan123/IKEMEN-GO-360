@@ -414,7 +414,7 @@ bool Character::shouldFaceP2() const
 // Turns to face the opponent, with the turning animation (5 standing, 6 crouching).
 void Character::autoTurn()
 {
-	if (!shouldFaceP2() || (special_ & Special::NoAutoTurn))
+	if (!shouldFaceP2() || (special_ & Special::NoAutoTurn) || (world_ && !world_->autoTurn))
 		return;
 	if (stateType == 'S' && animNo != 5)
 		changeAnim(5);
@@ -1880,10 +1880,11 @@ void Character::body(float &left, float &right, float &top) const
 	top = worldY() - height_ * localScale;
 }
 
-void Character::draw(const View &view, float groundY, int shadowIntensity, float shadowYScale, int reflection)
+void Character::draw(const View &view, float groundY, const GroundDraw &ground)
 {
 	for (auto &helper : helpers_)
-		helper->draw(view, groundY, shadowIntensity, shadowYScale, reflection);
+		helper->draw(view, groundY, ground);
+	const int shadowIntensity = ground.shadowIntensity, reflection = ground.reflection;
 	auto drawProjectiles = [&](bool foreground) {
 	for (const Projectile &projectile : projectiles_) {
 		if (!projectile.active)
@@ -1922,21 +1923,38 @@ void Character::draw(const View &view, float groundY, int shadowIntensity, float
 	const float sx = view.screenX((x + shake) * localScale - view.camX);
 	if (reflection > 0) {
 		// Mirrored about the ground, as far below it as the character is above, added onto the floor at the stage's
-		// intensity (Ikemen's reflection: Add transparency, src * intensity, dst * (255 - intensity)).
+		// intensity (Ikemen's reflection: Add transparency, src * intensity, dst * (255 - intensity)), mixed toward
+		// the stage's colour by the intensity, stretched by its yscale and moved by its offset.
 		SpriteDraw mirrored;
 		mirrored.trans = Trans::Add;
 		mirrored.srcAlpha = (uint8_t)reflection;
 		mirrored.dstAlpha = (uint8_t)(255 - reflection);
-		mirrored.scaleY = -1;
-		drawAnim(sx, view.screenY(groundY - y * localScale - view.camY), mirrored);
+		mirrored.scaleY = -ground.reflectionYScale;
+		if (ground.reflectionColour != 0)
+			mirrored.tint = (uint32_t)reflection << 24 | ground.reflectionColour;
+		const float rx = view.screenX((x + shake) * localScale + ground.reflectionOffsetX - view.camX);
+		drawAnim(rx, view.screenY(groundY - y * localScale * ground.reflectionYScale + ground.reflectionOffsetY - view.camY),
+			mirrored);
 	}
-	if (shadowIntensity > 0 && !(special_ & Special::NoShadow)) {
+	if (!(special_ & Special::NoShadow) && (shadowIntensity > 0 || ground.shadowColour != 0)) {
 		// The shadow lies on the ground under the character, the sprite flattened by the stage's shadow yscale: a
-		// positive one falls toward the viewer (drawn upside down), a negative one into the screen.
-		SpriteDraw shadow;
-		shadow.shadow = shadowIntensity;
-		shadow.scaleY = -shadowYScale;
-		drawAnim(sx, view.screenY(groundY - view.camY), shadow);
+		// positive one falls toward the viewer (drawn upside down), a negative one into the screen. Ikemen draws it
+		// twice: darkened by the intensity, then the stage's colour subtracted.
+		const float shx = view.screenX((x + shake) * localScale + ground.shadowOffsetX - view.camX);
+		const float shy = view.screenY(groundY + ground.shadowOffsetY - view.camY);
+		if (shadowIntensity > 0) {
+			SpriteDraw shadow;
+			shadow.shadow = shadowIntensity;
+			shadow.scaleY = -ground.shadowYScale;
+			drawAnim(shx, shy, shadow);
+		}
+		if (ground.shadowColour != 0) {
+			SpriteDraw subtract;
+			subtract.trans = Trans::Sub;
+			subtract.tint = 0xFF000000u | ground.shadowColour;
+			subtract.scaleY = -ground.shadowYScale;
+			drawAnim(shx, shy, subtract);
+		}
 	}
 	// MUGEN 1.0 afterimages sample old animation and position frames. Each older visible sample receives the next
 	// PalBright/PalContrast step, as in Ikemen's AfterImage setup.

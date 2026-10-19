@@ -107,7 +107,7 @@ platform::Texture *SpriteRenderer::texture(const Sprite &sprite, int palette, co
 	// Only what changes the pixels goes in the key.
 	const Key key{ index, sprite.isTrueColor() ? -1 : palette, how.mask, how.shadow >= 0 ? Trans::None : how.trans,
 		how.trans == Trans::None ? (uint8_t)255 : how.srcAlpha, how.trans == Trans::None ? (uint8_t)0 : how.dstAlpha,
-		how.shadow, how.addR, how.addG, how.addB, how.mulR, how.mulG, how.mulB };
+		how.shadow, how.addR, how.addG, how.addB, how.mulR, how.mulG, how.mulB, how.tint };
 	const auto it = cache_.find(key);
 	if (it != cache_.end()) {
 		it->second.lastUse = ++useClock;
@@ -126,7 +126,11 @@ platform::Texture *SpriteRenderer::texture(const Sprite &sprite, int palette, co
 		const uint32_t s = how.trans == Trans::None ? 255 : how.srcAlpha;
 		const uint32_t keep = how.trans == Trans::None ? 0 : how.dstAlpha;
 		const bool plain = how.shadow < 0 && how.trans == Trans::None && how.addR == 0 && how.addG == 0 &&
-			how.addB == 0 && how.mulR == 256 && how.mulG == 256 && how.mulB == 256;
+			how.addB == 0 && how.mulR == 256 && how.mulG == 256 && how.mulB == 256 && how.tint == 0;
+		const uint32_t tintA = how.tint >> 24, tintR = how.tint >> 16 & 0xFF, tintG = how.tint >> 8 & 0xFF,
+					   tintB = how.tint & 0xFF;
+		// The sprite shader's mix(c, tint, tint.a), on straight colour.
+		const auto mix = [&times, tintA](uint32_t c, uint32_t t) { return times(c, 255 - tintA) + times(t, tintA); };
 		const auto channel = [](uint32_t c, int add, uint32_t mul) {
 			const int v = ((int)c + add) * (int)mul / 256;
 			return (uint32_t)(v < 0 ? 0 : v > 255 ? 255 : v);
@@ -142,15 +146,21 @@ platform::Texture *SpriteRenderer::texture(const Sprite &sprite, int palette, co
 				r = channel(r, how.addR, how.mulR);
 				g = channel(g, how.addG, how.mulG);
 				b = channel(b, how.addB, how.mulB);
+				if (tintA > 0) {
+					r = mix(r, tintR);
+					g = mix(g, tintG);
+					b = mix(b, tintB);
+				}
 			}
 			// Premultiplied by alpha (see platform::Blend).
 			r = times(r, a);
 			g = times(g, a);
 			b = times(b, a);
 			if (how.shadow >= 0) {
-				// Black, covering the screen by the shadow's strength where the sprite is.
-				r = g = b = 0;
+				// The tint's colour (black without one), covering the screen by the shadow's strength where the sprite
+				// is: Ikemen's first shadow pass, Add with src intensity and dst 255 - intensity.
 				outA = times(a, (uint32_t)how.shadow);
+				r = times(tintR, outA), g = times(tintG, outA), b = times(tintB, outA);
 			} else if (how.trans == Trans::Add) {
 				r = times(r, s), g = times(g, s), b = times(b, s);
 				outA = times(a, 255 - keep);

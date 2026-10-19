@@ -30,6 +30,9 @@ struct SpriteDraw {
 	// Palette effects, applied to straight RGB before premultiplication.
 	int16_t addR = 0, addG = 0, addB = 0;
 	uint16_t mulR = 256, mulG = 256, mulB = 256;
+	// Ikemen's tint (0xAARRGGBB): each colour mixed toward RGB by A / 255 after the palette effects; a shadow takes
+	// its colour from it. 0: none.
+	uint32_t tint = 0;
 	// Rotation in degrees, counterclockwise as seen, about the screen point (pivotX, pivotY) (AngleDraw).
 	float angle = 0;
 	float pivotX = 0, pivotY = 0;
@@ -89,7 +92,7 @@ public:
 
 private:
 	using Key = std::tuple<size_t, int, bool, Trans, uint8_t, uint8_t, int, int16_t, int16_t, int16_t,
-		uint16_t, uint16_t, uint16_t>;
+		uint16_t, uint16_t, uint16_t, uint32_t>;
 	platform::Texture *texture(const Sprite &sprite, int palette, const SpriteDraw &how);
 
 	struct Cached {

@@ -21,16 +21,23 @@ bool Stage::load(const std::string &defPath, std::string &error)
 	// The stage's own animations, for "type = anim" elements.
 	anims_.parse(defPath, body);
 
+	// MUGEN 1.1 stages drop some 1.0 settings (the shadow colour).
+	bool mugen11 = false;
 	if (const IniSection *info = findSection(sections, "info")) {
 		name = info->text("name");
 		float major = 0, minor = 0;
 		ikemen = info->floats("ikemenversion", { &major, &minor }) && (major != 0 || minor != 0);
+		mugen11 = text::startsWith(std::string(text::trim(info->text("mugenversion"))), "1.1");
 	}
 	if (const IniSection *si = findSection(sections, "stageinfo")) {
 		si->readInt("zoffset", zoffset);
 		si->ints("localcoord", { &localWidth, &localHeight });
 		int32_t flag = 1;
 		resetBg = !si->readInt("resetbg", flag) || flag != 0;
+		flag = 1;
+		autoTurn = !si->readInt("autoturn", flag) || flag != 0;
+		si->readFloat("xscale", scaleX);
+		si->readFloat("yscale", scaleY);
 	}
 	if (localWidth <= 0 || localHeight <= 0) {
 		localWidth = 320;
@@ -105,10 +112,24 @@ bool Stage::load(const std::string &defPath, std::string &error)
 		shadow.intensity = std::clamp(shadow.intensity, 0, 255);
 		s->readFloat("yscale", shadow.yscale);
 		s->ints("fade.range", { &shadow.fadeEnd, &shadow.fadeBegin });
+		int32_t c[3] = { 0, 0, 0 };
+		if (s->ints("color", { &c[0], &c[1], &c[2] }))
+			shadow.colour = (uint32_t)std::clamp(c[0], 0, 255) << 16 | (uint32_t)std::clamp(c[1], 0, 255) << 8 |
+				(uint32_t)std::clamp(c[2], 0, 255);
+		// MUGEN 1.1 doesn't use the shadow colour (Ikemen turns it off for 1.1 stages without ikemenversion).
+		if (mugen11 && !ikemen)
+			shadow.colour = 0;
+		s->floats("offset", { &shadow.offsetX, &shadow.offsetY });
 	}
 	if (const IniSection *r = findSection(sections, "reflection")) {
 		r->readInt("intensity", reflection);
 		reflection = std::clamp(reflection, 0, 255);
+		int32_t c[3] = { 255, 255, 255 };
+		if (r->ints("color", { &c[0], &c[1], &c[2] }))
+			reflectionColour = (uint32_t)std::clamp(c[0], 0, 255) << 16 | (uint32_t)std::clamp(c[1], 0, 255) << 8 |
+				(uint32_t)std::clamp(c[2], 0, 255);
+		r->readFloat("yscale", reflectionYScale);
+		r->floats("offset", { &reflectionOffsetX, &reflectionOffsetY });
 	}
 	music = MusicTrack{};
 	if (const IniSection *m = findSection(sections, "music"))
@@ -146,7 +167,7 @@ void Stage::logUnread(const std::vector<IniSection> &sections, const std::string
 	};
 	static const Known KNOWN[] = {
 		{ "info", { "name", "displayname", "versiondate", "mugenversion", "author", "ikemenversion" } },
-		{ "stageinfo", { "zoffset", "localcoord", "portraitscale", "resetbg" } },
+		{ "stageinfo", { "zoffset", "localcoord", "portraitscale", "resetbg", "autoturn", "xscale", "yscale" } },
 		{ "bound", { "screenleft", "screenright" } },
 		{ "playerinfo", { "p1startx", "p1starty", "p1facing", "p2startx", "p2starty", "p2facing", "p3startx", "p3starty",
 							"p3facing", "p4startx", "p4starty", "p4facing", "partnerspacing", "leftbound",
@@ -156,8 +177,8 @@ void Stage::logUnread(const std::vector<IniSection> &sections, const std::string
 						"startzoom", "zoomin", "zoomout", "zoomindelay", "zoominspeed", "zoomoutspeed", "yscrollspeed",
 						"boundhighzoomdelta", "verticalfollowzoomdelta", "autocenter", "lowestcap", "tensionlow",
 						"tensionhigh" } },
-		{ "shadow", { "intensity", "yscale", "fade.range" } },
-		{ "reflection", { "intensity" } },
+		{ "shadow", { "intensity", "yscale", "fade.range", "color", "offset" } },
+		{ "reflection", { "intensity", "color", "yscale", "offset" } },
 		{ "music", { "bgmusic", "bgmvolume", "bgmloop", "bgmloopstart", "bgmloopend" } },
 		{ "bgdef", { "spr", "debugbg" } },
 	};

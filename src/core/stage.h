@@ -57,9 +57,18 @@ public:
 		float yscale = 0.4f;
 		// Fully shown below fadeBegin (closer to the ground), gone above fadeEnd; both 0: no fading.
 		int32_t fadeEnd = 0, fadeBegin = 0;
+		// color (0xRRGGBB, subtracted after the darkening; ignored in MUGEN 1.1 stages) and offset, in stage units.
+		uint32_t colour = 0;
+		float offsetX = 0, offsetY = 0;
 	} shadow;
 	// [Reflection] intensity: the fighters mirrored on the floor, 0 (none) to 255.
 	int32_t reflection = 0;
+	// [Reflection] color (the reflection mixed toward it by the intensity), yscale and offset.
+	uint32_t reflectionColour = 0xFFFFFF;
+	float reflectionYScale = 1, reflectionOffsetX = 0, reflectionOffsetY = 0;
+	// [StageInfo] autoturn (fighters turn to face their opponent) and xscale / yscale (StageVar only).
+	bool autoTurn = true;
+	float scaleX = 1, scaleY = 1;
 	// [Music] bgmusic and its settings, found as Ikemen's SearchFile finds it.
 	MusicTrack music;
 

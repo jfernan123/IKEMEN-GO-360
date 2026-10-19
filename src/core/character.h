@@ -38,6 +38,20 @@ struct FightWorld {
 	bool inputWait = false;    // inputs are ignored (time over, waiting for win poses)
 	FightEffects *effects = nullptr;
 	SoundBank *commonSound = nullptr;
+	// The stage's [StageInfo] autoturn.
+	bool autoTurn = true;
+};
+
+// How the stage draws the fighters on its floor (its [Shadow] and [Reflection]), in screen-ready values: the shadow's
+// strength after fading, yscale, colour and offset, and the reflection's (all offsets in game units).
+struct GroundDraw {
+	int shadowIntensity;
+	float shadowYScale;
+	uint32_t shadowColour;
+	float shadowOffsetX, shadowOffsetY;
+	int reflection;
+	uint32_t reflectionColour;
+	float reflectionYScale, reflectionOffsetX, reflectionOffsetY;
 };
 
 // AssertSpecial flags a character can hold for a frame (the ones that do something so far).
@@ -106,7 +120,7 @@ public:
 	void tick();
 
 	// reflection: the stage's reflection intensity (0 none), the character mirrored on the floor.
-	void draw(const View &view, float groundY, int shadowIntensity, float shadowYScale, int reflection = 0);
+	void draw(const View &view, float groundY, const GroundDraw &ground);
 	// The attack (red) and hurt (blue) boxes the hit detection uses, for the debug view.
 	void drawBoxes(const View &view, float groundY) const;
 

@@ -561,8 +561,7 @@ public:
 		fightScreen_.draw(0, match_, players_[0], players_[1]);
 		// Player 1 in front.
 		for (int i = count_ - 1; i >= 0; i--)
-			players_[i].draw(view, (float)stage_.zoffset * stage_.localScale, shadowFor(players_[i]), stage_.shadow.yscale,
-				stage_.reflection);
+			players_[i].draw(view, (float)stage_.zoffset * stage_.localScale, groundFor(players_[i]));
 		effects_.draw(view, (float)stage_.zoffset * stage_.localScale, 0);
 		stage_.draw(1, view, stagePalFX, stageBrightness);
 		fightScreen_.draw(1, match_, players_[0], players_[1]);
@@ -609,6 +608,7 @@ private:
 		world_.screenEdge = world_.halfWidth - (float)std::max(stage_.screenleft, stage_.screenright) * stage_.localScale;
 		world_.leftBound = stage_.leftbound * stage_.localScale;
 		world_.rightBound = stage_.rightbound * stage_.localScale;
+		world_.autoTurn = stage_.autoTurn;
 	}
 
 	// A player's state, like Ikemen's debug display (Ctrl+D): state, animation, control, time, types, motion.
@@ -728,8 +728,31 @@ private:
 		keepInBounds(ri, edge);
 	}
 
-	// The stage's shadow strength, faded out as the character rises through fade.range.
-	int shadowFor(const Character &c) const
+	// The stage's shadow and reflection for a character: the shadow faded as it rises through fade.range, offsets
+	// in game units.
+	GroundDraw groundFor(const Character &c) const
+	{
+		const float k = shadowFade(c);
+		const float scale = stage_.localScale;
+		const Stage::Shadow &s = stage_.shadow;
+		const uint32_t faded = (uint32_t)std::lround((float)(s.colour >> 16 & 0xFF) * k) << 16 |
+			(uint32_t)std::lround((float)(s.colour >> 8 & 0xFF) * k) << 8 | (uint32_t)std::lround((float)(s.colour & 0xFF) * k);
+		GroundDraw g;
+		g.shadowIntensity = (int)((float)s.intensity * k);
+		g.shadowYScale = s.yscale;
+		g.shadowColour = faded;
+		g.shadowOffsetX = s.offsetX * scale;
+		g.shadowOffsetY = s.offsetY * scale;
+		g.reflection = stage_.reflection;
+		g.reflectionColour = stage_.reflectionColour;
+		g.reflectionYScale = stage_.reflectionYScale;
+		g.reflectionOffsetX = stage_.reflectionOffsetX * scale;
+		g.reflectionOffsetY = stage_.reflectionOffsetY * scale;
+		return g;
+	}
+
+	// How much of the stage's shadow shows, faded out as the character rises through fade.range.
+	float shadowFade(const Character &c) const
 	{
 		const Stage::Shadow &s = stage_.shadow;
 		float k = 1;
@@ -740,7 +763,7 @@ private:
 			else if (c.worldY() < fadeBegin)
 				k = (c.worldY() - fadeEnd) / (fadeBegin - fadeEnd);
 		}
-		return (int)(s.intensity * k);
+		return k;
 	}
 
 	Stage stage_;
