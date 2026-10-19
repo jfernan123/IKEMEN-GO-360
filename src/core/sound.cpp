@@ -102,10 +102,28 @@ const SoundBank::Sound *SoundBank::get(int32_t group, int32_t number) const
 	return entry.sound.stereo48k.empty() ? nullptr : &entry.sound;
 }
 
+namespace {
+float soundVolume = 1;
+} // namespace
+
+void SoundBank::setVolume(float gain)
+{
+	soundVolume = gain;
+}
+
 void SoundBank::play(int32_t group, int32_t number, int channel) const
 {
-	if (const Sound *sound = get(group, number))
+	const Sound *sound = get(group, number);
+	if (!sound)
+		return;
+	if (soundVolume == 1) {
 		platform::playSound(sound->stereo48k.data(), sound->stereo48k.size() / 2, channel);
+		return;
+	}
+	std::vector<float> scaled(sound->stereo48k);
+	for (float &sample : scaled)
+		sample *= soundVolume;
+	platform::playSound(scaled.data(), scaled.size() / 2, channel);
 }
 
 void SoundBank::mix(const Sound &sound, size_t &position, float *stereo, size_t frames, float volume)

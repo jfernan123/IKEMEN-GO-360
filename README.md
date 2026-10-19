@@ -330,6 +330,16 @@ paths use forward slashes.
      Single sides is a normal Arcade fight. `tests/inputs/watch.txt` checks that the computer plays player 1.
    - Not included in stage 10: Tag teams (an Ikemen system), more than two members a side, the smarter AI option.
 
+11. Options and saving (in progress): Ikemen's options and config.ini.
+   - 11a settings (done): `core/settings` holds the options mugen360 uses, with Ikemen's defaults and ranges
+     (defaultConfig.ini, config.go): Difficulty (the computer's AI level; 5, where mugen360 used 8 before), Life %,
+     Time (counts, -1 none, drawn as "o"), GameSpeed, Match.Wins, Match.MaxDrawGames, Simul.Match.Wins, Master / Wav
+     / BGM volume, and each player's button mapping ([Joystick_Pn]). They load from and save to `save/config.ini`
+     (`platform::writeWholeFile`; the 360 package ships `save/` because xsdk can't make folders) and apply where
+     Ikemen applies them: rounds to win and draws replace fight.def's match.wins ("Replaced by ingame options"), the
+     clock is Time x framespercount, life is scaled, game speed changes ticks a second, volumes scale music and
+     sounds, the pads go through the mapping. Test runs keep the defaults whatever is saved.
+
 ## Asset notice
 
 Kung Fu Man, his stage, `common1.cns`, and the shared fight resources are Elecbyte/Ikemen release assets included

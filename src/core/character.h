@@ -71,7 +71,9 @@ public:
 	bool readyForWinPose() const;
 	bool alive() const { return !ko_; }
 	bool asserts(uint32_t special) const { return (special_ & special) != 0; }
-	int32_t lifeMax() const { return (int32_t)constF("data.life", 1000); }
+	// [Data] life times the options' Life % (Ikemen's lifeMax with Options.Life).
+	int32_t lifeMax() const { return (int32_t)(constF("data.life", 1000) * lifeScale_); }
+	void setLifeScale(float scale) { lifeScale_ = scale; }
 	int32_t powerMax() const { return (int32_t)constF("data.power", 3000); }
 	// Training's default recovery, after this tick's hits have landed.
 	void trainingRestore();
@@ -177,6 +179,7 @@ public:
 private:
 	// [Info] localcoord's width.
 	int32_t localcoordWidth_ = 320;
+	float lifeScale_ = 1;
 	void loadConstants(const std::string &cnsPath);
 	float constF(const std::string &name, float fallback) const;
 

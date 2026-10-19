@@ -224,9 +224,19 @@ std::unique_ptr<MusicSource> openMusic(const std::string &path, const std::vecto
 	return nullptr;
 }
 
+namespace {
+int32_t masterVolume = 100, bgmVolume = 75;
+} // namespace
+
+void Music::setVolumes(int32_t master, int32_t bgm)
+{
+	masterVolume = master;
+	bgmVolume = bgm;
+}
+
 float Music::gain(int32_t volume)
 {
-	const double level = -5 + 75 * 0.06 * volume / 100.0;
+	const double level = -5 + bgmVolume * 0.06 * (masterVolume / 100.0) * volume / 100.0;
 	return level <= -5 ? 0.0f : (float)std::pow(2.0, std::min(level, 1.0));
 }
 

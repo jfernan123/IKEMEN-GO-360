@@ -3,6 +3,7 @@
 #include <SDL3/SDL.h>
 
 #include <cstdio>
+#include <direct.h>
 #include <algorithm>
 #include <string>
 #include <vector>
@@ -365,6 +366,19 @@ bool readWholeFile(const char *path, std::vector<uint8_t> &out)
 	std::fclose(f);
 	out.resize(got);
 	return size >= 0 && got == (size_t)size;
+}
+
+bool writeWholeFile(const char *path, const std::string &data)
+{
+	// The folder first, as Ikemen makes save/ when it's missing.
+	const std::string folder = std::string(path).substr(0, std::string(path).find_last_of('/') + 1);
+	if (!folder.empty())
+		_mkdir(folder.c_str());
+	std::FILE *f = std::fopen(path, "wb");
+	if (!f)
+		return false;
+	const size_t written = data.empty() ? 0 : std::fwrite(data.data(), 1, data.size(), f);
+	return std::fclose(f) == 0 && written == data.size();
 }
 
 void logLine(const char *line)

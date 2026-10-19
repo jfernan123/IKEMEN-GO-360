@@ -66,6 +66,8 @@ public:
 	// The area the fight is drawn in (a 4:3 stage is pillarboxed): the fight screen fits its width there, from its
 	// top, as Ikemen's FightScreen.setScale fits it to the game's viewport.
 	void setViewport(float originX, float width);
+	// Ticks per count of the clock ([Time] framespercount).
+	int32_t framesPerCount() const { return time_.framesPerCount; }
 	// Each side's Simul partner, or null for a side of one (a new fight sets them).
 	void setPartners(const Character *partner1, const Character *partner2)
 	{

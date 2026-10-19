@@ -58,6 +58,8 @@ public:
 
 	// Ikemen's Bgm.UpdateVolume as a gain: 2 ^ (-5 + BGMVolume 75 * 0.06 * volume / 100), silent at -5 or below.
 	static float gain(int32_t volume);
+	// The options' Master and BGM volumes (0-100) that gain uses.
+	static void setVolumes(int32_t master, int32_t bgm);
 	// Fills out with frames 48 kHz stereo frames from the song (the queue's side of update), for the tests.
 	size_t produce(float *out, size_t frames);
 	// Plays a source already opened, for the tests.

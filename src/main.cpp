@@ -41,6 +41,7 @@
 #include "core/motif.h"
 #include "core/music.h"
 #include "core/select_screen.h"
+#include "core/settings.h"
 #include "core/title_screen.h"
 #include "core/log.h"
 #include "core/match.h"
@@ -171,22 +172,6 @@ private:
 	std::vector<uint16_t> frames_;
 };
 
-// A controller as MUGEN's buttons: punches x y z on X, Y and RB, kicks a b c on A, B and RT, start on Start.
-void toInput(const platform::Pad &pad, InputState &in)
-{
-	in.up = pad.up;
-	in.down = pad.down;
-	in.left = pad.left;
-	in.right = pad.right;
-	in.x = pad.x;
-	in.y = pad.y;
-	in.z = pad.rb;
-	in.a = pad.a;
-	in.b = pad.b;
-	in.c = pad.rt;
-	in.s = pad.start;
-}
-
 // Changes a renderer's palette with up / down: -1 (each sprite's own) then the SFF's palettes in turn.
 void updatePalette(Buttons &b, const platform::Pad &pad, SpriteRenderer &renderer)
 {
@@ -242,6 +227,8 @@ struct FightAssets {
 	FightScreen fightScreen;
 	bool loaded = false, fightScreenLoaded = false;
 	std::string fightError;
+	// The player's options (main owns them; the options screen changes them between fights).
+	const Settings *settings = nullptr;
 
 	bool load(const GameConfig &config, std::string &error)
 	{
@@ -277,12 +264,19 @@ public:
 		effects_.clear();
 		// The screenpack's fight screen sets the round's timings; without one, the plain HUD and default timings.
 		const std::string &fightError = assets_.fightError;
+		const Settings &settings = *assets_.settings;
+		// Rounds to win, draws and the clock come from the options, not fight.def (Ikemen: "Replaced by ingame
+		// options"); Turns bouts and Survival matches are one round each.
+		RoundTimings timings = assets_.fightScreenLoaded ? fightScreen_.timings() : RoundTimings{};
+		timings.matchWins = config.mode == "simul" ? settings.simulWins : settings.matchWins;
+		if (config.mode == "turns" || config.mode == "survival")
+			timings.matchWins = 1;
+		timings.maxDraws = settings.maxDrawGames;
+		match_.setTimings(timings);
+		match_.setRoundTime(settings.roundTicks(assets_.fightScreenLoaded ? fightScreen_.framesPerCount() : 60));
+		aiLevel_ = settings.difficulty;
+		ticksPerSecond_ = settings.ticksPerSecond();
 		if (assets_.fightScreenLoaded) {
-			RoundTimings timings = fightScreen_.timings();
-			// Turns bouts and Survival matches are one round each (Ikemen's matchWins.single = 1 for them).
-			if (config.mode == "turns" || config.mode == "survival")
-				timings.matchWins = 1;
-			match_.setTimings(timings);
 			const View area = stage_.view(0, 0);
 			fightScreen_.setViewport(area.originX, area.width);
 			fightScreen_.setMatchInfo(config.mode, config.winCount);
@@ -317,6 +311,7 @@ public:
 			if (!players_[i].load(characterDefs[i], palettes[i], error))
 				return false;
 			players_[i].setGameWidth(stage_.gameWidth);
+			players_[i].setLifeScale((float)settings.life / 100.0f);
 			// Win, Lose and TeamSide go by side: a partner is on its leader's side.
 			players_[i].playerNo = side_[i];
 			players_[i].setWorld(&world_);
@@ -435,7 +430,8 @@ public:
 		if (!effects_.paused())
 			fightScreen_.frame(match_);
 		// After a KO the game slows down: some frames run no game tick.
-		speed_ += match_.speed();
+		// Game speed: more or fewer ticks a frame (Ikemen's 60 + GameSpeed * GameSpeedStep ticks a second).
+		speed_ += match_.speed() * (float)ticksPerSecond_ / 60.0f;
 		while (speed_ >= 1) {
 			speed_ -= 1;
 			tick(pad1, pad2);
@@ -467,12 +463,12 @@ public:
 		const float edge = world_.screenEdge;
 		// Player 2 is the computer unless a second controller is plugged in.
 		const bool cpu = forceCpu_ || (!training_ && !pad2.connected);
-		players_[1].aiLevel = cpu ? AI_LEVEL : 0;
-		ai_[1].update((float)AI_LEVEL, cpu && match_.roundState() == 2);
+		players_[1].aiLevel = cpu ? aiLevel_ : 0;
+		ai_[1].update((float)aiLevel_, cpu && match_.roundState() == 2);
 		// Simul partners are the computer's (Ikemen: a team member without a controller of its own).
 		for (int i = 2; i < count_; i++) {
-			players_[i].aiLevel = AI_LEVEL;
-			ai_[i].update((float)AI_LEVEL, match_.roundState() == 2);
+			players_[i].aiLevel = aiLevel_;
+			ai_[i].update((float)aiLevel_, match_.roundState() == 2);
 		}
 		// Each one faces and targets its nearest enemy still in the fight.
 		if (count_ > 2)
@@ -481,18 +477,18 @@ public:
 		bool run[4] = { false, false, false, false };
 		for (int i = 0; i < count_; i++)
 			run[i] = !effects_.pausedFor(i);
-		players_[0].aiLevel = watch_ ? AI_LEVEL : 0;
+		players_[0].aiLevel = watch_ ? aiLevel_ : 0;
 		if (watch_)
-			ai_[0].update((float)AI_LEVEL, match_.roundState() == 2);
+			ai_[0].update((float)aiLevel_, match_.roundState() == 2);
 		if (run[0]) {
 			InputState input1;
-			toInput(pad1, input1);
+			assets_.settings->toInput(0, pad1, input1);
 			players_[0].turnAndInput(watch_ ? ai_[0].state() : input1);
 			recordCommands(players_[0]);
 		}
 		if (run[1]) {
 			InputState input2;
-			toInput(pad2, input2);
+			assets_.settings->toInput(1, pad2, input2);
 			players_[1].turnAndInput(cpu ? ai_[1].state() : input2);
 		}
 		for (int i = 2; i < count_; i++)
@@ -763,8 +759,9 @@ private:
 	FightAssets &assets_;
 	float speed_ = 0;
 	bool quickStart_ = false;
-	// The computer player for player 2 (MUGEN's button jamming), at the hardest level.
-	static constexpr int AI_LEVEL = 8;
+	// The computer players (MUGEN's button jamming), at the options' Difficulty.
+	int aiLevel_ = 5;
+	int32_t ticksPerSecond_ = 60;
 	AiInput ai_[4];
 	bool forceCpu_ = false;
 	bool training_ = false;
@@ -998,7 +995,16 @@ int main(int argc, char **argv)
 	const bool testRun = !inputPath.empty() || !shots.empty() || quitFrame != UINT32_MAX;
 	if (!platform::init(testRun && !show))
 		return 1;
-	logf("mugen360: milestone 10, match modes and teams, build %s", buildVersion());
+	logf("mugen360: milestone 11a, settings, build %s", buildVersion());
+	// The options, saved in save/config.ini. Test runs keep Ikemen's defaults, so a player's saved options never
+	// change a test's result.
+	Settings settings;
+	if (testRun)
+		logf("settings: test run, defaults");
+	else if (!settings.load(SETTINGS_PATH))
+		logf("settings: no %s yet, defaults", SETTINGS_PATH);
+	Music::setVolumes(settings.masterVolume, settings.bgmVolume);
+	SoundBank::setVolume(settings.soundGain());
 	if (!configLoaded)
 		logf("mugen360: %s", configError.c_str());
 	logf("game: p1=%s p2=%s stage=%s", config.player1.c_str(), config.player2.c_str(), config.stage.c_str());
@@ -1079,6 +1085,7 @@ int main(int argc, char **argv)
 		int32_t turnsLife[2] = { -1, -1 }, turnsPower[2] = { 0, 0 };
 		// Loaded with the first fight, then reused.
 		FightAssets fightAssets;
+		fightAssets.settings = &settings;
 		auto startFight = [&](const GameConfig &picked) {
 			GameConfig fight = picked;
 			fight.mode = mode == SelectMode::QuickMatch ? "freebattle"
@@ -1307,7 +1314,7 @@ int main(int argc, char **argv)
 					if (teamMode() && turnsFight) {
 						turnsLife[0] = turnsLife[1] = -1;
 						if (winner >= 0) {
-							const int recovery = turnsRecovery(lifeMax[winner], timeLeft, Match::ROUND_TIME);
+							const int recovery = turnsRecovery(lifeMax[winner], timeLeft, settings.roundTicks(60));
 							turnsLife[winner] = std::min(lifeMax[winner], life[winner] + recovery);
 							turnsPower[winner] = power[winner];
 							logf("turns: p%d recovers %d life to %d", winner + 1, turnsLife[winner] - life[winner],

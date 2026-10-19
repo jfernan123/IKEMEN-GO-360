@@ -33,6 +33,15 @@ bool readFile(const std::string &path, std::vector<uint8_t> &out)
 	return true;
 }
 
+void forgetCachedFile(const std::string &path)
+{
+	const auto found = cache.find(path);
+	if (found == cache.end())
+		return;
+	cachedBytes -= found->second.size();
+	cache.erase(found);
+}
+
 bool fileExists(const std::string &path)
 {
 	if (cache.count(path))

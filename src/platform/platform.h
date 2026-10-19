@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <cstddef>
+#include <string>
 #include <vector>
 
 // The engine's only view of the machine. src/platform/pc implements it with SDL3, src/platform/x360 with xsdk.
@@ -82,6 +83,9 @@ void clearMusic();
 // Reads a whole file in as few disk reads as the platform allows (one on the 360: its drives are slow per request).
 // The path is relative to the game's folder, with '/'.
 bool readWholeFile(const char *path, std::vector<uint8_t> &out);
+// Writes a whole file, replacing it, in a folder that exists (the settings in save/; the 360's package ships the
+// folder, as xsdk has no mkdir).
+bool writeWholeFile(const char *path, const std::string &data);
 
 // Writes a line to the platform's log.
 void logLine(const char *line);
