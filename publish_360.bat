@@ -6,7 +6,7 @@ cd /d "%~dp0"
 rem The stamp names the release (xbox-<stamp>) and is built into the game, which shows it during fights.
 for /f %%d in ('powershell -NoProfile -Command "Get-Date -Format yyyy.MM.dd-HHmm"') do set "STAMP=%%d"
 set "MUGEN360_VERSION=%STAMP%"
-call build_360.bat || exit /b 1
+call "%~dp0build_360.bat" || exit /b 1
 for /f %%c in ('git rev-parse --short HEAD') do set "COMMIT=%%c"
 for /f %%b in ('git branch --show-current') do set "BRANCH=%%b"
 set "TAG=xbox-%STAMP%"
