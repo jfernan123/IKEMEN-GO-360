@@ -1,0 +1,22 @@
+# Stage 13e storyboards: the screenpack's logo storyboard plays first (ikemen1's is a video, so only its fades), then
+# ARCADE as in arcade.txt; after the VS screen Kung Fu Man's arcade intro (chars/kfm/intro.def) plays; Start skips its
+# first scene, an attack button cancels the rest, and the fight starts.
+#   build\pc\mugen360.exe --title --storyboards --input tests\inputs\storyboard.txt --quit 1100 --trace
+# Expect "storyboard: data/ikemen1/logo.def: 1 scenes", "storyboard: data/chars/kfm/intro.def: ... scenes" and
+# "match: round 1" after it.
+240 -
+30 -
+2 a
+10 -
+2 a
+40 -
+2 a
+10 -
+2 a
+200 -
+2 s
+120 -
+2 s
+60 -
+2 a
+150 -

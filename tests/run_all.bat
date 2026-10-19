@@ -35,6 +35,7 @@ call :misc || exit /b 1
 call :select || exit /b 1
 call :title || exit /b 1
 call :arcade || exit /b 1
+call :storyboard || exit /b 1
 call :team || exit /b 1
 call :survival || exit /b 1
 call :simul || exit /b 1
@@ -93,6 +94,9 @@ findstr /c:"3 pairs" tests\out\soak_game.txt >nul || (echo FAIL: the soak did no
 findstr /c:"controller makerainbow" tests\out\soak_game.txt >nul || (echo FAIL: the soak did not note Odd KFM's unknown controller & exit /b 1)
 findstr /c:"makerainbow" tests\out\compat_game.txt >nul || (echo FAIL: the compatibility check missed an unknown controller & exit /b 1)
 findstr /c:"match: round 1" tests\out\latest_game.log >nul || (echo FAIL: the game folder's fight did not start & exit /b 1)
+findstr /c:"storyboard: data/ikemen1/logo.def: 1 scenes" tests\out\latest_storyboard.log >nul || (echo FAIL: the logo storyboard did not play & exit /b 1)
+findstr /c:"storyboard: data/chars/kfm/intro.def: 5 scenes" tests\out\latest_storyboard.log >nul || (echo FAIL: KFM's arcade intro did not play & exit /b 1)
+findstr /c:"match: round 1" tests\out\latest_storyboard.log >nul || (echo FAIL: the fight did not start after the arcade intro & exit /b 1)
 findstr /c:"options: p1 A = RB" tests\out\latest_keys.log >nul || (echo FAIL: the joystick config did not take RB for A & exit /b 1)
 findstr /c:"Z = Not used" tests\out\keys_config.ini >nul || (echo FAIL: the button RB left did not become Not used & exit /b 1)
 findstr /c:"title: OPTIONS" tests\out\latest_options.log >nul || (echo FAIL: OPTIONS did not open from the title & exit /b 1)
@@ -195,6 +199,12 @@ exit /b 0
 echo     title menu
 "%EXE%" --title --cpu --input tests/inputs/title.txt --quit 600 --trace %SHOW% >nul || exit /b 1
 copy /y m360.log tests\out\latest_title.log >nul
+exit /b 0
+
+:storyboard
+echo     storyboards
+"%EXE%" --title --storyboards --input tests\inputs\storyboard.txt --quit 1100 --trace %SHOW% >nul || exit /b 1
+copy /y m360.log tests\out\latest_storyboard.log >nul
 exit /b 0
 
 :arcade

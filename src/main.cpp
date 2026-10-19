@@ -23,6 +23,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
@@ -53,6 +54,7 @@
 #include "core/sound.h"
 #include "core/sprite_renderer.h"
 #include "core/stage.h"
+#include "core/storyboard.h"
 #include "core/version.h"
 #include "platform/platform.h"
 
@@ -969,7 +971,23 @@ private:
 	size_t current_ = 0;
 };
 
-enum class Screen { Title, Options, Select, Stage, Animations, Sprites };
+enum class Screen { Title, Options, Select, Stage, Animations, Sprites, Storyboard };
+
+// A storyboard a .def names under [section] key (a character's [Arcade] intro.storyboard, a screenpack's [Files]
+// logo.storyboard), found as Ikemen finds it (next to the .def, the game's root, data/); empty if there's none.
+std::string storyboardFor(const std::string &defPath, const std::string &section, const std::string &key)
+{
+	std::vector<uint8_t> bytes;
+	if (!readFile(defPath, bytes))
+		return {};
+	const std::vector<IniSection> ini = parseIni(std::string(bytes.begin(), bytes.end()));
+	const IniSection *s = findSection(ini, section);
+	const std::string name = s ? std::string(text::trim(s->text(key))) : std::string();
+	if (name.empty())
+		return {};
+	const std::string found = searchFile(name, { defPath, "", "data/" });
+	return fileExists(found) ? found : std::string();
+}
 
 } // namespace
 
@@ -1081,6 +1099,8 @@ int main(int argc, char **argv)
 	// Test-run options (see InputScript).
 	std::string inputPath, input2Path, forcedMode, p1Arg, p2Arg, stageArg;
 	bool checkRun = false, soakRun = false;
+	// Test runs skip storyboards (logo, intro, arcade intros and endings) unless --storyboards.
+	bool storyboards = false;
 	uint32_t soakFrames = 3600;
 	std::map<uint32_t, std::string> shots;
 	uint32_t quitFrame = UINT32_MAX;
@@ -1114,6 +1134,8 @@ int main(int argc, char **argv)
 			show = true;
 		else if (arg == "--select")
 			forceSelect = true;
+		else if (arg == "--storyboards")
+			storyboards = true;
 		else if (arg == "--title")
 			forceTitle = forceSelect = true;
 		else if (arg == "--power" && i + 1 < argc)
@@ -1344,6 +1366,48 @@ int main(int argc, char **argv)
 		Buttons buttons;
 		// Where the debug screens go back to.
 		Screen gameScreen = screen;
+
+		// Storyboards (13e): the screenpack's logo and intro before the title, a character's arcade intro before its
+		// first match and ending after its last. They play one after another from storyQueue, then afterStory runs.
+		std::unique_ptr<Storyboard> story;
+		std::vector<std::string> storyQueue;
+		std::function<void()> afterStory;
+		Press storySkip, storyCancel;
+		std::function<void()> nextStory = [&]() {
+			while (!storyQueue.empty()) {
+				const std::string path = storyQueue.front();
+				storyQueue.erase(storyQueue.begin());
+				story = std::make_unique<Storyboard>();
+				std::string storyError;
+				if (story->load(path, storyError)) {
+					story->start();
+					screen = gameScreen = Screen::Storyboard;
+					return;
+				}
+				logf("storyboard: %s", storyError.c_str());
+			}
+			story.reset();
+			if (afterStory) {
+				const std::function<void()> then = afterStory;
+				afterStory = nullptr;
+				then();
+			}
+		};
+		const bool showStoryboards = !testRun || storyboards;
+		auto playStories = [&](std::vector<std::string> paths, std::function<void()> then) {
+			paths.erase(std::remove(paths.begin(), paths.end(), std::string()), paths.end());
+			storyQueue = showStoryboards ? paths : std::vector<std::string>();
+			afterStory = std::move(then);
+			nextStory();
+		};
+		// The screenpack's logo and intro, then the title (Ikemen's main.lua start: logo, intro, title).
+		if (titleLoaded && showStoryboards)
+			playStories({ storyboardFor(motif.path(), "files", "logo.storyboard"),
+							storyboardFor(motif.path(), "files", "intro.storyboard") },
+				[&]() {
+					title.reset();
+					screen = gameScreen = Screen::Title;
+				});
 		Music music;
 		// What the music was last chosen for ("title", "select", "vs", "match N").
 		std::string musicFor;
@@ -1383,7 +1447,7 @@ int main(int argc, char **argv)
 			// handles it itself (it moves to Exit).
 			const bool back = buttons.back.update(pad.back);
 			// The screenpack select screen handles Back itself (out of the palette menu, else back to the title).
-			const bool selectHandlesBack = screen == Screen::Select && motifSelectLoaded;
+			const bool selectHandlesBack = (screen == Screen::Select && motifSelectLoaded) || screen == Screen::Storyboard;
 			if (back && screen == Screen::Stage && selectLoaded) {
 				stage.reset();
 				resetSelect(secondController);
@@ -1406,12 +1470,19 @@ int main(int argc, char **argv)
 				wantedMusic = motifSelectLoaded && motifSelect.inVersus() ? "vs" : "select";
 			else if (gameScreen == Screen::Stage && stage)
 				wantedMusic = "match " + std::to_string(stage->matchCount());
+			else if (gameScreen == Screen::Storyboard && story)
+				wantedMusic = "story " + story->path() + " " + std::to_string(story->sceneIndex());
 			if (wantedMusic != musicFor) {
 				musicFor = wantedMusic;
 				if (wantedMusic == "title" || wantedMusic == "select")
 					music.request(motifLoaded ? motif.music(wantedMusic) : MusicTrack{}, true);
 				else if (wantedMusic == "vs" || wantedMusic == "option")
 					music.request(motif.music(wantedMusic), false);
+				else if (text::startsWith(wantedMusic, "story ")) {
+					// A scene with its own bgm starts it; one without leaves the music playing.
+					if (story && story->music())
+						music.request(*story->music(), true);
+				}
 				else if (stage)
 					music.restart(stage->music());
 			}
@@ -1431,6 +1502,24 @@ int main(int argc, char **argv)
 			if (pad.menu) {
 				gameplayPad.start = false;
 				gameplayPad.lb = false;
+			}
+			if (screen == Screen::Storyboard) {
+				// Start skips the scene; an attack button or Back cancels the storyboard (Ikemen's key.skip / cancel).
+				const bool skip = storySkip.update(pad.start || pad2.start);
+				const bool cancel = storyCancel.update(pad.a || pad.b || pad.x || pad.y || pad.rb || pad.rt || pad2.a ||
+										pad2.b || pad2.x || pad2.y || pad2.rb || pad2.rt) || back;
+				if (story) {
+					story->update(skip, cancel);
+					story->draw();
+				}
+				finishFrame();
+				if (!story || story->done()) {
+					if (story && story->stopMusic())
+						music.stop();
+					musicFor.clear();
+					nextStory();
+				}
+				continue;
 			}
 			if (screen == Screen::Title) {
 				title.update(gameplayPad, pad2);
@@ -1484,8 +1573,15 @@ int main(int argc, char **argv)
 						turnsLife[0] = turnsLife[1] = -1;
 						turnsPower[0] = turnsPower[1] = 0;
 					}
-					startFight(selectedFight);
-					screen = gameScreen = Screen::Stage;
+					// Arcade: the player's character's intro before its first match (Ikemen's arcade intro.storyboard).
+					const bool arcadeStart = (mode == SelectMode::Arcade || mode == SelectMode::TeamArcade) &&
+						motifSelect.arcadeMatchNo() == 1;
+					playStories({ arcadeStart ? storyboardFor(selectedFight.player1, "arcade", "intro.storyboard")
+											  : std::string() },
+						[&]() {
+							startFight(selectedFight);
+							screen = gameScreen = Screen::Stage;
+						});
 				} else if (motifSelect.cancelled()) {
 					if (!titleLoaded)
 						break;
@@ -1569,8 +1665,14 @@ int main(int argc, char **argv)
 					} else {
 						if (arcadeMode)
 							logf("arcade: %s", winner == 0 ? "route complete" : "route lost");
-						resetSelect(secondController);
-						screen = gameScreen = Screen::Select;
+						// A finished arcade route shows the character's ending first.
+						const std::string ending = arcadeMode && winner == 0
+							? storyboardFor(selectedFight.player1, "arcade", "ending.storyboard")
+							: std::string();
+						playStories({ ending }, [&, secondController]() {
+							resetSelect(secondController);
+							screen = gameScreen = Screen::Select;
+						});
 					}
 				}
 			} else if (screen == Screen::Animations) {
