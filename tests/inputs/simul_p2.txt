@@ -1,0 +1,14 @@
+# Player 2 picks two members alongside player 1 for simul.txt, then stands still.
+18 -
+# Member 1.
+2 a
+10 -
+2 a
+10 -
+# Member 2.
+2 a
+10 -
+2 a
+10 -
+2 a
+1400 -

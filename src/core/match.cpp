@@ -1,6 +1,7 @@
 #include "core/match.h"
 
 #include <cmath>
+#include <vector>
 
 #include "core/log.h"
 
@@ -65,15 +66,25 @@ float Match::speed() const
 	return s;
 }
 
-// The round is over when one side is KO or the clock runs out (Ikemen's roundEndDecision).
-bool Match::decide(Character &p1, Character &p2)
+// The round is over when one side is KO or the clock runs out (Ikemen's roundEndDecision). A team is KO when all its
+// members are.
+bool Match::decide(Character *const *fighters, int count)
 {
 	if (intro_ > 0)
 		return false;
-	const bool ko[2] = { !p1.alive(), !p2.alive() };
+	bool ko[2] = { true, true };
+	int members[2] = { 0, 0 };
+	for (int i = 0; i < count; i++) {
+		members[i % 2]++;
+		if (fighters[i]->alive())
+			ko[i % 2] = false;
+	}
 	if (time_ == 0) {
-		// Time over: the one with more life (as a share of the most) wins.
-		const float l0 = (float)p1.life / p1.lifeMax(), l1 = (float)p2.life / p2.lifeMax();
+		// Time over: the side with more life (as a share of the most, averaged over a Simul team) wins.
+		float life[2] = { 0, 0 };
+		for (int i = 0; i < count; i++)
+			life[i % 2] += (float)fighters[i]->life / (float)fighters[i]->lifeMax() / (float)members[i % 2];
+		const float l0 = life[0], l1 = life[1];
 		if (std::lround(l0 * 1000) != std::lround(l1 * 1000)) {
 			finish_ = Finish::TimeOver;
 			winTeam_ = l0 < l1 ? 1 : 0;
@@ -97,7 +108,20 @@ bool Match::decide(Character &p1, Character &p2)
 
 Match::Event Match::step(Character &p1, Character &p2, RoundAnnouncer &announcer)
 {
-	Character *p[2] = { &p1, &p2 };
+	Character *const both[2] = { &p1, &p2 };
+	return step(both, 2, announcer);
+}
+
+Match::Event Match::step(Character *const *fighters, int count, RoundAnnouncer &announcer)
+{
+	const std::vector<Character *> p(fighters, fighters + count);
+	const auto anyAsserts = [&](uint32_t flag) {
+		for (Character *c : p) {
+			if (c->asserts(flag))
+				return true;
+		}
+		return false;
+	};
 
 	// The round calls hold the round while "Round N" plays and until "Fight" is called.
 	if (!announcer.act(*this))
@@ -107,7 +131,7 @@ Match::Event Match::step(Character &p1, Character &p2, RoundAnnouncer &announcer
 	const int32_t ctrlTime = timings_.ctrlTime;
 	if (intro_ > ctrlTime) {
 		intro_--;
-		if ((p1.asserts(Special::Intro) || p2.asserts(Special::Intro)) && intro_ <= ctrlTime)
+		if (anyAsserts(Special::Intro) && intro_ <= ctrlTime)
 			intro_ = ctrlTime + 1;
 	} else if (intro_ > 0) {
 		// Back to the start positions as the count to control begins.
@@ -126,10 +150,10 @@ Match::Event Match::step(Character &p1, Character &p2, RoundAnnouncer &announcer
 	}
 
 	// The clock runs while the round is fought.
-	if (!training_ && intro_ == 0 && !p1.asserts(Special::TimerFreeze) && !p2.asserts(Special::TimerFreeze) && time_ > 0)
+	if (!training_ && intro_ == 0 && !anyAsserts(Special::TimerFreeze) && time_ > 0)
 		time_--;
 
-	if (intro_ < -timings_.overHit || decide(p1, p2)) {
+	if (intro_ < -timings_.overHit || decide(fighters, count)) {
 		const int32_t rs4 = -timings_.overWait;
 		intro_--;
 		if (slowTime_ > 0 && time_ != 0)
@@ -169,17 +193,18 @@ Match::Event Match::step(Character &p1, Character &p2, RoundAnnouncer &announcer
 			winWaitTime_ = 0;
 		// Win poses (180), losing (170), drawn (175), for whoever is still standing.
 		if (winposeTime_ <= 0) {
-			for (int i = 0; i < 2; i++) {
-				Character &c = *p[i];
+			for (int i = 0; i < count; i++) {
+				Character &c = *p[(size_t)i];
+				const int team = i % 2;
 				if (!c.overAlive() && c.alive() && !c.hitPause())
-					c.startOverState(winTeam_ == i ? 180 : winTeam_ == 1 - i ? 170 : 175);
+					c.startOverState(winTeam_ == team ? 180 : winTeam_ == 1 - team ? 170 : 175);
 			}
 		}
 		if (winWaitTime_ > 0)
 			winWaitTime_--;
 		// RoundNotOver holds the round open.
 		const int32_t end = -(timings_.overWait + timings_.roundOverTime());
-		if ((p1.asserts(Special::RoundNotOver) || p2.asserts(Special::RoundNotOver)) && intro_ == end)
+		if (anyAsserts(Special::RoundNotOver) && intro_ == end)
 			intro_++;
 		if (intro_ < end) {
 			if (matchOver())

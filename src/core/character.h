@@ -80,6 +80,10 @@ public:
 	// The computer's level (1-8) while it plays this character, 0 for a person (the AILevel trigger).
 	int aiLevel = 0;
 	void setOpponent(Character *opponent);
+	// Simul: the other side's fighters and this one's teammates. P2 is then the nearest enemy still in the fight,
+	// chosen again every tick (chooseP2; Ikemen's p2 / enemyNear).
+	void setTeam(const std::vector<Character *> &enemies, const std::vector<Character *> &partners);
+	void chooseP2();
 	void setWorld(const FightWorld *world);
 
 	// One frame, in order: turnAndInput, actionPrepare, actionRun (for both players, each phase before the next),
@@ -381,6 +385,14 @@ private:
 	float fallDefenceMul_ = 1.5f; // (100 + data.fall.defence_up) / 100
 
 	Character *p2_ = nullptr;
+	// Whom the current HitDef has hit (Ikemen's hitdefTargets): in Simul one HitDef hits each enemy once.
+	std::vector<const Character *> hitdefTargets_;
+	// Every enemy and teammate (root players); a helper looks at its root's.
+	std::vector<Character *> enemies_, partners_;
+	const std::vector<Character *> &enemies() const { return root_ ? root_->enemies_ : enemies_; }
+	// The enemies, nearest first (Ikemen's sortOthersByDistance), and whether one is still in the fight.
+	std::vector<Character *> enemiesByDistance() const;
+	void hitDetectionAgainst(Character &g);
 	const FightWorld *world_ = nullptr;
 	uint32_t random_ = 12345;
 	std::map<std::string, int> unsupported_;

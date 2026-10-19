@@ -291,20 +291,47 @@ public:
 			logf("fightscreen: %s; using the plain HUD", config.fight.empty() ? "none" : fightError.c_str());
 		world_.effects = &effects_;
 		world_.commonSound = &commonSound_;
-		if (trace) {
-			players_[0].traceLabel = "p1";
-			players_[1].traceLabel = "p2";
+		// Simul: both members of each team fight at once, players 1 and 3 against 2 and 4 (Ikemen's player order).
+		count_ = config.mode == "simul" && config.team1.size() >= 2 && config.team2.size() >= 2 ? 4 : 2;
+		std::string characterDefs[4] = { config.player1, config.player2 };
+		int palettes[4] = { config.p1Palette, config.p2Palette, 1, 1 };
+		if (count_ == 4) {
+			for (int i = 0; i < 4; i++) {
+				const GameConfig::Fighter &f = (i % 2 == 0 ? config.team1 : config.team2)[(size_t)(i / 2)];
+				characterDefs[i] = f.def;
+				palettes[i] = f.palette;
+			}
 		}
-		const std::string characterDefs[2] = { config.player1, config.player2 };
-		const int palettes[2] = { config.p1Palette, config.p2Palette };
-		for (int i = 0; i < 2; i++) {
+		for (int i = 0; i < count_; i++) {
+			if (trace)
+				players_[i].traceLabel = "p" + std::to_string(i + 1);
 			if (!players_[i].load(characterDefs[i], palettes[i], error))
 				return false;
 			players_[i].setGameWidth(stage_.gameWidth);
-			players_[i].playerNo = i;
-			players_[i].setOpponent(&players_[1 - i]);
+			// Win, Lose and TeamSide go by side: a partner is on its leader's side.
+			players_[i].playerNo = i % 2;
 			players_[i].setWorld(&world_);
 		}
+		for (int i = 0; i < count_; i++) {
+			if (count_ == 2) {
+				players_[i].setOpponent(&players_[1 - i]);
+				continue;
+			}
+			std::vector<Character *> enemies, partners;
+			for (int j = 0; j < count_; j++) {
+				if (j % 2 != i % 2)
+					enemies.push_back(&players_[j]);
+				else if (j != i)
+					partners.push_back(&players_[j]);
+			}
+			players_[i].setTeam(enemies, partners);
+		}
+		// Each computer partner jams its own buttons.
+		for (int i = 2; i < 4; i++)
+			ai_[i].seed(0x9E3779B9u * (uint32_t)(i + 1));
+		if (count_ == 4)
+			logf("simul: %s and %s vs %s and %s", characterDefs[0].c_str(), characterDefs[2].c_str(),
+				characterDefs[1].c_str(), characterDefs[3].c_str());
 		quickStart_ = quickStart;
 		forceCpu_ = cpu;
 		training_ = config.mode == "training";
@@ -324,13 +351,16 @@ public:
 	const MusicTrack &music() const { return stage_.music; }
 	void setTestPower(int32_t value)
 	{
-		for (Character &c : players_)
-			c.power = std::clamp(value, 0, 3000);
+		for (int i = 0; i < count_; i++)
+			players_[i].power = std::clamp(value, 0, 3000);
 	}
+	// A side's life for a test: its leader's, and in Simul its partner's too.
 	void setTestLife(int side, int32_t value)
 	{
-		if (side >= 0 && side < 2)
-			players_[side].life = std::clamp(value, 1, players_[side].lifeMax());
+		if (side < 0 || side >= 2)
+			return;
+		for (int i = side; i < count_; i += 2)
+			players_[i].life = std::clamp(value, 1, players_[i].lifeMax());
 	}
 	void setFighterStats(int side, int32_t life, int32_t power)
 	{
@@ -363,14 +393,14 @@ public:
 		space.heightScale = stage_.view(0, 0).scale;
 		camera_.reset(stage_.camera, space);
 		updateWorld();
-		for (int i = 0; i < 2; i++)
+		for (int i = 0; i < count_; i++)
 			players_[i].startRound((float)stage_.p[i].x * stage_.localScale, (float)stage_.p[i].y * stage_.localScale,
 				stage_.p[i].facing, newMatch);
 		if (quickStart_) {
 			match_.skipIntro();
 			fightScreen_.skipIntro();
-			for (Character &c : players_)
-				c.roundStartControl();
+			for (int i = 0; i < count_; i++)
+				players_[i].roundStartControl();
 		}
 		match_.fillWorld(world_);
 		logf("match: round %d", (int)match_.roundNo());
@@ -398,8 +428,8 @@ public:
 	void tick(const platform::Pad &pad1, const platform::Pad &pad2)
 	{
 		const bool globallyPaused = effects_.paused();
-		const Match::Event event =
-			globallyPaused ? Match::Event::None : match_.step(players_[0], players_[1], fightScreen_);
+		Character *const fighters[4] = { &players_[0], &players_[1], &players_[2], &players_[3] };
+		const Match::Event event = globallyPaused ? Match::Event::None : match_.step(fighters, count_, fightScreen_);
 		if (event == Match::Event::NextRound) {
 			startRound(false);
 			return;
@@ -419,8 +449,19 @@ public:
 		// Player 2 is the computer unless a second controller is plugged in.
 		const bool cpu = forceCpu_ || (!training_ && !pad2.connected);
 		players_[1].aiLevel = cpu ? AI_LEVEL : 0;
-		ai_.update((float)AI_LEVEL, cpu && match_.roundState() == 2);
-		const bool run[2] = { !effects_.pausedFor(0), !effects_.pausedFor(1) };
+		ai_[1].update((float)AI_LEVEL, cpu && match_.roundState() == 2);
+		// Simul partners are the computer's (Ikemen: a team member without a controller of its own).
+		for (int i = 2; i < count_; i++) {
+			players_[i].aiLevel = AI_LEVEL;
+			ai_[i].update((float)AI_LEVEL, match_.roundState() == 2);
+		}
+		// Each one faces and targets its nearest enemy still in the fight.
+		if (count_ > 2)
+			for (int i = 0; i < count_; i++)
+				players_[i].chooseP2();
+		bool run[4] = { false, false, false, false };
+		for (int i = 0; i < count_; i++)
+			run[i] = !effects_.pausedFor(i);
 		if (run[0]) {
 			InputState input1;
 			toInput(pad1, input1);
@@ -430,42 +471,50 @@ public:
 		if (run[1]) {
 			InputState input2;
 			toInput(pad2, input2);
-			players_[1].turnAndInput(cpu ? ai_.state() : input2);
+			players_[1].turnAndInput(cpu ? ai_[1].state() : input2);
 		}
-		for (int i = 0; i < 2; i++)
+		for (int i = 2; i < count_; i++)
+			if (run[i]) players_[i].turnAndInput(ai_[i].state());
+		for (int i = 0; i < count_; i++)
 			if (run[i]) players_[i].actionPrepare();
-		for (int i = 0; i < 2; i++)
+		for (int i = 0; i < count_; i++)
 			if (run[i]) players_[i].actionRun();
 		// The fight screen follows the characters' states, before hits land (Ikemen's FightScreen.step).
 		if (!globallyPaused)
 			fightScreen_.step(match_, players_[0], players_[1]);
 		// Players stay on screen and in the stage, and push each other apart.
-		for (int i = 0; i < 2; i++) {
+		for (int i = 0; i < count_; i++) {
 			if (players_[i].screenBound())
 				keepInBounds(i, edge);
 		}
 		// Where the players are for the camera (Ikemen's Char.track, after their update): their x, moving at their
 		// velocity unless paused.
-		for (int i = 0; i < 2; i++) {
+		for (int i = 0; i < count_; i++) {
 			const Character &c = players_[i];
 			const float velocity = run[i] && !c.hitPause() ? c.vx * c.localScale * (float)c.facing : 0.0f;
 			camera_.track(c.worldX(), c.worldX(), velocity, c.worldY());
 		}
-		// Only where their hurt boxes touch, as MUGEN does: a thrown player (no hurt box) isn't pushed off.
-		if (players_[0].playerPush() && players_[1].playerPush() && players_[0].clsnTouch(players_[1], 2, 2))
-			pushApart(edge);
-		// Attacks land: each player's HitDef against the other.
-		for (int i = 0; i < 2; i++)
+		// Only where their hurt boxes touch, as MUGEN does: a thrown player (no hurt box) isn't pushed off. Each pair of
+		// opponents pushes; teammates pass through each other.
+		for (int i = 0; i < count_; i++) {
+			for (int j = i + 1; j < count_; j++) {
+				if (i % 2 != j % 2 && players_[i].playerPush() && players_[j].playerPush() &&
+					players_[i].clsnTouch(players_[j], 2, 2))
+					pushApart(i, j, edge);
+			}
+		}
+		// Attacks land: each player's HitDef against the other side.
+		for (int i = 0; i < count_; i++)
 			if (run[i]) players_[i].beginHitDetection();
-		for (int i = 0; i < 2; i++)
+		for (int i = 0; i < count_; i++)
 			if (run[i]) players_[i].hitDetection();
-		for (int i = 0; i < 2; i++)
+		for (int i = 0; i < count_; i++)
 			if (run[i]) players_[i].tick();
 		if (training_) {
 			// Ikemen's default training values: both life bars recover and both power bars stay full. The dummy has no
 			// AI unless --cpu explicitly asks for it.
-			for (Character &player : players_)
-				player.trainingRestore();
+			for (int i = 0; i < count_; i++)
+				players_[i].trainingRestore();
 		}
 		// The camera runs after the characters, pauses included (Ikemen's System.action).
 		camera_.action();
@@ -491,7 +540,7 @@ public:
 		effects_.draw(view, (float)stage_.zoffset * stage_.localScale, -1);
 		fightScreen_.draw(0, match_, players_[0], players_[1]);
 		// Player 1 in front.
-		for (int i = 1; i >= 0; i--)
+		for (int i = count_ - 1; i >= 0; i--)
 			players_[i].draw(view, (float)stage_.zoffset * stage_.localScale, shadowFor(players_[i]), stage_.shadow.yscale,
 				stage_.reflection);
 		effects_.draw(view, (float)stage_.zoffset * stage_.localScale, 0);
@@ -516,8 +565,10 @@ public:
 		drawText(version, platform::SCREEN_WIDTH - 48 - 6 * 2 * (float)strlen(version), platform::SCREEN_HEIGHT - 40, 2,
 			0x90FFFFFF);
 		if (showInfo_) {
-			for (const Character &c : players_)
+			for (int i = 0; i < count_; i++) {
+				const Character &c = players_[i];
 				c.drawBoxes(view, (float)stage_.zoffset * stage_.localScale);
+			}
 			drawTextf(30, 200, 2, DIM, "%s   CAMERA %.1f,%.1f   FRAME %u   ROUNDSTATE %d", stage_.name.c_str(), camera_.x,
 				camera_.y, world_.gameTime, (int)match_.roundState());
 			drawStateInfo(players_[0], "P1", 30, 224);
@@ -630,9 +681,9 @@ private:
 	// Players' bodies can't overlap: where they do, each moves back half the overlap. One stopped by a wall or the
 	// screen's edge leaves the rest to the other, so walking into a cornered player pushes against them.
 	// One above the other's head (a jump over) passes freely.
-	void pushApart(float edge)
+	void pushApart(int ai, int bi, float edge)
 	{
-		Character &a = players_[0], &b = players_[1];
+		Character &a = players_[ai], &b = players_[bi];
 		float al, ar, at, bl, br, bt;
 		a.body(al, ar, at);
 		b.body(bl, br, bt);
@@ -644,7 +695,7 @@ private:
 		if (overlap <= 0)
 			return;
 		Character &left = aLeft ? a : b, &right = aLeft ? b : a;
-		const int li = aLeft ? 0 : 1, ri = 1 - li;
+		const int li = aLeft ? ai : bi, ri = aLeft ? bi : ai;
 		left.addWorldX(-overlap / 2);
 		right.addWorldX(overlap / 2);
 		// Whatever a wall or the screen's edge took back from one goes to the other.
@@ -675,7 +726,9 @@ private:
 	Stage stage_;
 	// Matches started in this fight: each new one restarts the stage's music.
 	uint32_t matchCount_ = 0;
-	Character players_[2];
+	// Players 1 and 2, and in Simul their partners 3 and 4.
+	Character players_[4];
+	int count_ = 2;
 	Camera camera_;
 	FightWorld world_;
 	Match match_;
@@ -688,7 +741,7 @@ private:
 	bool quickStart_ = false;
 	// The computer player for player 2 (MUGEN's button jamming), at the hardest level.
 	static constexpr int AI_LEVEL = 8;
-	AiInput ai_;
+	AiInput ai_[4];
 	bool forceCpu_ = false;
 	bool training_ = false;
 	bool selectAfterMatch_ = false, finished_ = false;
@@ -914,7 +967,7 @@ int main(int argc, char **argv)
 	const bool testRun = !inputPath.empty() || !shots.empty() || quitFrame != UINT32_MAX;
 	if (!platform::init(testRun && !show))
 		return 1;
-	logf("mugen360: milestone 10d, Survival, build %s", buildVersion());
+	logf("mugen360: milestone 10e, Simul, build %s", buildVersion());
 	if (!configLoaded)
 		logf("mugen360: %s", configError.c_str());
 	logf("game: p1=%s p2=%s stage=%s", config.player1.c_str(), config.player2.c_str(), config.stage.c_str());
@@ -962,6 +1015,12 @@ int main(int argc, char **argv)
 			mode = SelectMode::TeamVersus;
 		else if (forcedMode == "survival")
 			mode = SelectMode::Survival, modeCpu = true;
+		// Team modes fight as Turns unless Simul is chosen: both members of a team at once.
+		bool simul = false;
+		if (forcedMode == "simul")
+			mode = SelectMode::TeamVersus, simul = true;
+		else if (forcedMode == "simularcade")
+			mode = SelectMode::TeamArcade, modeCpu = true, simul = true;
 		// A new character selection, on whichever select screen there is.
 		auto resetSelect = [&](bool secondController) {
 			if (motifSelectLoaded)
@@ -984,6 +1043,7 @@ int main(int argc, char **argv)
 			fight.mode = mode == SelectMode::QuickMatch ? "freebattle"
 				: mode == SelectMode::Arcade            ? "arcade"
 				: mode == SelectMode::Training          ? "training"
+				: (mode == SelectMode::TeamVersus || mode == SelectMode::TeamArcade) && simul ? "simul"
 				: mode == SelectMode::TeamVersus || mode == SelectMode::TeamArcade ? "turns"
 				: mode == SelectMode::Survival                                      ? "survival"
 														: "versus";
@@ -1194,7 +1254,8 @@ int main(int argc, char **argv)
 					const int32_t timeLeft = stage->timeLeft();
 					stage.reset();
 					bool nextTurn = false;
-					if (mode == SelectMode::TeamVersus || mode == SelectMode::TeamArcade) {
+					// A Simul match is a normal best-of match; only Turns goes member by member.
+					if ((mode == SelectMode::TeamVersus || mode == SelectMode::TeamArcade) && !simul) {
 						turnsLife[0] = turnsLife[1] = -1;
 						if (winner >= 0) {
 							const int recovery = turnsRecovery(lifeMax[winner], timeLeft, Match::ROUND_TIME);

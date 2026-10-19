@@ -41,14 +41,23 @@ bool Stage::load(const std::string &defPath, std::string &error)
 	const float coordRatio = localWidth / 320.0f;
 	p[0] = { (int32_t)(-70 * coordRatio), 0, 1 };
 	p[1] = { (int32_t)(70 * coordRatio), 0, -1 };
+	partnerspacing = (int32_t)(25 * coordRatio);
+	for (int i = 2; i < 4; i++)
+		p[i] = { p[i - 2].x + partnerspacing * (2 * (i % 2) - 1), p[i % 2].y, 1 - 2 * (i % 2) };
 	screenleft = (int32_t)(15 * coordRatio);
 	screenright = (int32_t)(15 * coordRatio);
 	if (const IniSection *b = findSection(sections, "bound")) {
 		b->readInt("screenleft", screenleft);
 		b->readInt("screenright", screenright);
 	}
-	if (const IniSection *pi = findSection(sections, "playerinfo")) {
-		for (int i = 0; i < 2; i++) {
+	const IniSection *playerInfo = findSection(sections, "playerinfo");
+	if (playerInfo)
+		playerInfo->readInt("partnerspacing", partnerspacing);
+	if (const IniSection *pi = playerInfo) {
+		for (int i = 0; i < 4; i++) {
+			// Partners: partnerspacing behind their leader, at its height, facing their side's way (Ikemen's loadStage).
+			if (i >= 2)
+				p[i] = { p[i - 2].x + partnerspacing * (2 * (i % 2) - 1), p[i % 2].y, 1 - 2 * (i % 2) };
 			const std::string n = std::to_string(i + 1);
 			pi->readInt("p" + n + "startx", p[i].x);
 			pi->readInt("p" + n + "starty", p[i].y);
@@ -138,7 +147,8 @@ void Stage::logUnread(const std::vector<IniSection> &sections, const std::string
 		{ "info", { "name", "displayname", "versiondate", "mugenversion", "author", "ikemenversion" } },
 		{ "stageinfo", { "zoffset", "localcoord", "portraitscale", "resetbg" } },
 		{ "bound", { "screenleft", "screenright" } },
-		{ "playerinfo", { "p1startx", "p1starty", "p1facing", "p2startx", "p2starty", "p2facing", "leftbound",
+		{ "playerinfo", { "p1startx", "p1starty", "p1facing", "p2startx", "p2starty", "p2facing", "p3startx", "p3starty",
+							"p3facing", "p4startx", "p4starty", "p4facing", "partnerspacing", "leftbound",
 							"rightbound" } },
 		{ "camera", { "startx", "starty", "boundleft", "boundright", "boundhigh", "boundlow", "verticalfollow",
 						"floortension", "tension", "cuthigh", "cutlow", "overdrawhigh", "overdrawlow", "tensionvel",

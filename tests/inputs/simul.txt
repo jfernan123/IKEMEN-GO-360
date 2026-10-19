@@ -1,0 +1,25 @@
+# Stage 10e Simul: both sides pick two members (KFM, then KFM720), choose stage 1, skip the VS screen, and all four
+# fight at once: players 1 and 3 against 2 and 4, the partners played by the computer.
+#   build\pc\mugen360.exe --select --mode simul --input tests\inputs\simul.txt --input2 tests\inputs\simul_p2.txt --quickstart --p2life 1 --quit 1700 --trace
+# Expect "simul: ... vs ...", "match: round 1", p2 KO'd with the round going on, then p4 KO'd and "round 1: KO, wins 1-0":
+# a team is out only when both its members are.
+30 -
+# P1 member 1: KFM.
+2 a
+10 -
+2 a
+10 -
+# P1 member 2: KFM720.
+2 R
+10 -
+2 a
+10 -
+2 a
+160 -
+# Stage 1, then skip VS.
+2 R
+10 -
+2 a
+220 -
+2 s
+1500 -

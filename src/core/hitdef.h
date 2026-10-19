@@ -98,7 +98,7 @@ struct HitDef {
 	float sparkxy[2] = { 0, 0 };
 	int32_t hitsound[2] = { -1, 0 }, guardsound[2] = { -1, 0 };
 	char hitsoundPrefix = 'F', guardsoundPrefix = 'F';
-	// Whether this HitDef has already hit the opponent (Ikemen's hitdefTargets).
+	// Whether this HitDef has already hit the opponent (the character keeps whom: Character::hitdefTargets_).
 	bool hitOpponent = false;
 
 	// Fills in the parameters whose defaults come from others. mugen10: a MUGEN 1.0 character's (not Ikemen's)

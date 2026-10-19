@@ -307,7 +307,15 @@ paths use forward slashes.
      numbered VS screen, with life and power carried over and no recovery; the first loss ends the run and logs its
      wins. `--noai` keeps player 2 idle in modes against the computer, for test scripts. `tests/inputs/survival.txt`
      wins match 1 and enters match 2.
-   - Next: Simul and Tag teams, then the remaining match-mode screens and rules.
+   - 10e Simul engine (done): a fight can hold four fighters, players 1 and 3 against 2 and 4 (Ikemen's player
+     order), the partners played by the computer. Each fighter's P2 is its nearest enemy still in the fight
+     (`Character::chooseP2`, Ikemen's p2 / enemyNear), its HitDefs check every enemy and hit each once
+     (`hitdefTargets_`), opponents push each other while teammates pass through, the camera tracks all four, and a
+     team is KO only when both members are; time over compares each team's average life (Ikemen's roundEndDecision).
+     Partners start partnerspacing behind their leader ([PlayerInfo] p3/p4 keys). NumEnemy, NumPartner, Enemy(n),
+     EnemyNear(n) and Partner see the teams. `--mode simul` / `simularcade` select two members a side and fight them
+     together; `tests/inputs/simul.txt` checks that the round goes on after P2's KO and ends at P4's.
+   - Next: Ikemen's team menu (Single / Simul / Turns) on the select screen and the Simul lifebars, then Watch.
 
 ## Asset notice
 
