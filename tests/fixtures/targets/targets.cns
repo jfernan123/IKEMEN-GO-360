@@ -1,0 +1,64 @@
+; 1500: a punch (KFM's light punch animation) with a HitDef of id 7. Once it has a target of that id it goes to
+; 1501, and 1501 goes to 1502 if that target (through the Target redirect) is a helper.
+[Statedef 1500]
+type = S
+movetype = A
+physics = S
+anim = 200
+ctrl = 0
+velset = 0, 0
+
+[State 1500, hit]
+type = HitDef
+trigger1 = time = 0
+attr = S, NA
+damage = 20
+animtype = Light
+hitflag = MAF
+guardflag = MA
+pausetime = 4, 4
+ground.type = High
+ground.slidetime = 5
+ground.hittime = 12
+ground.velocity = -2, 0
+id = 7
+
+[State 1500, has a target]
+type = ChangeState
+trigger1 = NumTarget(7) = 1
+value = 1501
+
+[State 1500, done]
+type = ChangeState
+trigger1 = AnimTime = 0
+value = 0
+ctrl = 1
+
+[Statedef 1501]
+type = S
+movetype = A
+physics = S
+ctrl = 0
+
+[State 1501, the target is a helper]
+type = ChangeState
+trigger1 = Target, IsHelper
+value = 1502
+
+[State 1501, done]
+type = ChangeState
+trigger1 = time >= 20
+value = 0
+ctrl = 1
+
+[Statedef 1502]
+type = S
+movetype = I
+physics = S
+ctrl = 0
+
+[State 1502, done]
+type = ChangeState
+trigger1 = time >= 20
+value = 0
+ctrl = 1

@@ -348,7 +348,8 @@ void Character::startRound(float px, float py, int face, bool newMatch)
 	juggle_ = 0;
 	customDefense_ = fallDefenseMul_ = 1;
 	defenseMulDelay_ = false;
-	targetP2_ = targetedBy_ = false;
+	forgetTargets();
+	targetedBy_ = false;
 	juggleLeft_ = 0;
 	cornerPushVel_ = 0;
 	cornerPushMul_ = 0.7f;
@@ -1082,13 +1083,17 @@ bool Character::runMiscController(const StateController &sc)
 		if (paramI(sc, "value", 0, i)) {
 			hitCount_ += i;
 			uniqHitCount_ += i;
-			if (Character *t = target())
+			for (Character *t : targets_)
 				t->ghv_.hitcount += i;
 		}
 		return true;
 	case CtrlType::BindToTarget: {
-		// Binds this character to its target: pos x, y from the target, "foot" / "mid" / "head".
-		Character *t = target();
+		// Binds this character to its first target of HitDef id (any without one): pos x, y from the target,
+		// "foot" / "mid" / "head".
+		int32_t bindId = -1;
+		paramI(sc, "id", 0, bindId);
+		const std::vector<Character *> bindTargets = targetsWithId(bindId);
+		Character *t = bindTargets.empty() ? nullptr : bindTargets.front();
 		if (!t)
 			return true;
 		int32_t time = 1;
@@ -1567,11 +1572,13 @@ void Character::actionPrepare()
 	}
 	if (unhittableTime_ > 0)
 		unhittableTime_--;
-	// The opponent stops being a target once it's no longer being hit.
-	if (targetP2_ && p2_ && p2_->moveType != 'H' && !p2_->stchtmp_) {
-		if (p2_->ghv_.type != HitType::None)
-			p2_->ghv_.hitid = -1;
-		targetP2_ = false;
+	// A target stops being one once it's no longer being hit.
+	for (Character *t : std::vector<Character *>(targets_)) {
+		if (t->moveType != 'H' && !t->stchtmp_) {
+			if (t->ghv_.type != HitType::None)
+				t->ghv_.hitid = -1;
+			removeTarget(*t);
+		}
 	}
 	minus_ = 0;
 	for (auto &helper : helpers_)
@@ -1692,8 +1699,10 @@ void Character::actionRun()
 	}
 
 	// Whoever this character holds follows it.
-	if (Character *t = target(); t && t->bindTo_ == this)
-		t->updateBinding();
+	for (Character *t : targets_) {
+		if (t->bindTo_ == this)
+			t->updateBinding();
+	}
 
 	// KO (Ikemen's actionFinish): out of life, it falls (5030) unless already being hit, which ends in a fall anyway.
 	if (!hitPause() && !ko_ && life <= 0 && !(special_ & Special::NoKo)) {
@@ -2454,7 +2463,7 @@ void Character::runHelper(const StateController &sc)
 Character *Character::findHelper(int32_t id)
 {
 	for (auto &helper : helpers_) {
-		if (!helper->destroyed_ && (id == 0 || helper->helperId_ == id))
+		if (!helper->destroyed_ && (id <= 0 || helper->helperId_ == id))
 			return helper.get();
 		if (Character *nested = helper->findHelper(id))
 			return nested;
@@ -3122,7 +3131,7 @@ int Character::hitResultCheck(Character &g)
 				hd.envShakePhase, hd.envShakeMul, hd.envShakeDir);
 	}
 	// Each is now on the other's list: the getter is this character's target, with juggle points against it.
-	targetP2_ = true;
+	addTarget(g);
 	if (!g.targetedBy_) {
 		g.targetedBy_ = true;
 		g.juggleLeft_ = airJuggle_;
@@ -3246,8 +3255,8 @@ void Character::beginHitDetection()
 	prevFallflag_ = ghv_.fallflag;
 	// No longer being hit: off the attacker's target list, out of its hold.
 	if ((moveType != 'H' || stateNo == 5150) && targetedBy_) {
-		if (p2_)
-			p2_->targetP2_ = false;
+		for (Character *a : std::vector<Character *>(attackers_))
+			a->removeTarget(*this);
 		if (isTargetBound())
 			resetBind();
 		targetedBy_ = false;
@@ -3303,7 +3312,8 @@ void Character::hitDetectionAgainst(Character &target)
 	if (g->resolveReversal(*this))
 		return;
 	const bool canJuggle = (special_ & Special::NoJuggleCheck) ||
-		juggle_ <= (g->targetedBy_ ? g->juggleLeft_ : airJuggle_) || !targetP2_;
+		juggle_ <= (g->targetedBy_ ? g->juggleLeft_ : airJuggle_) ||
+		std::find(targets_.begin(), targets_.end(), g) == targets_.end();
 	if (!canJuggle) {
 		if (!traceLabel.empty() && clsnHits(*g))
 			logf("%s frame %u: state %d juggle rejected, cost %d, %d left", traceLabel.c_str(),
@@ -3411,7 +3421,7 @@ void Character::updateBinding()
 	if (!bindTo_)
 		return;
 	const Character &bt = *bindTo_;
-	if (bt.target() == this) {
+	if (std::find(bt.targets_.begin(), bt.targets_.end(), this) != bt.targets_.end()) {
 		vx = facing * bt.facing * bt.vx * bt.localScale / localScale;
 		vy = bt.vy * bt.localScale / localScale;
 	}
@@ -3420,26 +3430,97 @@ void Character::updateBinding()
 	ghv_.xoff = ghv_.yoff = 0;
 }
 
-void Character::dropTarget()
+Character::~Character()
 {
-	if (Character *t = target()) {
-		if (t->isTargetBound())
-			t->resetBind();
-		t->targetedBy_ = false;
-	}
-	targetP2_ = false;
+	forgetTargets();
 }
 
-// The Target* controllers act on whoever this character has hit and still has as a target (here: the opponent,
-// while it's being hit); "id" picks targets hit by HitDefs of that id.
+bool Character::isTargetBound() const
+{
+	return bindTo_ != nullptr && targetedBy_ &&
+		std::find(attackers_.begin(), attackers_.end(), bindTo_) != attackers_.end();
+}
+
+void Character::addTarget(Character &g)
+{
+	if (std::find(targets_.begin(), targets_.end(), &g) == targets_.end())
+		targets_.push_back(&g);
+	if (std::find(g.attackers_.begin(), g.attackers_.end(), this) == g.attackers_.end())
+		g.attackers_.push_back(this);
+}
+
+void Character::removeTarget(Character &g)
+{
+	targets_.erase(std::remove(targets_.begin(), targets_.end(), &g), targets_.end());
+	g.attackers_.erase(std::remove(g.attackers_.begin(), g.attackers_.end(), this), g.attackers_.end());
+	if (g.attackers_.empty())
+		g.targetedBy_ = false;
+}
+
+void Character::dropTarget()
+{
+	for (Character *t : std::vector<Character *>(targets_)) {
+		if (t->isTargetBound() && t->bindTo_ == this)
+			t->resetBind();
+		removeTarget(*t);
+	}
+}
+
+void Character::forgetTargets()
+{
+	for (Character *t : std::vector<Character *>(targets_)) {
+		if (t->bindTo_ == this)
+			t->resetBind();
+		removeTarget(*t);
+	}
+	for (Character *a : std::vector<Character *>(attackers_))
+		a->removeTarget(*this);
+}
+
+std::vector<Character *> Character::targetsWithId(int32_t id) const
+{
+	std::vector<Character *> out;
+	for (Character *t : targets_) {
+		if (id < 0 || t->ghv_.hitid == id)
+			out.push_back(t);
+	}
+	return out;
+}
+
+// The Target* controllers act on every target hit by HitDef "id" (all of them without one: Ikemen's getTarget).
 bool Character::runTargetController(const StateController &sc)
 {
-	Character *t = target();
 	int32_t id = -1;
-	if (paramI(sc, "id", 0, id) && t && id >= 0 && t->ghv_.hitid != id)
-		t = nullptr;
-	if (!t)
+	paramI(sc, "id", 0, id);
+	if (sc.type == CtrlType::TargetDrop) {
+		// Ikemen's targetDrop: keeps the targets hit by HitDef excludeid (keepone: one of them, at random); with no
+		// excludeid, drops them all.
+		int32_t exclude = -1, keepOne = 1;
+		paramI(sc, "excludeid", 0, exclude);
+		paramI(sc, "keepone", 0, keepOne);
+		std::vector<Character *> keep = exclude < 0 ? std::vector<Character *>() : targetsWithId(exclude);
+		if (keepOne && keep.size() > 1) {
+			random_ = random_ * 1103515245u + 12345u;
+			Character *one = keep[(random_ >> 16) % keep.size()];
+			keep.assign(1, one);
+		}
+		for (Character *t : std::vector<Character *>(targets_)) {
+			if (std::find(keep.begin(), keep.end(), t) != keep.end())
+				continue;
+			if (t->isTargetBound() && t->bindTo_ == this)
+				t->resetBind();
+			removeTarget(*t);
+		}
 		return false;
+	}
+	for (Character *t : targetsWithId(id))
+		runTargetControllerOn(sc, *t);
+	return false;
+}
+
+void Character::runTargetControllerOn(const StateController &sc, Character &target)
+{
+	Character *t = &target;
 	const float ratio = localScale / t->localScale;
 	float f = 0;
 	int32_t i = 0;
@@ -3498,17 +3579,8 @@ bool Character::runTargetController(const StateController &sc)
 		if (paramI(sc, "value", 0, i))
 			t->power = std::clamp(t->power + i, 0, (int32_t)t->constF("data.power", 3000));
 		break;
-	case CtrlType::TargetDrop: {
-		// Drops the targets not hit by HitDef excludeid (with one target, keepone changes nothing).
-		int32_t exclude = -1;
-		paramI(sc, "excludeid", 0, exclude);
-		if (exclude >= 0 && t->ghv_.hitid != exclude)
-			dropTarget();
-		break;
-	}
 	default: break;
 	}
-	return false;
 }
 
 // --- Triggers --------------------------------------------------------------------------------------------------------
@@ -3561,10 +3633,7 @@ Value Character::trigger(Trig t, Value arg)
 	// IsHelper(id), NumHelper(id), NumTarget(id): -1 for any.
 	case Trig::IsHelper: return Value::B(parent_ != nullptr && (arg.toI() < 0 || helperId_ == arg.toI()));
 	case Trig::NumHelper: return Value::I((root_ ? root_ : this)->helperCount(arg.toI()));
-	case Trig::NumTarget: {
-		const Character *tgt = target();
-		return Value::I(tgt && (arg.toI() < 0 || tgt->ghv_.hitid == arg.toI()) ? 1 : 0);
-	}
+	case Trig::NumTarget: return Value::I((int32_t)targetsWithId(arg.toI()).size());
 	case Trig::NumPartner: return Value::I((int32_t)(root_ ? root_ : this)->partners_.size());
 	case Trig::NumProjID: {
 		int32_t count = 0;
@@ -3818,7 +3887,11 @@ ExprContext *Character::redirect(Redirect r, int32_t arg)
 	case Redirect::Parent: return parent_;
 	case Redirect::Root: return root_ ? root_ : this;
 	case Redirect::Helper: return (root_ ? root_ : this)->findHelper(arg);
-	case Redirect::Target: return target();
+	case Redirect::Target: {
+		// Target(id): the first target hit by HitDef id; plain Target, the first of any.
+		const std::vector<Character *> list = targetsWithId(arg);
+		return list.empty() ? nullptr : list.front();
+	}
 	default: return nullptr;
 	}
 }

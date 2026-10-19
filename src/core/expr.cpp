@@ -849,7 +849,9 @@ Value evalNode(const ExprNode *n, ExprContext &ctx)
 	case NodeKind::IfElse:
 		return evalNode(n->kids[0].get(), ctx).toB() ? evalNode(n->kids[1].get(), ctx) : evalNode(n->kids[2].get(), ctx);
 	case NodeKind::Redirect: {
-		const int32_t arg = n->kids[0] ? evalNode(n->kids[0].get(), ctx).toI() : 0;
+		// Without an argument: Target and Helper are any one (Ikemen's id -1), the others the first.
+		const bool anyId = n->redirect == Redirect::Target || n->redirect == Redirect::Helper;
+		const int32_t arg = n->kids[0] ? evalNode(n->kids[0].get(), ctx).toI() : anyId ? -1 : 0;
 		ExprContext *other = ctx.redirect(n->redirect, arg);
 		return other ? evalNode(n->kids[1].get(), *other) : Value::I(0);
 	}

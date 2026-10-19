@@ -1,0 +1,17 @@
+; Milestone 13c: a fighter whose punch (state 1500) checks its targets: NumTarget, then the Target redirect, so a
+; helper it hits is a target like any other. Kung Fu Man's files with its own command file and states.
+[Info]
+name = "Target Test"
+displayname = "Target Test"
+mugenversion = 1.0
+localcoord = 320,240
+
+[Files]
+cmd = targets.cmd
+cns = ../../../data/chars/kfm/kfm.cns
+st = targets.cns
+st1 = ../../../data/chars/kfm/kfm.cns
+stcommon = ../../../data/common1.cns
+sprite = ../../../data/chars/kfm/kfm.sff
+anim = ../../../data/chars/kfm/kfm.air
+sound = ../../../data/chars/kfm/kfm.snd
