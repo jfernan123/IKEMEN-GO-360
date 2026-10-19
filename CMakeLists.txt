@@ -30,6 +30,7 @@ set(CORE_SOURCES
 	src/core/log.cpp
 	src/core/match.cpp
 	src/core/motif.cpp
+	src/core/options_screen.cpp
 	src/core/music.cpp
 	src/core/select.cpp
 	src/core/select_screen.cpp
@@ -45,6 +46,7 @@ set(CORE_SOURCES
 	src/core/versus_screen.cpp
 	third_party/lodepng/lodepng.cpp
 	third_party/audio_decoders.c
+	third_party/truetype.c
 	${CMAKE_CURRENT_BINARY_DIR}/build_version.cpp
 )
 
@@ -61,7 +63,7 @@ if(XSDK)
 	# xsdk's tests/ holds the shader containers the platform draws with; src/ its gpu_private.h (xsdk_gpu_swap).
 	target_include_directories(mugen360 PRIVATE src third_party third_party/lodepng "${XSDK_ROOT}/tests" "${XSDK_ROOT}/src")
 	target_compile_options(mugen360 PRIVATE -O2 -g -Wall -Wextra)
-	set_source_files_properties(third_party/lodepng/lodepng.cpp third_party/audio_decoders.c PROPERTIES COMPILE_OPTIONS "-w")
+	set_source_files_properties(third_party/lodepng/lodepng.cpp third_party/audio_decoders.c third_party/truetype.c PROPERTIES COMPILE_OPTIONS "-w")
 	add_dependencies(mugen360 build_version)
 	xsdk_add_xex(mugen360)
 else()
@@ -73,7 +75,7 @@ else()
 	add_dependencies(mugen360 build_version)
 	if(MSVC)
 		target_compile_options(mugen360 PRIVATE /W4 /utf-8)
-		set_source_files_properties(third_party/lodepng/lodepng.cpp third_party/audio_decoders.c PROPERTIES COMPILE_OPTIONS "/W0")
+		set_source_files_properties(third_party/lodepng/lodepng.cpp third_party/audio_decoders.c third_party/truetype.c PROPERTIES COMPILE_OPTIONS "/W0")
 		target_compile_definitions(mugen360 PRIVATE _CRT_SECURE_NO_WARNINGS)
 	endif()
 	add_custom_command(TARGET mugen360 POST_BUILD
@@ -82,9 +84,9 @@ else()
 	# Unit tests for the engine's core, no platform: build\pc\mugen360_tests.exe, run from this folder.
 	add_executable(mugen360_tests tests/expr_test.cpp tests/states_test.cpp tests/effects_sound_test.cpp tests/combat_test.cpp tests/game_flow_test.cpp
 		tests/legacy_test.cpp tests/music_test.cpp tests/screenpack_test.cpp tests/stage_test.cpp tests/settings_test.cpp
-		src/core/expr.cpp src/core/air.cpp src/core/bgdef.cpp src/core/camera.cpp src/core/character.cpp src/core/fight_screen.cpp src/core/match.cpp src/core/motif.cpp src/core/music.cpp src/core/select_screen.cpp src/core/settings.cpp src/core/title_screen.cpp src/core/versus_screen.cpp src/core/effects.cpp src/core/file.cpp src/core/font.cpp src/core/game_flow.cpp src/core/game_config.cpp src/core/hitdef.cpp src/core/ini.cpp src/core/input.cpp src/core/layout.cpp src/core/log.cpp src/core/sff.cpp src/core/sound.cpp src/core/stage.cpp
+		src/core/expr.cpp src/core/air.cpp src/core/bgdef.cpp src/core/camera.cpp src/core/character.cpp src/core/fight_screen.cpp src/core/match.cpp src/core/motif.cpp src/core/music.cpp src/core/options_screen.cpp src/core/select_screen.cpp src/core/settings.cpp src/core/title_screen.cpp src/core/versus_screen.cpp src/core/effects.cpp src/core/file.cpp src/core/font.cpp src/core/game_flow.cpp src/core/game_config.cpp src/core/hitdef.cpp src/core/ini.cpp src/core/input.cpp src/core/layout.cpp src/core/log.cpp src/core/sff.cpp src/core/sound.cpp src/core/stage.cpp
 		src/core/projectile.cpp src/core/sprite_renderer.cpp src/core/states.cpp src/core/text.cpp third_party/lodepng/lodepng.cpp
-		third_party/audio_decoders.c)
+		third_party/audio_decoders.c third_party/truetype.c)
 	target_include_directories(mugen360_tests PRIVATE src third_party third_party/lodepng)
 	if(MSVC)
 		target_compile_options(mugen360_tests PRIVATE /W4 /utf-8)

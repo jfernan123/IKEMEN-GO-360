@@ -39,6 +39,7 @@
 #include "core/fight_screen.h"
 #include "core/hud.h"
 #include "core/motif.h"
+#include "core/options_screen.h"
 #include "core/music.h"
 #include "core/select_screen.h"
 #include "core/settings.h"
@@ -936,7 +937,7 @@ private:
 	size_t current_ = 0;
 };
 
-enum class Screen { Title, Select, Stage, Animations, Sprites };
+enum class Screen { Title, Options, Select, Stage, Animations, Sprites };
 
 } // namespace
 
@@ -995,7 +996,7 @@ int main(int argc, char **argv)
 	const bool testRun = !inputPath.empty() || !shots.empty() || quitFrame != UINT32_MAX;
 	if (!platform::init(testRun && !show))
 		return 1;
-	logf("mugen360: milestone 11a, settings, build %s", buildVersion());
+	logf("mugen360: milestone 11b, options screen, build %s", buildVersion());
 	// The options, saved in save/config.ini. Test runs keep Ikemen's defaults, so a player's saved options never
 	// change a test's result.
 	Settings settings;
@@ -1036,6 +1037,13 @@ int main(int argc, char **argv)
 		const bool useTitle = motifLoaded && (!testRun || forceTitle);
 		const bool titleLoaded = useTitle && title.load(motif, error);
 		if (useTitle && !titleLoaded)
+			logf("mugen360: %s", error.c_str());
+		// The options screen from the title's OPTIONS (or straight away with --options, for tests).
+		OptionsScreen options;
+		const bool optionsLoaded = motifLoaded && options.load(motif, settings, error);
+		if (testRun)
+			options.setSavePath("tests/out/config.ini");
+		if (motifLoaded && !optionsLoaded)
 			logf("mugen360: %s", error.c_str());
 		// The mode picked on the title and whether player 2 is forced to use computer input.
 		bool modeCpu = false;
@@ -1202,6 +1210,8 @@ int main(int argc, char **argv)
 			std::string wantedMusic;
 			if (gameScreen == Screen::Title)
 				wantedMusic = "title";
+			else if (gameScreen == Screen::Options)
+				wantedMusic = "option";
 			else if (gameScreen == Screen::Select)
 				wantedMusic = motifSelectLoaded && motifSelect.inVersus() ? "vs" : "select";
 			else if (gameScreen == Screen::Stage && stage)
@@ -1210,8 +1220,8 @@ int main(int argc, char **argv)
 				musicFor = wantedMusic;
 				if (wantedMusic == "title" || wantedMusic == "select")
 					music.request(motifLoaded ? motif.music(wantedMusic) : MusicTrack{}, true);
-				else if (wantedMusic == "vs")
-					music.request(motif.music("vs"), false);
+				else if (wantedMusic == "vs" || wantedMusic == "option")
+					music.request(motif.music(wantedMusic), false);
 				else if (stage)
 					music.restart(stage->music());
 			}
@@ -1239,7 +1249,10 @@ int main(int argc, char **argv)
 				const TitleChoice choice = title.result();
 				if (choice == TitleChoice::Exit)
 					break;
-				if (choice != TitleChoice::None) {
+				if (choice == TitleChoice::Options && optionsLoaded) {
+					options.reset();
+					screen = gameScreen = Screen::Options;
+				} else if (choice != TitleChoice::None) {
 					// Arcade and Quick Match force a CPU opponent. Training leaves player 2 as a stationary dummy.
 					modeCpu = choice == TitleChoice::Arcade || choice == TitleChoice::TeamArcade ||
 						choice == TitleChoice::QuickMatch || choice == TitleChoice::Survival || choice == TitleChoice::Watch;
@@ -1253,6 +1266,16 @@ int main(int argc, char **argv)
 															 : SelectMode::Versus;
 					resetSelect(secondController);
 					screen = gameScreen = Screen::Select;
+				}
+				continue;
+			}
+			if (screen == Screen::Options) {
+				options.update(gameplayPad, pad2);
+				options.draw();
+				finishFrame();
+				if (options.done()) {
+					title.reset();
+					screen = gameScreen = Screen::Title;
 				}
 				continue;
 			}

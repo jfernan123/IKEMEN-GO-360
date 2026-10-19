@@ -62,7 +62,7 @@ int run8aTests()
 	expect(menu.textWidth("VERSUS", 0) > 0, "ikemen1 Menu2 has glyphs");
 
 	Font missing;
-	expect(!missing.load("data/font/Open_Sans.def", error), "a TrueType or missing font is refused");
+	expect(!missing.load("data/font/no_such_font.def", error), "a missing font is refused");
 
 	std::vector<uint8_t> bytes;
 	expect(readFile("data/ikemen1/system.def", bytes), "system.def reads");
