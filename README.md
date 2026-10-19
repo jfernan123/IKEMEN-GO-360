@@ -11,10 +11,12 @@ as compatibility grows.
 
 ## Current status
 
-Milestones 1 to 9 are complete, and 10 (match modes and teams) is under way. KFM can fight full matches with commands, attacks, guarding, throws, falls, life and
+Milestones 1 to 10 are complete. KFM can fight full matches with commands, attacks, guarding, throws, falls, life and
 rounds, a CPU opponent, hit effects, Explods, helpers, projectiles, palette effects, pauses, afterimages,
 environmental shake, and sound. The game runs through Ikemen's default screenpack (ikemen1): title menu, select
-screen with the Color menu, VS screen, Ikemen's fight screen, and music for each when songs are added. Both the
+screen with the Color menu, VS screen, Ikemen's fight screen, and music for each when songs are added. The modes
+are Arcade, Versus, Quick Match, Training, Survival and Watch, and the team modes Simul (2v2 on screen) and Turns
+through Ikemen's team menu. Both the
 Windows and Xbox 360 builds pass the current test and build checks.
 
 The launch content is no longer compiled into the engine. Edit `data/mugen360.ini` to choose P1, P2 and the stage;
@@ -281,7 +283,7 @@ paths use forward slashes.
      reference tree nor the Pong project.
    - Next: milestone 10 match modes and teams.
 
-10. Match modes and teams (in progress)
+10. Match modes and teams (done)
    - 10a Arcade and Training (done): Arcade builds a deterministic shuffled route through every real roster entry.
      The player selects once, wins advance through new CPU opponents and random stages with the correct "Match N"
      VS label, and a loss or the last win ends the route. Training keeps the clock at 99, restores both life bars and
@@ -322,7 +324,11 @@ paths use forward slashes.
      explicit sides), Turns when either chose Turns. In the fight a Simul side shows [Simul Lifebar], [Simul Face] and
      [Simul Name] (p1 / p3 and p2 / p4). `--mode turns` / `simul` preset the menus for tests; `tests/inputs/team.txt`
      now chooses Turns in both menus.
-   - Next: Watch mode (computer against computer).
+   - 10g Watch (done): WATCH MODE > CPU MATCH (Ikemen's watch settings: the computer plays both sides, the team
+     menus and stage menu still apply). Player 1 picks both sides' fighters, team modes and the stage. Fixed on the
+     way: a Single pair in a team mode is now a normal match (it fell into one-round Turns bouts); TEAM ARCADE with
+     Single sides is a normal Arcade fight. `tests/inputs/watch.txt` checks that the computer plays player 1.
+   - Not included in stage 10: Tag teams (an Ikemen system), more than two members a side, the smarter AI option.
 
 ## Asset notice
 

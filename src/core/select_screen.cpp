@@ -123,8 +123,8 @@ bool MotifSelect::load(Motif &motif, const GameConfig &config, std::string &erro
 	s.ints("portrait.spr", { &portraitSpr_[0], &portraitSpr_[1] });
 	s.readInt("palmenu.random.switchtime", palRandomSwitch_);
 	title_.read("title.", s);
-	const char *modes[7] = { "versus", "freebattle", "arcade", "training", "versus", "arcade", "survival" };
-	for (int i = 0; i < 7; i++)
+	const char *modes[8] = { "versus", "freebattle", "arcade", "training", "versus", "arcade", "survival", "watch" };
+	for (int i = 0; i < 8; i++)
 		titles_[i] = s.text(std::string("title.") + modes[i] + ".text");
 	// Ikemen's team menu leads to the same select screen, but these labels keep the chosen sub-mode visible.
 	titles_[(int)SelectMode::TeamVersus] = "TEAM VERSUS";
@@ -477,7 +477,8 @@ void MotifSelect::reset(SelectMode mode, bool secondController, int32_t presetTe
 		side.y = std::clamp(side.startY, 0, rows_ - 1);
 		side.cursorPlaced = false;
 		// Team modes start with the team menu (Ikemen's f_teamMenu), unless a test presets the mode.
-		const bool teamMenu = (mode == SelectMode::TeamVersus || mode == SelectMode::TeamArcade) && presetTeam < 0;
+		const bool teamMenu =
+			(mode == SelectMode::TeamVersus || mode == SelectMode::TeamArcade || mode == SelectMode::Watch) && presetTeam < 0;
 		side.state = teamMenu ? -1 : 0;
 		side.teamMode = presetTeam >= 0 ? presetTeam : TEAM_SINGLE;
 		side.numChars = side.teamMode == TEAM_SINGLE ? 1 : 2;

@@ -37,6 +37,7 @@ call :arcade || exit /b 1
 call :team || exit /b 1
 call :survival || exit /b 1
 call :simul || exit /b 1
+call :watch || exit /b 1
 call :run buttons 80 --quickstart || exit /b 1
 call :run commands 260 --quickstart || exit /b 1
 call :run states 330 --quickstart || exit /b 1
@@ -81,6 +82,9 @@ findstr /c:"select: SURVIVAL" tests\out\latest_survival.log >nul || (echo FAIL: 
 findstr /c:"survival: match 1" tests\out\latest_survival.log >nul || (echo FAIL: Survival did not start its first match & exit /b 1)
 findstr /c:"survival: player advances" tests\out\latest_survival.log >nul || (echo FAIL: Survival did not advance after a win & exit /b 1)
 findstr /c:"survival: match 2" tests\out\latest_survival.log >nul || (echo FAIL: Survival did not start its second match & exit /b 1)
+findstr /c:"select: WATCH MODE" tests\out\latest_watch.log >nul || (echo FAIL: Watch did not open its select screen & exit /b 1)
+findstr /c:"select: p2 Kung Fu Man" tests\out\latest_watch.log >nul || (echo FAIL: player 1 did not pick player 2 in Watch & exit /b 1)
+findstr /r /c:"^p1 frame [0-9]*: state [0-9]* -> [234][0-9][0-9] " tests\out\latest_watch.log >nul || (echo FAIL: the computer did not play player 1 in Watch & exit /b 1)
 findstr /c:"simul: " tests\out\latest_simul.log >nul || (echo FAIL: Simul did not load four fighters & exit /b 1)
 findstr /r /c:"^p2 frame .*: KO" tests\out\latest_simul.log >nul || (echo FAIL: Simul player 2 was not knocked out & exit /b 1)
 findstr /r /c:"^p4 frame .*: KO" tests\out\latest_simul.log >nul || (echo FAIL: Simul player 4 was not knocked out & exit /b 1)
@@ -169,6 +173,12 @@ exit /b 0
 echo     arcade
 "%EXE%" --title --input tests\inputs\arcade.txt --quit 500 --trace %SHOW% >nul || exit /b 1
 copy /y m360.log tests\out\latest_arcade.log >nul
+exit /b 0
+
+:watch
+echo     watch
+"%EXE%" --select --mode watch --input tests\inputs\watch.txt --quickstart --quit 900 --trace %SHOW% >nul || exit /b 1
+copy /y m360.log tests\out\latest_watch.log >nul
 exit /b 0
 
 :simul
