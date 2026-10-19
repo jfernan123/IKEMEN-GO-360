@@ -76,7 +76,7 @@ bool SelectScreen::load(const GameConfig &config, std::string &error)
 		if (files) {
 			e.portraits = std::make_unique<Sff>();
 			std::string sffError;
-			if (e.portraits->load(findBesideDef(directoryOf(def), files->text("sprite")), sffError, true)) {
+			if (e.portraits->loadSome(findBesideDef(directoryOf(def), files->text("sprite")), { { 9000, 0 }, { 9000, 1 } }, sffError, true)) {
 				e.portraits->keepOnly({ { 9000, 0 }, { 9000, 1 } });
 				e.renderer = std::make_unique<SpriteRenderer>(*e.portraits);
 			} else {

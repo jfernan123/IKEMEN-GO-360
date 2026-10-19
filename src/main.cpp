@@ -239,7 +239,15 @@ struct FightAssets {
 	{
 		if (loaded)
 			return true;
-		fightScreenLoaded = !config.fight.empty() && fightScreen.load(config.fight, fightError);
+		// The screenpack's localcoord, for a fight.def that gives none.
+		int32_t motifW = 320, motifH = 240;
+		std::vector<uint8_t> motifBytes;
+		if (!config.motif.empty() && readFile(config.motif, motifBytes)) {
+			const std::vector<IniSection> motifIni = parseIni(std::string(motifBytes.begin(), motifBytes.end()));
+			if (const IniSection *info = findSection(motifIni, "info"))
+				info->ints("localcoord", { &motifW, &motifH });
+		}
+		fightScreenLoaded = !config.fight.empty() && fightScreen.load(config.fight, fightError, motifW, motifH);
 		if (config.fight.empty())
 			fightError = "none";
 		// The fight screen's own fightfx and common.snd, else the shared ones (found in the game's folder first).
@@ -1199,9 +1207,9 @@ int main(int argc, char **argv)
 		}
 	}
 	const bool testRun = !inputPath.empty() || !shots.empty() || quitFrame != UINT32_MAX || checkRun || soakRun;
-	if (!platform::init(testRun && !show))
+	if (!platform::init(testRun && !show, testRun ? "m360.log" : "m360_play.log"))
 		return 1;
-	logf("mugen360: milestone 13d, soaks, build %s", buildVersion());
+	logf("mugen360: milestone 13e, game screens, build %s", buildVersion());
 	// The options, saved in save/config.ini. Test runs keep Ikemen's defaults, so a player's saved options never
 	// change a test's result.
 	Settings settings;

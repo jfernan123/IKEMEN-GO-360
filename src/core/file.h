@@ -31,6 +31,24 @@ std::string searchFile(const std::string &file, const std::vector<std::string> &
 // else from the game's root, else under data/. Not found: next to the .def, for the error message.
 std::string findBesideDef(const std::string &dir, const std::string &name);
 
+// Parts of a file without reading all of it: a select screen takes a few portraits out of each character's sprite
+// file, which can be tens of MB. Found like readFile (the game's root first). Not cached.
+class FileRanges {
+public:
+	FileRanges() = default;
+	FileRanges(const FileRanges &) = delete;
+	FileRanges &operator=(const FileRanges &) = delete;
+	~FileRanges();
+	bool open(const std::string &path);
+	uint64_t size() const { return size_; }
+	// size bytes from offset; false if the file is shorter.
+	bool read(uint64_t offset, size_t size, std::vector<uint8_t> &out);
+
+private:
+	void *file_ = nullptr;
+	uint64_t size_ = 0;
+};
+
 // The folder part of a path, with its trailing '/': "data/chars/kfm/kfm.def" gives "data/chars/kfm/".
 std::string directoryOf(const std::string &path);
 

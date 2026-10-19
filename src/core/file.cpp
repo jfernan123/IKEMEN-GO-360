@@ -156,6 +156,38 @@ std::string searchFile(const std::string &fileIn, const std::vector<std::string>
 	return file;
 }
 
+FileRanges::~FileRanges()
+{
+	if (file_)
+		std::fclose(static_cast<std::FILE *>(file_));
+}
+
+bool FileRanges::open(const std::string &path)
+{
+	std::FILE *f = nullptr;
+	if (!root.empty() && !isAbsolute(path))
+		f = std::fopen((root + path).c_str(), "rb");
+	if (!f)
+		f = std::fopen(path.c_str(), "rb");
+	if (!f)
+		return false;
+	file_ = f;
+	std::fseek(f, 0, SEEK_END);
+	size_ = (uint64_t)std::ftell(f);
+	return true;
+}
+
+bool FileRanges::read(uint64_t offset, size_t size, std::vector<uint8_t> &out)
+{
+	out.resize(size);
+	if (!file_ || offset + size > size_)
+		return false;
+	std::FILE *f = static_cast<std::FILE *>(file_);
+	if (std::fseek(f, (long)offset, SEEK_SET) != 0)
+		return false;
+	return size == 0 || std::fread(out.data(), 1, size, f) == size;
+}
+
 std::string findBesideDef(const std::string &dir, const std::string &name)
 {
 	const std::string found = searchFile(name, { dir, "", "data/" });

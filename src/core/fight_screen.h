@@ -62,7 +62,8 @@ public:
 	FightScreen(const FightScreen &) = delete;
 	FightScreen &operator=(const FightScreen &) = delete;
 
-	bool load(const std::string &defPath, std::string &error);
+	// A fight.def without [Info] localcoord takes the screenpack's (Ikemen's fightscreen loading), 320x240 without one.
+	bool load(const std::string &defPath, std::string &error, int32_t defaultWidth = 320, int32_t defaultHeight = 240);
 	// The area the fight is drawn in (a 4:3 stage is pillarboxed): the fight screen fits its width there, from its
 	// top, as Ikemen's FightScreen.setScale fits it to the game's viewport.
 	void setViewport(float originX, float width);

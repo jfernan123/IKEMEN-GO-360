@@ -288,6 +288,145 @@ void Sff::release(const Sprite &sprite) const
 	std::vector<Argb>().swap(sprite.argb);
 }
 
+// The v2 header and tables as loadBytes reads them, then only the wanted sprites' data, copied into a small buffer
+// that their packedOffsets point into.
+bool Sff::loadSome(const std::string &path, const std::vector<std::pair<uint16_t, uint16_t>> &keys, std::string &error,
+	bool character)
+{
+	FileRanges in;
+	std::vector<uint8_t> header;
+	if (!in.open(path) || !in.read(0, 64, header)) {
+		error = "can't read " + path;
+		return false;
+	}
+	if (std::memcmp(header.data(), "ElecbyteSpr\0", 12) != 0 || header[15] != 2) {
+		// Not v2 (or not an SFF): read whole, decoding only the wanted sprites, then trimmed.
+		std::vector<uint32_t> only;
+		for (const auto &[group, number] : keys)
+			only.push_back(key(group, number));
+		onlyKeys_ = &only;
+		const bool loaded = load(path, error, character);
+		onlyKeys_ = nullptr;
+		if (!loaded)
+			return false;
+		keepOnly(keys);
+		return true;
+	}
+	sprites_.clear();
+	byKey_.clear();
+	palettes_.clear();
+	paletteByKey_.clear();
+	v1_ = false;
+	path_ = path;
+	ByteReader h(header);
+	h.seek(12);
+	uint8_t version[4];
+	version[3] = h.u8();
+	version[2] = h.u8();
+	version[1] = h.u8();
+	version[0] = h.u8();
+	h.skip(4 + 16);
+	const uint32_t spriteHeaders = h.u32(), spriteCount = h.u32();
+	const uint32_t paletteHeaders = h.u32(), paletteCount = h.u32();
+	const uint32_t literalOffset = h.u32();
+	h.skip(4);
+	const uint32_t translatedOffset = h.u32();
+	std::vector<uint8_t> paletteTable, spriteTable;
+	if (!h.ok() || !in.read(paletteHeaders, (size_t)paletteCount * 16, paletteTable) ||
+		!in.read(spriteHeaders, (size_t)spriteCount * 28, spriteTable)) {
+		error = path + ": truncated header";
+		return false;
+	}
+	// Palettes: all of them (the palette menu needs to know which exist), each read on its own.
+	palettes_.resize(paletteCount);
+	ByteReader p(paletteTable);
+	std::vector<uint8_t> data;
+	for (uint32_t i = 0; i < paletteCount; i++) {
+		p.seek(i * 16);
+		const uint16_t group = p.u16(), number = p.u16();
+		p.skip(2);
+		const uint16_t link = p.u16();
+		const uint32_t offset = p.u32(), size = p.u32();
+		const auto existing = paletteByKey_.find(key(group, number));
+		if (existing != paletteByKey_.end()) {
+			palettes_[i] = palettes_[existing->second];
+			continue;
+		}
+		if (size == 0) {
+			if (link < i)
+				palettes_[i] = palettes_[link];
+		} else if (in.read((uint64_t)literalOffset + offset, std::min<uint32_t>(size, 1024), data)) {
+			const uint32_t colors = std::min<uint32_t>(size / 4, 256);
+			Palette &pal = palettes_[i];
+			pal.assign(256, 0);
+			for (uint32_t c = 0; c < colors; c++) {
+				uint8_t a = data[c * 4 + 3];
+				if (version[2] == 0)
+					a = c == 0 ? 0 : 255;
+				pal[c] = (Argb)a << 24 | (Argb)data[c * 4] << 16 | (Argb)data[c * 4 + 1] << 8 | data[c * 4 + 2];
+			}
+		}
+		paletteByKey_[key(group, number)] = (int)i;
+	}
+	// Sprites: every header (links point back), but only the wanted ones' pixels.
+	std::vector<uint32_t> wanted;
+	for (const auto &[group, number] : keys)
+		wanted.push_back(key(group, number));
+	auto compact = std::make_shared<std::vector<uint8_t>>();
+	std::vector<Sprite> all(spriteCount);
+	std::vector<uint32_t> fileOffset(spriteCount, 0);
+	ByteReader r(spriteTable);
+	for (uint32_t i = 0; i < spriteCount; i++) {
+		r.seek(i * 28);
+		Sprite &s = all[i];
+		s.group = r.u16();
+		s.number = r.u16();
+		s.width = r.u16();
+		s.height = r.u16();
+		s.axisX = r.s16();
+		s.axisY = r.s16();
+		const uint16_t link = r.u16();
+		const uint8_t format = r.u8(), depth = r.u8();
+		uint32_t offset = r.u32();
+		const uint32_t size = r.u32();
+		s.palette = r.u16();
+		const uint16_t flags = r.u16();
+		offset += (flags & 1) ? translatedOffset : literalOffset;
+		if (size == 0) {
+			if (link < i) {
+				const Sprite &src = all[link];
+				s.width = src.width;
+				s.height = src.height;
+				s.trueColor = src.trueColor;
+				s.format = src.format;
+				s.depth = src.depth;
+				s.packedSize = src.packedSize;
+				fileOffset[i] = fileOffset[link];
+			}
+		} else {
+			s.format = format;
+			s.depth = depth;
+			s.trueColor = format == FORMAT_PNG24 || format == FORMAT_PNG32;
+			s.packedSize = size;
+			fileOffset[i] = offset;
+		}
+		const uint32_t k = key(s.group, s.number);
+		if (byKey_.count(k) || std::find(wanted.begin(), wanted.end(), k) == wanted.end() || s.packedSize == 0)
+			continue;
+		if (!in.read(fileOffset[i], s.packedSize, data))
+			continue;
+		s.packed = true;
+		s.packedOffset = (uint32_t)compact->size();
+		compact->insert(compact->end(), data.begin(), data.end());
+		byKey_[k] = sprites_.size();
+		sprites_.push_back(s);
+	}
+	file_ = compact;
+	logf("sff: %s: %zu of %u sprites read, %u palettes, %zu KB kept", path.c_str(), sprites_.size(), spriteCount,
+		paletteCount, compact->size() >> 10);
+	return true;
+}
+
 bool Sff::loadBytes(const std::vector<uint8_t> &file, const std::string &path, std::string &error, bool character)
 {
 	sprites_.clear();
@@ -555,9 +694,12 @@ bool Sff::loadV1(const std::vector<uint8_t> &file, const std::string &path, std:
 				}
 				if (dataEnd < dataStart)
 					dataEnd = dataStart;
+				const bool wanted = !onlyKeys_ ||
+					std::find(onlyKeys_->begin(), onlyKeys_->end(), key(s.group, s.number)) != onlyKeys_->end();
 				const uint8_t *rle = ByteReader(file).at(dataStart, dataEnd - dataStart);
-				s.indices = decodePcxRle(rle, rle ? dataEnd - dataStart : 0, s.width, s.height,
-					encoding == 1 ? bytesPerLine : 0);
+				if (wanted)
+					s.indices = decodePcxRle(rle, rle ? dataEnd - dataStart : 0, s.width, s.height,
+						encoding == 1 ? bytesPerLine : 0);
 				if (shared) {
 					s.palette = prevPalette;
 				} else {
@@ -609,6 +751,35 @@ void Sff::keepOnly(const std::vector<std::pair<uint16_t, uint16_t>> &keys)
 	}
 	sprites_ = std::move(kept);
 	byKey_ = std::move(byKey);
+	// Only the palettes still used: the kept sprites' and the named ones (1,n: a character's palettes).
+	std::vector<int> remap(palettes_.size(), -1);
+	std::vector<Palette> palettes;
+	const auto keepPalette = [&](int index) {
+		if (index < 0 || (size_t)index >= palettes_.size())
+			return index;
+		if (remap[(size_t)index] < 0) {
+			remap[(size_t)index] = (int)palettes.size();
+			palettes.push_back(std::move(palettes_[(size_t)index]));
+		}
+		return remap[(size_t)index];
+	};
+	for (auto &[k, index] : paletteByKey_)
+		index = keepPalette(index);
+	for (Sprite &s : sprites_)
+		s.palette = keepPalette(s.palette);
+	palettes_ = std::move(palettes);
+	// A v2 file's kept sprites still point into it: copy theirs out, so the rest of the file can go.
+	if (file_) {
+		auto compact = std::make_shared<std::vector<uint8_t>>();
+		for (Sprite &s : sprites_) {
+			if (!s.packed || (size_t)s.packedOffset + s.packedSize > file_->size())
+				continue;
+			const uint32_t at = (uint32_t)compact->size();
+			compact->insert(compact->end(), file_->begin() + s.packedOffset, file_->begin() + s.packedOffset + s.packedSize);
+			s.packedOffset = at;
+		}
+		file_ = compact;
+	}
 }
 
 bool readActPalette(const std::string &path, Palette &out)

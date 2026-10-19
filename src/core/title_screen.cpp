@@ -412,6 +412,7 @@ void TitleScreen::draw()
 		fadeOut_.draw();
 	else if (fadeIn_.isActive())
 		fadeIn_.draw();
+	motif_->space().drawBars();
 }
 
 } // namespace m360

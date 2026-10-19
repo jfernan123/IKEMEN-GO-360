@@ -78,9 +78,9 @@ void open_gamepads()
 
 } // namespace
 
-bool init(bool hidden)
+bool init(bool hidden, const char *logName)
 {
-	log_file = std::fopen("m360.log", "w");
+	log_file = std::fopen(logName, "w");
 	if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_AUDIO)) {
 		logLine(SDL_GetError());
 		return false;

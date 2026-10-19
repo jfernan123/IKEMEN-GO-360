@@ -183,8 +183,10 @@ void FightScreen::setViewport(float originX, float width)
 	space_.originY = 0;
 }
 
-bool FightScreen::load(const std::string &defPath, std::string &error)
+bool FightScreen::load(const std::string &defPath, std::string &error, int32_t defaultWidth, int32_t defaultHeight)
 {
+	localWidth_ = defaultWidth;
+	localHeight_ = defaultHeight;
 	std::vector<uint8_t> bytes;
 	if (!readFile(defPath, bytes)) {
 		error = "can't read " + defPath;

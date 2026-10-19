@@ -269,6 +269,7 @@ void Storyboard::draw()
 		scene.fadeOut.draw();
 	else if (scene.fadeIn.isActive())
 		scene.fadeIn.draw();
+	space_.drawBars();
 }
 
 } // namespace m360

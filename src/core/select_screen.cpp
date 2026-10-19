@@ -279,9 +279,10 @@ bool MotifSelect::load(Motif &motif, const GameConfig &config, std::string &erro
 				}
 			}
 		}
+		// Only the sprites the screens draw, read from the file in pieces (13: a big roster's files are GBs).
 		e.sff = std::make_unique<Sff>();
 		std::string sffError;
-		if (!e.sff->load(findBesideDef(dir, files->text("sprite")), sffError, true)) {
+		if (!e.sff->loadSome(findBesideDef(dir, files->text("sprite")), keep, sffError, true)) {
 			logf("select: %s; left out", sffError.c_str());
 			continue;
 		}
@@ -316,11 +317,10 @@ bool MotifSelect::load(Motif &motif, const GameConfig &config, std::string &erro
 		portrait.resFix = portraitScale * (float)motif.localWidth() / (float)std::max(1, localW);
 		std::string sffError;
 		portrait.sff = std::make_unique<Sff>();
-		if (!spr.empty() && (portrait.sff->load(directoryOf(stage) + spr, sffError) || portrait.sff->load("data/" + spr, sffError))) {
-			std::vector<std::pair<uint16_t, uint16_t>> keep = { { (uint16_t)stagePortraitSpr_[0], (uint16_t)stagePortraitSpr_[1] } };
-			if (versus_.stageSprite(0) >= 0)
-				keep.emplace_back((uint16_t)versus_.stageSprite(0), (uint16_t)versus_.stageSprite(1));
-			portrait.sff->keepOnly(keep);
+		std::vector<std::pair<uint16_t, uint16_t>> keep = { { (uint16_t)stagePortraitSpr_[0], (uint16_t)stagePortraitSpr_[1] } };
+		if (versus_.stageSprite(0) >= 0)
+			keep.emplace_back((uint16_t)versus_.stageSprite(0), (uint16_t)versus_.stageSprite(1));
+		if (!spr.empty() && portrait.sff->loadSome(findBesideDef(directoryOf(stage), spr), keep, sffError)) {
 			portrait.renderer = std::make_unique<SpriteRenderer>(*portrait.sff);
 		} else {
 			portrait.sff.reset();
@@ -1209,6 +1209,7 @@ void MotifSelect::draw()
 		fadeOut_.draw();
 	else if (fadeIn_.isActive())
 		fadeIn_.draw();
+	motif_->space().drawBars();
 }
 
 // One pass of Ikemen's f_selectScreen draw order: the title, the big portraits, the grid, the cursors, the names, the

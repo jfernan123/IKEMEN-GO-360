@@ -47,6 +47,10 @@ class Sff {
 public:
 	// character: a character's SFF v1, whose first sprite (0,0) is read the old way and holds the shared palette.
 	bool load(const std::string &path, std::string &error, bool character = false);
+	// Only these sprites (group, number) and the palettes, read from the file in pieces: a select screen's portraits
+	// without reading or keeping a character's whole sprite file. An SFF v1 is read whole, then trimmed.
+	bool loadSome(const std::string &path, const std::vector<std::pair<uint16_t, uint16_t>> &keys, std::string &error,
+		bool character = false);
 	// The same from bytes already read (tests build small SFF files in memory).
 	bool loadBytes(const std::vector<uint8_t> &file, const std::string &name, std::string &error, bool character);
 	// SFF v1: the sprites drawn with the character's selected palette are those using palette 0 (the shared one);
@@ -80,6 +84,8 @@ private:
 	std::vector<Palette> palettes_;
 	std::map<uint32_t, int> paletteByKey_;
 	bool v1_ = false;
+	// loadSome on an SFF v1: only these sprites' pixels are decoded (the rest only set the palette chain).
+	const std::vector<uint32_t> *onlyKeys_ = nullptr;
 
 	bool loadV1(const std::vector<uint8_t> &file, const std::string &name, std::string &error, bool character);
 };
