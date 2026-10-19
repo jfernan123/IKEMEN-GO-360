@@ -30,6 +30,7 @@ call :run taunt 100 --quickstart || exit /b 1
 call :projectile || exit /b 1
 call :projectile_clash || exit /b 1
 call :helper || exit /b 1
+call :assist || exit /b 1
 call :misc || exit /b 1
 call :select || exit /b 1
 call :title || exit /b 1
@@ -105,6 +106,8 @@ findstr /r /c:"^p2 frame .*: KO" tests\out\latest_simul.log >nul || (echo FAIL: 
 findstr /r /c:"^p4 frame .*: KO" tests\out\latest_simul.log >nul || (echo FAIL: Simul player 4 was not knocked out & exit /b 1)
 findstr /c:"round 1: KO, wins 1-0" tests\out\latest_simul.log >nul || (echo FAIL: Simul did not end the round when the whole team was KO & exit /b 1)
 findstr /c:"state 1002 -> 1009" tests\out\latest_misc.log >nul || (echo FAIL: 7d controllers and triggers did not all check out & exit /b 1)
+findstr /r /c:"^p1 frame .*state 200 hits: .*on p2h50" tests\out\latest_assist.log >nul || (echo FAIL: the punch did not hit the assist helper & exit /b 1)
+findstr /c:"p2h50 frame 21: state 9000 -> 5000" tests\out\latest_assist.log >nul || (echo FAIL: the assist helper did not go into its get-hit state & exit /b 1)
 findstr /c:"helper 88 state 1200" tests\out\latest_helper.log >nul || (echo FAIL: nested Helper was not created & exit /b 1)
 findstr /c:"state 1000 -> 1002" tests\out\latest_helper.log >nul || (echo FAIL: Helper parent/root redirects or NumHelper failed & exit /b 1)
 findstr /c:"helper 77 destroyed" tests\out\latest_helper.log >nul || (echo FAIL: DestroySelf did not remove the helper & exit /b 1)
@@ -164,6 +167,12 @@ exit /b 0
 echo     projectile clash
 "%EXE%" --p1 tests/fixtures/projectile/projectile.def --p2 tests/fixtures/projectile/projectile.def --input tests/inputs/projectile_clash.txt --input2 tests/inputs/projectile_p2.txt --quickstart --quit 120 --trace %SHOW% >nul || exit /b 1
 copy /y m360.log tests\out\latest_projectile_clash.log >nul
+exit /b 0
+
+:assist
+echo     assist helper
+"%EXE%" --p2 tests/fixtures/assist/assist.def --input tests\inputs\assist.txt --quickstart --quit 90 --trace %SHOW% >nul || exit /b 1
+copy /y m360.log tests\out\latest_assist.log >nul
 exit /b 0
 
 :helper

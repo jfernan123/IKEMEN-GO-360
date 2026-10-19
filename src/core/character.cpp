@@ -3260,13 +3260,25 @@ void Character::hitDetection()
 {
 	for (auto &helper : helpers_)
 		helper->hitDetection();
-	// Every enemy, in Simul both (Ikemen checks each attacker against each opponent).
+	// Ikemen's hitDetectionPlayer: everyone on the other side, each enemy (both in Simul) and its helpers (13c: an
+	// assist or summon can be hit), nearest first.
+	std::vector<Character *> getters;
+	const auto addWithHelpers = [&getters](Character *c, const auto &self) -> void {
+		getters.push_back(c);
+		for (auto &helper : c->helpers_)
+			self(helper.get(), self);
+	};
 	if (enemies().empty()) {
 		if (p2_)
-			hitDetectionAgainst(*p2_);
-		return;
+			addWithHelpers(p2_, addWithHelpers);
+	} else {
+		for (Character *e : enemies())
+			addWithHelpers(e, addWithHelpers);
 	}
-	for (Character *g : enemies())
+	std::stable_sort(getters.begin(), getters.end(), [this](const Character *a, const Character *b) {
+		return std::fabs(a->worldX() - worldX()) < std::fabs(b->worldX() - worldX());
+	});
+	for (Character *g : getters)
 		hitDetectionAgainst(*g);
 }
 
@@ -3331,9 +3343,10 @@ void Character::hitDetectionAgainst(Character &target)
 	if (!traceLabel.empty()) {
 		const GetHitVars &v = g->ghv_;
 		logf("%s frame %u: state %d %s: damage %d, pause %d, shake %d, hittime %d, slide %d, vel %.2f,%.2f, "
-			 "animtype %d",
+			 "animtype %d%s%s",
 			traceLabel.c_str(), world_ ? world_->gameTime : 0, stateNo, result == 2 ? "guarded" : "hits", v.damage,
-			hitPauseTime_, v.hitshaketime, v.hittime, v.slidetime, v.xvel, v.yvel, (int)v.animtype);
+			hitPauseTime_, v.hitshaketime, v.hittime, v.slidetime, v.xvel, v.yvel, (int)v.animtype,
+			g->root_ ? ", on " : "", g->root_ ? g->traceLabel.c_str() : "");
 	}
 }
 
