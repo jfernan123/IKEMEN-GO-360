@@ -21,6 +21,7 @@
 namespace m360 {
 
 class FightEffects;
+class Stage;
 
 // What a character sees of the fight around it, in stage units, kept up to date by the game each frame.
 struct FightWorld {
@@ -40,6 +41,11 @@ struct FightWorld {
 	SoundBank *commonSound = nullptr;
 	// The stage's [StageInfo] autoturn.
 	bool autoTurn = true;
+	// How the round ended (WinKO, WinTime, WinPerfect...): by KO, at time over, and the winners at full life.
+	bool finishKO = false, finishTimeOver = false, perfect = false;
+	float cameraZoom = 1;
+	// The stage, for StageVar.
+	const Stage *stage = nullptr;
 };
 
 // How the stage draws the fighters on its floor (its [Shadow] and [Reflection]), in screen-ready values: the shadow's
@@ -277,6 +283,7 @@ private:
 	Character *target() const { return targets_.empty() ? nullptr : targets_.front(); }
 	std::vector<Character *> targetsWithId(int32_t id) const;
 	bool projectileContact(int32_t id) const;
+	bool stageVar(const std::string &key, Value &out, std::string &textOut) override;
 	bool runTargetController(const StateController &sc);
 	void runTargetControllerOn(const StateController &sc, Character &target);
 

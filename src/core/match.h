@@ -112,6 +112,8 @@ private:
 	int32_t winposeTime_ = 45, winWaitTime_ = 900;
 	int32_t slowTime_ = 60;
 	Finish finish_ = Finish::None;
+	// The winning side ended the round at full life.
+	bool perfect_ = false;
 	int winTeam_ = -1;
 	bool training_ = false;
 };

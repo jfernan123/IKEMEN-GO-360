@@ -39,7 +39,9 @@ enum class Trig : uint16_t {
 	Vel, Pos, P2Dist, P2BodyDist, ParentDist, RootDist, ScreenPos, CameraPos, HitVel,
 	// With one argument: "animelemtime(2)"
 	AnimElemTime, AnimElemNo, SelfAnimExist, AnimExist, Const720p, ProjHitTime, ProjContactTime, ProjGuardedTime,
-	NumProjID, ProjCancelTime, PlayerIDExist,
+	NumProjID, ProjCancelTime, PlayerIDExist, Const240p, Const480p,
+	// 13c: how the round was won or lost, and the camera's zoom.
+	WinKO, WinTime, WinPerfect, LoseKO, LoseTime, CameraZoom,
 	Count
 };
 
@@ -75,6 +77,8 @@ public:
 	virtual ExprContext *redirect(Redirect r, int32_t arg) = 0;
 	// "name = ..." and friends: Name, P1Name, P2Name, P3Name, P4Name, AuthorName, TeamMode. Empty when unknown.
 	virtual std::string text(TextTrig) { return {}; }
+	// StageVar(key): a number, or for info.name / info.displayname / info.author the text. False when unknown.
+	virtual bool stageVar(const std::string &, Value &, std::string &) { return false; }
 };
 
 struct ExprNode;

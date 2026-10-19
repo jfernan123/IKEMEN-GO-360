@@ -24,6 +24,7 @@ void Match::newRound()
 	slowTime_ = timings_.slowTime;
 	finish_ = Finish::None;
 	winTeam_ = -1;
+	perfect_ = false;
 	// A side one win away from the match (Ikemen's decisiveRound).
 	for (int i = 0; i < 2; i++)
 		decisive_[i] = wins_[i] >= timings_.matchWins - 1;
@@ -48,6 +49,9 @@ void Match::fillWorld(FightWorld &w) const
 	w.roundNo = roundNo_;
 	w.roundsExisted = roundNo_ - 1;
 	w.winTeam = winTeam_;
+	w.finishKO = finish_ == Finish::KO;
+	w.finishTimeOver = finish_ == Finish::TimeOver;
+	w.perfect = perfect_;
 	w.matchOver = matchOver();
 	w.roundEnded = intro_ < -timings_.overHit;
 	// Inputs are ignored at time over, and between losing control and the win poses.
@@ -103,6 +107,12 @@ bool Match::decide(Character *const *fighters, int count, const int *sides)
 			finish_ = Finish::KO;
 			winTeam_ = ko[0] ? 1 : 0;
 		}
+	}
+	// A perfect: every winner still at full life.
+	perfect_ = winTeam_ >= 0;
+	for (int i = 0; i < count && perfect_; i++) {
+		if (side(i) == winTeam_ && fighters[i]->life < fighters[i]->lifeMax())
+			perfect_ = false;
 	}
 	return ko[0] || ko[1] || time_ == 0;
 }

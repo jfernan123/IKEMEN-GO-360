@@ -11,6 +11,7 @@
 #include "core/effects.h"
 #include "core/ini.h"
 #include "core/log.h"
+#include "core/stage.h"
 #include "core/text.h"
 #include "platform/platform.h"
 
@@ -3644,8 +3645,15 @@ Value Character::trigger(Trig t, Value arg)
 	case Trig::RoundNo: return Value::I(world_ ? world_->roundNo : 1);
 	case Trig::RoundsExisted: return Value::I(world_ ? world_->roundsExisted : 0);
 	case Trig::MatchOver: return Value::B(world_ && world_->matchOver);
-	case Trig::Win: return Value::B(world_ && world_->winTeam == playerNo);
-	case Trig::Lose: return Value::B(world_ && world_->winTeam == 1 - playerNo);
+	// Ikemen's win / lose: the side is playerNo & 1, so Simul partners share their leader's result.
+	case Trig::Win: return Value::B(world_ && world_->winTeam == (playerNo & 1));
+	case Trig::Lose: return Value::B(world_ && world_->winTeam == 1 - (playerNo & 1));
+	case Trig::WinKO: return Value::B(world_ && world_->winTeam == (playerNo & 1) && world_->finishKO);
+	case Trig::WinTime: return Value::B(world_ && world_->winTeam == (playerNo & 1) && world_->finishTimeOver);
+	case Trig::WinPerfect: return Value::B(world_ && world_->winTeam == (playerNo & 1) && world_->perfect);
+	case Trig::LoseKO: return Value::B(world_ && world_->winTeam == 1 - (playerNo & 1) && world_->finishKO);
+	case Trig::LoseTime: return Value::B(world_ && world_->winTeam == 1 - (playerNo & 1) && world_->finishTimeOver);
+	case Trig::CameraZoom: return Value::F(world_ ? world_->cameraZoom : 1);
 	case Trig::DrawGame: return Value::B(world_ && world_->roundState >= 3 && world_->winTeam < 0);
 	case Trig::AiLevel: return Value::I(aiLevel);
 	case Trig::NumExplod:
@@ -3740,6 +3748,8 @@ Value Character::trigger(Trig t, Value arg)
 	case Trig::AnimExist: return Value::B(source_->anims_.find(arg.toI()) != nullptr);
 	// A value written for 1280x720, in this character's units.
 	case Trig::Const720p: return Value::F(arg.toF() * (320.0f / localScale) / 1280.0f);
+	case Trig::Const240p: return Value::F(arg.toF() * (320.0f / localScale) / 320.0f);
+	case Trig::Const480p: return Value::F(arg.toF() * (320.0f / localScale) / 640.0f);
 	case Trig::ProjHitTime:
 		return Value::I(projectileContact(arg.toI()) && projectileContactType_ == 'H' ? projectileContactTime_ : -1);
 	case Trig::ProjGuardedTime:
@@ -3748,6 +3758,81 @@ Value Character::trigger(Trig t, Value arg)
 		return Value::I(projectileContact(arg.toI()) && projectileContactType_ != 'C' ? projectileContactTime_ : -1);
 	default: return Value::I(0);
 	}
+}
+
+// Ikemen's StageVar (compiler.go's stagevar keys): the stage's settings, positions in this character's units.
+bool Character::stageVar(const std::string &key, Value &out, std::string &textOut)
+{
+	const Stage *s = world_ ? world_->stage : nullptr;
+	if (!s)
+		return false;
+	if (key == "info.name" || key == "info.displayname" || key == "info.author") {
+		textOut = key == "info.name" ? s->name : key == "info.displayname" ? s->displayName : s->author;
+		return true;
+	}
+	const float units = s->localScale / localScale;
+	const StageCamera &c = s->camera;
+	const auto colour = [&](uint32_t rgb, int shift) { return Value::I((int32_t)(rgb >> shift & 0xFF)); };
+	if (key == "camera.boundleft") out = Value::I((int32_t)((float)c.boundleft * units));
+	else if (key == "camera.boundright") out = Value::I((int32_t)((float)c.boundright * units));
+	else if (key == "camera.boundhigh") out = Value::I((int32_t)((float)c.boundhigh * units));
+	else if (key == "camera.boundlow") out = Value::I((int32_t)((float)c.boundlow * units));
+	else if (key == "camera.verticalfollow") out = Value::F(c.verticalfollow);
+	else if (key == "camera.floortension") out = Value::I((int32_t)((float)c.floortension * units));
+	else if (key == "camera.tension") out = Value::I((int32_t)((float)c.tension * units));
+	else if (key == "camera.tensionhigh") out = Value::I((int32_t)((float)c.tensionhigh * units));
+	else if (key == "camera.tensionlow") out = Value::I((int32_t)((float)c.tensionlow * units));
+	else if (key == "camera.tensionvel") out = Value::F(c.tensionvel);
+	else if (key == "camera.cuthigh") out = Value::I(c.cuthigh);
+	else if (key == "camera.cutlow") out = Value::I(c.cutlow);
+	else if (key == "camera.startzoom") out = Value::F(c.startzoom);
+	else if (key == "camera.zoomin") out = Value::F(c.zoomin);
+	else if (key == "camera.zoomout") out = Value::F(c.zoomout);
+	else if (key == "camera.zoomindelay") out = Value::F(c.zoomindelay);
+	else if (key == "camera.zoominspeed") out = Value::F(c.zoominspeed);
+	else if (key == "camera.zoomoutspeed") out = Value::F(c.zoomoutspeed);
+	else if (key == "camera.yscrollspeed") out = Value::F(c.yscrollspeed);
+	else if (key == "camera.ytension.enable") out = Value::B(c.ytensionenable);
+	else if (key == "camera.autocenter") out = Value::B(c.autocenter);
+	else if (key == "camera.lowestcap") out = Value::B(c.lowestcap);
+	else if (key == "playerinfo.leftbound") out = Value::F(s->leftbound * units);
+	else if (key == "playerinfo.rightbound") out = Value::F(s->rightbound * units);
+	else if (key == "playerinfo.p1startx") out = Value::F((float)s->p[0].x * units);
+	else if (key == "playerinfo.p2startx") out = Value::F((float)s->p[1].x * units);
+	else if (key == "playerinfo.p1starty") out = Value::F((float)s->p[0].y * units);
+	else if (key == "playerinfo.p2starty") out = Value::F((float)s->p[1].y * units);
+	else if (key == "playerinfo.p1facing") out = Value::I(s->p[0].facing);
+	else if (key == "playerinfo.p2facing") out = Value::I(s->p[1].facing);
+	else if (key == "bound.screenleft") out = Value::I((int32_t)((float)s->screenleft * units));
+	else if (key == "bound.screenright") out = Value::I((int32_t)((float)s->screenright * units));
+	else if (key == "stageinfo.autoturn") out = Value::B(s->autoTurn);
+	else if (key == "stageinfo.localcoord.x") out = Value::I(s->localWidth);
+	else if (key == "stageinfo.localcoord.y") out = Value::I(s->localHeight);
+	else if (key == "stageinfo.resetbg") out = Value::B(s->resetBg);
+	else if (key == "stageinfo.zoffset") out = Value::I((int32_t)((float)s->zoffset * units));
+	else if (key == "stageinfo.xscale") out = Value::F(s->scaleX);
+	else if (key == "stageinfo.yscale") out = Value::F(s->scaleY);
+	else if (key == "shadow.intensity") out = Value::I(s->shadow.intensity);
+	else if (key == "shadow.color.r") out = colour(s->shadow.colour, 16);
+	else if (key == "shadow.color.g") out = colour(s->shadow.colour, 8);
+	else if (key == "shadow.color.b") out = colour(s->shadow.colour, 0);
+	else if (key == "shadow.yscale") out = Value::F(s->shadow.yscale);
+	else if (key == "shadow.fade.range.begin") out = Value::I((int32_t)((float)s->shadow.fadeBegin * units));
+	else if (key == "shadow.fade.range.end") out = Value::I((int32_t)((float)s->shadow.fadeEnd * units));
+	else if (key == "shadow.offset.x") out = Value::F(s->shadow.offsetX * units);
+	else if (key == "shadow.offset.y") out = Value::F(s->shadow.offsetY * units);
+	else if (key == "reflection.intensity") out = Value::I(s->reflection);
+	else if (key == "reflection.yscale") out = Value::F(s->reflectionYScale);
+	else if (key == "reflection.offset.x") out = Value::F(s->reflectionOffsetX * units);
+	else if (key == "reflection.offset.y") out = Value::F(s->reflectionOffsetY * units);
+	else if (key == "reflection.color.r") out = colour(s->reflectionColour, 16);
+	else if (key == "reflection.color.g") out = colour(s->reflectionColour, 8);
+	else if (key == "reflection.color.b") out = colour(s->reflectionColour, 0);
+	else {
+		compat::note(compat::Kind::Trigger, "stagevar(" + key + ")");
+		return false;
+	}
+	return true;
 }
 
 // Ikemen's projTimeTrigger: the last projectile contact is of this id (0 for any).

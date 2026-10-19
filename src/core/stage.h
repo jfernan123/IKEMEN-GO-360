@@ -33,7 +33,7 @@ public:
 	// The view for a camera position: localcoord scaled to the screen's width, the cut split by cuthigh / cutlow.
 	View view(float camX, float camY) const;
 
-	std::string name;
+	std::string name, displayName, author;
 	// [Info] ikemenversion is set: layer -1 is drawn (MUGEN doesn't draw it).
 	bool ikemen = false;
 	bool resetBg = true;

@@ -12,7 +12,7 @@ namespace m360 {
 
 enum class NodeKind : uint8_t {
 	Num, Neg, Not, BitNot, Binary, AndAlso, OrElse, Range, Command, FlagIs, FlagValue, AnimElem, TimeMod,
-	HitDefAttr, Const, GetHitVar, Var, VarSet, Trigger, Math1, Math2, IfElse, Redirect, TextIs, ProjFlag
+	HitDefAttr, Const, GetHitVar, Var, VarSet, Trigger, Math1, Math2, IfElse, Redirect, TextIs, ProjFlag, StageVar
 };
 
 enum class Op : uint8_t { Add, Sub, Mul, Div, Mod, Pow, Eq, Ne, Lt, Le, Gt, Ge, BitAnd, BitOr, BitXor, BoolXor };
@@ -26,6 +26,7 @@ struct ExprNode {
 	bool negate = false;                           // != forms
 	bool lowOpen = false, highOpen = false;        // Range: ( and ) ends
 	std::string name;                              // Command, Const, GetHitVar, FlagIs letters
+	std::string key;                               // StageVar's key
 	int32_t a = 0, b = 0;                          // AnimElem element & time; TimeMod; HitDefAttr masks
 	Trig trig = Trig::Time;                        // Trigger
 	Flag flag = Flag::StateType;                   // FlagIs / FlagValue
@@ -167,7 +168,11 @@ const std::map<std::string, TrigInfo> &triggers()
 		{ "hitvel", { Trig::HitVel, Shape::Axis } },
 		{ "animelemtime", { Trig::AnimElemTime, Shape::OneArg } }, { "animelemno", { Trig::AnimElemNo, Shape::OneArg } },
 		{ "selfanimexist", { Trig::SelfAnimExist, Shape::OneArg } }, { "animexist", { Trig::AnimExist, Shape::OneArg } },
-		{ "const720p", { Trig::Const720p, Shape::OneArg } }, { "projhittime", { Trig::ProjHitTime, Shape::OneArg } },
+		{ "const720p", { Trig::Const720p, Shape::OneArg } }, { "const240p", { Trig::Const240p, Shape::OneArg } },
+		{ "const480p", { Trig::Const480p, Shape::OneArg } }, { "winko", { Trig::WinKO, Shape::Plain } },
+		{ "wintime", { Trig::WinTime, Shape::Plain } }, { "winperfect", { Trig::WinPerfect, Shape::Plain } },
+		{ "loseko", { Trig::LoseKO, Shape::Plain } }, { "losetime", { Trig::LoseTime, Shape::Plain } },
+		{ "camerazoom", { Trig::CameraZoom, Shape::Plain } }, { "projhittime", { Trig::ProjHitTime, Shape::OneArg } },
 		{ "projcontacttime", { Trig::ProjContactTime, Shape::OneArg } },
 		{ "projguardedtime", { Trig::ProjGuardedTime, Shape::OneArg } },
 		{ "hitpausetime", { Trig::HitPauseTime, Shape::Plain } }, { "id", { Trig::ID, Shape::Plain } },
@@ -586,6 +591,19 @@ private:
 			}
 			return n;
 		}
+		if (name == "stagevar") {
+			// StageVar(camera.boundleft); the text ones compare like Name: StageVar(info.name) = "Temple".
+			Node n = make(NodeKind::StageVar);
+			expect("(");
+			n->key = ident();
+			expect(")");
+			if (n->key == "info.name" || n->key == "info.displayname" || n->key == "info.author") {
+				n->negate = equality();
+				n->name = text::toLower(peek().kind == Token::Str ? t_[pos_++].text : ident());
+				n->hasCompare = true;
+			}
+			return n;
+		}
 		if (name == "const" || name == "gethitvar") {
 			Node n = make(name == "const" ? NodeKind::Const : NodeKind::GetHitVar);
 			expect("(");
@@ -789,6 +807,12 @@ Value evalNode(const ExprNode *n, ExprContext &ctx)
 	}
 	case NodeKind::HitDefAttr: return Value::B(ctx.hitDefAttr(n->a, n->b) != n->negate);
 	case NodeKind::TextIs: return Value::B((text::toLower(ctx.text(n->text)) == n->name) != n->negate);
+	case NodeKind::StageVar: {
+		Value v = Value::I(0);
+		std::string s;
+		ctx.stageVar(n->key, v, s);
+		return n->hasCompare ? Value::B((text::toLower(s) == n->name) != n->negate) : v;
+	}
 	case NodeKind::ProjFlag: {
 		const int32_t t = ctx.trigger(n->trig, Value::I(n->a)).toI();
 		const bool r = n->hasCompare ? t >= 0 && arith(n->op, Value::I(t), Value::I(n->b)).i != 0 : t == 0;

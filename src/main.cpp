@@ -609,6 +609,8 @@ private:
 		world_.leftBound = stage_.leftbound * stage_.localScale;
 		world_.rightBound = stage_.rightbound * stage_.localScale;
 		world_.autoTurn = stage_.autoTurn;
+		world_.cameraZoom = camera_.scale;
+		world_.stage = &stage_;
 	}
 
 	// A player's state, like Ikemen's debug display (Ctrl+D): state, animation, control, time, types, motion.

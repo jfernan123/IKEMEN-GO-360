@@ -25,6 +25,8 @@ bool Stage::load(const std::string &defPath, std::string &error)
 	bool mugen11 = false;
 	if (const IniSection *info = findSection(sections, "info")) {
 		name = info->text("name");
+		displayName = info->has("displayname") ? info->text("displayname") : name;
+		author = info->text("author");
 		float major = 0, minor = 0;
 		ikemen = info->floats("ikemenversion", { &major, &minor }) && (major != 0 || minor != 0);
 		mugen11 = text::startsWith(std::string(text::trim(info->text("mugenversion"))), "1.1");
