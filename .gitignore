@@ -13,3 +13,5 @@
 *.suo
 Thumbs.db
 .DS_Store
+# The options the game saves (save/config.ini).
+save/

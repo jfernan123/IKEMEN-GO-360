@@ -53,6 +53,8 @@ public:
 
 	void setTimings(const RoundTimings &timings) { timings_ = timings; }
 	void setTraining(bool training) { training_ = training; }
+	// The round's length in ticks, -1 for no clock (Ikemen's setRoundTime from Options.Time).
+	void setRoundTime(int32_t ticks) { roundTime_ = ticks; }
 	const RoundTimings &timings() const { return timings_; }
 
 	// A new match: round 1, no wins.
@@ -102,7 +104,7 @@ private:
 
 	RoundTimings timings_;
 	int32_t intro_ = 0;
-	int32_t time_ = ROUND_TIME;
+	int32_t time_ = ROUND_TIME, roundTime_ = ROUND_TIME;
 	int32_t roundNo_ = 1;
 	int32_t wins_[2] = { 0, 0 };
 	bool decisive_[2] = { false, false };

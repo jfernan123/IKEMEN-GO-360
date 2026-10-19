@@ -1097,7 +1097,10 @@ void FightScreen::draw(int32_t layer, const Match &match, const Character &p1, c
 	{
 		const float x = (float)time_.pos[0], y = (float)time_.pos[1];
 		time_.bg.draw(x, y, layer, *renderer_, space_);
-		if (time_.framesPerCount > 0) {
+		if (time_.framesPerCount > 0 && match.timeLeft() < 0) {
+			// No time limit: "o" in the font for the most time (Ikemen's FightScreenTime.draw).
+			time_.counter.pick(1e9f).draw("o", x, y, layer, fonts_, space_);
+		} else if (time_.framesPerCount > 0) {
 			const int32_t left = (match.timeLeft() + time_.framesPerCount - 1) / time_.framesPerCount;
 			time_.counter.pick((float)left).draw(std::to_string(left), x, y, layer, fonts_, space_);
 		}

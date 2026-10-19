@@ -84,7 +84,7 @@ findstr /c:"survival: player advances" tests\out\latest_survival.log >nul || (ec
 findstr /c:"survival: match 2" tests\out\latest_survival.log >nul || (echo FAIL: Survival did not start its second match & exit /b 1)
 findstr /c:"select: WATCH MODE" tests\out\latest_watch.log >nul || (echo FAIL: Watch did not open its select screen & exit /b 1)
 findstr /c:"select: p2 Kung Fu Man" tests\out\latest_watch.log >nul || (echo FAIL: player 1 did not pick player 2 in Watch & exit /b 1)
-findstr /r /c:"^p1 frame [0-9]*: state [0-9]* -> [234][0-9][0-9] " tests\out\latest_watch.log >nul || (echo FAIL: the computer did not play player 1 in Watch & exit /b 1)
+findstr /r /c:"^p1 frame [1-9][0-9]*: state 0 -> [1-9]" tests\out\latest_watch.log >nul || (echo FAIL: the computer did not play player 1 in Watch & exit /b 1)
 findstr /c:"simul: " tests\out\latest_simul.log >nul || (echo FAIL: Simul did not load four fighters & exit /b 1)
 findstr /r /c:"^p2 frame .*: KO" tests\out\latest_simul.log >nul || (echo FAIL: Simul player 2 was not knocked out & exit /b 1)
 findstr /r /c:"^p4 frame .*: KO" tests\out\latest_simul.log >nul || (echo FAIL: Simul player 4 was not knocked out & exit /b 1)

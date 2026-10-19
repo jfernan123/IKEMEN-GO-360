@@ -18,7 +18,7 @@ void Match::newMatch()
 void Match::newRound()
 {
 	intro_ = timings_.startWait + timings_.ctrlTime + 1;
-	time_ = ROUND_TIME;
+	time_ = roundTime_;
 	winposeTime_ = timings_.overWin;
 	winWaitTime_ = timings_.forceWin;
 	slowTime_ = timings_.slowTime;

@@ -542,6 +542,22 @@ bool readWholeFile(const char *path, std::vector<uint8_t> &out)
 	return done == (size_t)info.st_size;
 }
 
+bool writeWholeFile(const char *path, const std::string &data)
+{
+	const int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	if (fd < 0)
+		return false;
+	size_t done = 0;
+	while (done < data.size()) {
+		const ssize_t put = write(fd, data.data() + done, data.size() - done);
+		if (put <= 0)
+			break;
+		done += (size_t)put;
+	}
+	close(fd);
+	return done == data.size();
+}
+
 void logLine(const char *line)
 {
 	xsdk_log_write("%s", line);

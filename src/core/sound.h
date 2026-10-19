@@ -16,6 +16,8 @@ public:
 	bool load(const std::string &path, std::string &error);
 	const Sound *get(int32_t group, int32_t number) const;
 	void play(int32_t group, int32_t number, int channel = -1) const;
+	// The options' sound effect volume as a gain, 1 at Ikemen's defaults.
+	static void setVolume(float gain);
 	static bool decodeWave(const uint8_t *data, size_t size, Sound &out);
 	static void mix(const Sound &sound, size_t &position, float *stereo, size_t frames, float volume = 1);
 	static int16_t floatToS16(float sample);
