@@ -156,6 +156,12 @@ std::string searchFile(const std::string &fileIn, const std::vector<std::string>
 	return file;
 }
 
+std::string findBesideDef(const std::string &dir, const std::string &name)
+{
+	const std::string found = searchFile(name, { dir, "", "data/" });
+	return fileExists(found) ? found : dir + name;
+}
+
 std::string directoryOf(const std::string &path)
 {
 	const size_t slash = path.find_last_of("/\\");

@@ -21,12 +21,10 @@ namespace {
 // The most ChangeStates one frame may chain before MUGEN calls it a loop.
 constexpr int MAX_STATE_LOOP = 2500;
 
-// A character's file as Ikemen's char.go finds it (LoadFile with {def, "", "data/"}): next to the .def, else from the
-// game's root, else under data/ (where common1.cns lives). Not found: next to the .def, for the error message.
+// A character's file as Ikemen's char.go finds it: next to the .def, the game's root, data/ (where common1.cns lives).
 std::string findFile(const std::string &dir, const std::string &name)
 {
-	const std::string found = searchFile(name, { dir, "", "data/" });
-	return fileExists(found) ? found : dir + name;
+	return findBesideDef(dir, name);
 }
 
 Value number(const std::string &s)
@@ -2685,6 +2683,10 @@ void Character::cancelProjectile(Projectile &projectile)
 	if (--projectile.hits > 0)
 		return;
 	projectile.removing = true;
+	// Ikemen's flagProjCancel: the owner's ProjCancelTime counts from now.
+	projectileContactType_ = 'C';
+	projectileContactTime_ = 0;
+	projectileContactId_ = projectile.id;
 	if (projectile.cancelAnim < 0 ||
 		!setProjectileAnimation(projectile, projectile.cancelAnim, projectile.cancelAnimPrefix))
 		projectile.active = false;
@@ -3641,7 +3643,8 @@ Value Character::trigger(Trig t, Value arg)
 			count += projectile.active && projectile.id == arg.toI();
 		return Value::I(count);
 	}
-	case Trig::ProjCancelTime: return Value::I(-1);
+	case Trig::ProjCancelTime:
+		return Value::I(projectileContact(arg.toI()) && projectileContactType_ == 'C' ? projectileContactTime_ : -1);
 	// Player IDs: player 1 is 56, player 2 57 (MUGEN's first ids), helpers after them.
 	case Trig::ID: return Value::I(parent_ ? 1000 + helperId_ : 56 + playerNo);
 	case Trig::PlayerIDExist: return Value::B(arg.toI() == 56 || arg.toI() == 57);
@@ -3720,13 +3723,19 @@ Value Character::trigger(Trig t, Value arg)
 	// A value written for 1280x720, in this character's units.
 	case Trig::Const720p: return Value::F(arg.toF() * (320.0f / localScale) / 1280.0f);
 	case Trig::ProjHitTime:
-		return Value::I(projectileContactId_ == arg.toI() && projectileContactType_ == 'H' ? projectileContactTime_ : -1);
+		return Value::I(projectileContact(arg.toI()) && projectileContactType_ == 'H' ? projectileContactTime_ : -1);
 	case Trig::ProjGuardedTime:
-		return Value::I(projectileContactId_ == arg.toI() && projectileContactType_ == 'G' ? projectileContactTime_ : -1);
+		return Value::I(projectileContact(arg.toI()) && projectileContactType_ == 'G' ? projectileContactTime_ : -1);
 	case Trig::ProjContactTime:
-		return Value::I(projectileContactId_ == arg.toI() && projectileContactType_ != 0 ? projectileContactTime_ : -1);
+		return Value::I(projectileContact(arg.toI()) && projectileContactType_ != 'C' ? projectileContactTime_ : -1);
 	default: return Value::I(0);
 	}
+}
+
+// Ikemen's projTimeTrigger: the last projectile contact is of this id (0 for any).
+bool Character::projectileContact(int32_t id) const
+{
+	return projectileContactType_ != 0 && (id <= 0 || id == projectileContactId_);
 }
 
 char Character::flag(Flag f)

@@ -262,6 +262,7 @@ private:
 	// The first target, else null; and Ikemen's getTarget(id, -1): the targets hit by HitDef id (-1 for all).
 	Character *target() const { return targets_.empty() ? nullptr : targets_.front(); }
 	std::vector<Character *> targetsWithId(int32_t id) const;
+	bool projectileContact(int32_t id) const;
 	bool runTargetController(const StateController &sc);
 	void runTargetControllerOn(const StateController &sc, Character &target);
 

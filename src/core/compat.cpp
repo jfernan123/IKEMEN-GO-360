@@ -126,7 +126,7 @@ std::string checkGame(const GameConfig &config)
 		}
 	}
 	for (const std::string &def : config.characters) {
-		if (def == "randomselect")
+		if (def == "randomselect" || def == "dummyslot" || def == "skipslot")
 			continue;
 		setItem("char " + def);
 		Item &item = *currentItem();

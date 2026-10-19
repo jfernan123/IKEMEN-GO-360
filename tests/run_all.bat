@@ -113,6 +113,7 @@ findstr /c:"helper 88 state 1200" tests\out\latest_helper.log >nul || (echo FAIL
 findstr /c:"state 1000 -> 1002" tests\out\latest_helper.log >nul || (echo FAIL: Helper parent/root redirects or NumHelper failed & exit /b 1)
 findstr /c:"helper 77 destroyed" tests\out\latest_helper.log >nul || (echo FAIL: DestroySelf did not remove the helper & exit /b 1)
 findstr /c:"projectile 8 clashes with p2 projectile 8" tests\out\latest_projectile_clash.log >nul || (echo FAIL: Projectiles did not cancel each other & exit /b 1)
+findstr /c:"p1 frame 24: state 0 -> 1002" tests\out\latest_projectile_clash.log >nul || (echo FAIL: ProjCancelTime did not see the cancelled projectile & exit /b 1)
 for %%S in (200 210 230 240 400 410 430 440 600 610 630 640) do findstr /c:"-> %%S" tests\out\latest_attacks.log >nul || (echo FAIL: attack state %%S did not run & exit /b 1)
 for %%S in (100 105 1000 1400 1100 800 810 820 821) do findstr /c:"-> %%S" tests\out\latest_specials.log >nul || (echo FAIL: special state %%S did not run & exit /b 1)
 findstr /c:"hits: damage" tests\out\latest_hits.log >nul || (echo FAIL: hit test made no contact & exit /b 1)

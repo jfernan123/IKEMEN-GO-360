@@ -67,8 +67,9 @@ void GameConfig::readSelect(const std::string &text, bool extraStagesSection)
 			characters.push_back(l);
 			return;
 		}
-		if (l == "dummyslot" || l == "skipslot" || l == "blank" || l == "emptyslot") {
-			logf("game: select.def's %s cells aren't supported yet; left out", l.c_str());
+		// Ikemen's dummyslot (an empty cell) and skipslot (one the cursor can't land on): both kept as empty cells.
+		if (l == "dummyslot" || l == "skipslot") {
+			characters.push_back(l);
 			return;
 		}
 		const std::string def = findCharacter(name);
@@ -232,7 +233,7 @@ bool GameConfig::loadGame(const std::string &folder, std::string &error)
 	// Test runs and a roster-less start fight the first two characters on the first stage.
 	std::vector<std::string> playable;
 	for (const std::string &c : characters) {
-		if (c != "randomselect")
+		if (c != "randomselect" && c != "dummyslot" && c != "skipslot")
 			playable.push_back(c);
 	}
 	if (playable.empty() || stages.empty()) {
