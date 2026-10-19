@@ -5,6 +5,9 @@ New: OPTIONS on the title works: difficulty, time limit, life, game speed,
 rounds to win, volumes. Up/down to pick, left/right to change, an attack
 button to open or run, Back to leave. "Save and Return" keeps them for next
 time (in save/config.ini).
+Input Settings > Joystick Config remaps each player's buttons: left/right
+picks the player, choose a row (or "Config all"), let go, then press the pad
+button you want. A button taken from another row leaves that row "Not used".
 
 New: WATCH MODE > CPU MATCH. Pick both fighters (and their team modes) and a
 stage, then the computer plays both sides.
@@ -66,7 +69,7 @@ hard drive), and a perf line in default.log every 10 seconds.
 
 The game opens on Ikemen's title screen and main menu. VS MODE has 1P VS 2P,
 TEAM VERSUS and QUICK MATCH. ARCADE has SINGLE MODE and TEAM ARCADE. PRACTICE
-starts Training with a refilling dummy. OPTIONS isn't there yet. EXIT quits.
+starts Training with a refilling dummy. OPTIONS changes the settings. EXIT quits.
 
 The fight looks like Ikemen: its default skin's lifebars, power bars,
 portraits, names, clock, combo counter, win icons, and the "Round 1",

@@ -52,6 +52,12 @@ private:
 	// A button on an item that does something (default, inputdefault, savereturn, return).
 	void run(const std::string &name);
 	void applyVolumes() const;
+	// The key config (Ikemen's f_keyCfg): its update and draw, and one player's pane.
+	void updateKeys(const platform::Pad &pad1, const platform::Pad &pad2, bool up, bool down, bool left, bool right,
+		bool confirm, bool cancel);
+	void drawKeys();
+	void drawKeyPane(int player, float x, float y, bool active);
+	void assign(int player, int row, uint8_t button);
 	bool pressed(bool now, bool &before) const;
 
 	Motif *motif_ = nullptr;
@@ -79,6 +85,15 @@ private:
 	ScreenFade fadeIn_, fadeOut_;
 	bool closing_ = false, done_ = false;
 	std::string savePath_ = SETTINGS_PATH;
+	// The key config: shown, the player whose pane is active, the row, and a capture waiting for a button ("all" goes
+	// down every row). Its layout is [Option Info]'s menu keys with keymenu's over them.
+	bool keys_ = false, capture_ = false, captureAll_ = false, captureReleased_ = false;
+	int keyPlayer_ = 0, keyRow_ = 0;
+	float keyPos_[2][2];
+	float keySpacingY_;
+	TextLayout keyItem_, keyActive_, keyValue_, keyValueActive_, keyInfo_, keyInfoActive_, playerNo_[2];
+	std::string playerNoText_[2], keyNames_[9], nokey_, presskey_, configAllInfo_, escInfo_, keyTitle_;
+	int32_t keyBox_[4];
 	// Buttons last frame: up, down, left, right, done, cancel.
 	bool held_[6] = { false, false, false, false, false, false };
 };

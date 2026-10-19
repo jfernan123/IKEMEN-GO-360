@@ -996,7 +996,7 @@ int main(int argc, char **argv)
 	const bool testRun = !inputPath.empty() || !shots.empty() || quitFrame != UINT32_MAX;
 	if (!platform::init(testRun && !show))
 		return 1;
-	logf("mugen360: milestone 11b, options screen, build %s", buildVersion());
+	logf("mugen360: milestone 11, options and saving, build %s", buildVersion());
 	// The options, saved in save/config.ini. Test runs keep Ikemen's defaults, so a player's saved options never
 	// change a test's result.
 	Settings settings;

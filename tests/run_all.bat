@@ -38,6 +38,7 @@ call :team || exit /b 1
 call :survival || exit /b 1
 call :simul || exit /b 1
 call :watch || exit /b 1
+call :keys || exit /b 1
 call :options || exit /b 1
 call :run buttons 80 --quickstart || exit /b 1
 call :run commands 260 --quickstart || exit /b 1
@@ -83,6 +84,8 @@ findstr /c:"select: SURVIVAL" tests\out\latest_survival.log >nul || (echo FAIL: 
 findstr /c:"survival: match 1" tests\out\latest_survival.log >nul || (echo FAIL: Survival did not start its first match & exit /b 1)
 findstr /c:"survival: player advances" tests\out\latest_survival.log >nul || (echo FAIL: Survival did not advance after a win & exit /b 1)
 findstr /c:"survival: match 2" tests\out\latest_survival.log >nul || (echo FAIL: Survival did not start its second match & exit /b 1)
+findstr /c:"options: p1 A = RB" tests\out\latest_keys.log >nul || (echo FAIL: the joystick config did not take RB for A & exit /b 1)
+findstr /c:"Z = Not used" tests\out\keys_config.ini >nul || (echo FAIL: the button RB left did not become Not used & exit /b 1)
 findstr /c:"title: OPTIONS" tests\out\latest_options.log >nul || (echo FAIL: OPTIONS did not open from the title & exit /b 1)
 findstr /c:"options: difficulty 7" tests\out\latest_options.log >nul || (echo FAIL: the options screen did not raise Difficulty & exit /b 1)
 findstr /c:"options: roundtime 98" tests\out\latest_options.log >nul || (echo FAIL: the options screen did not lower Time Limit & exit /b 1)
@@ -179,6 +182,13 @@ exit /b 0
 echo     arcade
 "%EXE%" --title --input tests\inputs\arcade.txt --quit 500 --trace %SHOW% >nul || exit /b 1
 copy /y m360.log tests\out\latest_arcade.log >nul
+exit /b 0
+
+:keys
+echo     keys
+"%EXE%" --title --input tests\inputs\keys.txt --quit 600 --trace %SHOW% >nul || exit /b 1
+copy /y m360.log tests\out\latest_keys.log >nul
+copy /y tests\out\config.ini tests\out\keys_config.ini >nul
 exit /b 0
 
 :options

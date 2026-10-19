@@ -19,6 +19,8 @@ const char *const MUGEN_NAMES[Settings::MUGEN_BUTTONS] = { "A", "B", "C", "X", "
 
 bool pressed(const platform::Pad &pad, uint8_t button)
 {
+	if (button >= Settings::BUTTON_COUNT)
+		return false;
 	switch (button) {
 	case Settings::ButtonA: return pad.a;
 	case Settings::ButtonB: return pad.b;
@@ -73,7 +75,7 @@ void Settings::clamp()
 	for (auto &player : buttons)
 		for (uint8_t &b : player)
 			if (b >= BUTTON_COUNT)
-				b = ButtonA;
+				b = BUTTON_NONE;
 }
 
 bool Settings::load(const std::string &path)
@@ -102,7 +104,12 @@ bool Settings::load(const std::string &path)
 		if (!j)
 			continue;
 		for (int i = 0; i < MUGEN_BUTTONS; i++) {
-			const std::string value = text::toLower(j->text(text::toLower(MUGEN_NAMES[i])));
+			const std::string key = text::toLower(MUGEN_NAMES[i]);
+			if (!j->has(key))
+				continue;
+			// A name that isn't a pad button ("Not used") leaves the MUGEN button unplayed.
+			const std::string value = text::toLower(j->text(key));
+			buttons[p][i] = BUTTON_NONE;
 			for (uint8_t b = 0; b < BUTTON_COUNT; b++) {
 				if (value == text::toLower(BUTTON_NAMES[b]))
 					buttons[p][i] = b;
@@ -134,7 +141,7 @@ bool Settings::save(const std::string &path) const
 	for (int p = 0; p < 2; p++) {
 		out += "\n[Joystick_P" + std::to_string(p + 1) + "]\n";
 		for (int i = 0; i < MUGEN_BUTTONS; i++)
-			out += std::string(MUGEN_NAMES[i]) + " = " + BUTTON_NAMES[buttons[p][i]] + "\n";
+			out += std::string(MUGEN_NAMES[i]) + " = " + buttonName(buttons[p][i]) + "\n";
 	}
 	const bool written = platform::writeWholeFile(path.c_str(), out);
 	logf("settings: %s %s", written ? "saved to" : "couldn't save", path.c_str());
@@ -144,7 +151,16 @@ bool Settings::save(const std::string &path) const
 
 const char *Settings::buttonName(uint8_t button)
 {
-	return button < BUTTON_COUNT ? BUTTON_NAMES[button] : "?";
+	return button < BUTTON_COUNT ? BUTTON_NAMES[button] : "Not used";
+}
+
+uint8_t Settings::heldButton(const platform::Pad &pad)
+{
+	for (uint8_t b = 0; b < BUTTON_COUNT; b++) {
+		if (pressed(pad, b))
+			return b;
+	}
+	return BUTTON_NONE;
 }
 
 const char *Settings::mugenButtonName(int index)
