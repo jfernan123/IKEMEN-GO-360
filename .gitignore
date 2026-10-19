@@ -19,3 +19,4 @@ save/
 games/
 # --check reports.
 compat_*.txt
+soak_*.txt

@@ -799,6 +799,12 @@ private:
 public:
 	// After the match, the game goes back to the select screen (finished() turns true) instead of starting another.
 	void returnToSelectAfterMatch() { selectAfterMatch_ = true; }
+	// For the soaks (13d): a fighter, how many there are, and the round's state.
+	const Character &fighter(int i) const { return players_[i]; }
+	int fighterCount() const { return count_; }
+	int32_t roundState() const { return match_.roundState(); }
+	int32_t roundNo() const { return match_.roundNo(); }
+	int matchesStarted() const { return (int)matchCount_; }
 	void setWatch(bool watch)
 	{
 		watch_ = watch;
@@ -967,6 +973,106 @@ enum class Screen { Title, Options, Select, Stage, Animations, Sprites };
 
 } // namespace
 
+// --soak [folder] (13d): each character of the roster against the next (the last against the first), the computer
+// playing both, for `frames` ticks without intros, on the stages in turn. A pair's notes: states it holds too long
+// in a fight (stuck), states and animations it lacks, controllers that run as no-ops. The report is written after
+// every pair, so if one crashes the game, the report ends at the pair that did it.
+std::string runSoak(const GameConfig &config, const Settings &settings, uint32_t frames, const std::string &path)
+{
+	std::vector<std::string> roster;
+	for (const std::string &c : config.characters) {
+		if (c != "randomselect" && c != "dummyslot" && c != "skipslot")
+			roster.push_back(c);
+	}
+	if (roster.empty())
+		roster.push_back(config.player1);
+	std::vector<std::string> stages = config.stages.empty() ? std::vector<std::string>{ config.stage } : config.stages;
+	std::string out = "mugen360 soak report: " + (config.game.empty() ? std::string("(mugen360's own content)") : config.game) +
+		", " + std::to_string(frames) + " ticks a pair\n\n";
+	FightAssets assets;
+	assets.settings = &settings;
+	compat::begin();
+	int problems = 0;
+	for (size_t i = 0; i < roster.size(); i++) {
+		GameConfig fight = config;
+		fight.mode = "versus";
+		fight.player1 = roster[i];
+		fight.player2 = roster[(i + 1) % roster.size()];
+		fight.stage = stages[i % stages.size()];
+		const std::string label = fight.player1 + " vs " + fight.player2 + " on " + fight.stage;
+		out += label + ": ";
+		platform::writeWholeFile(path.c_str(), out + "(running; if the report ends here, this pair crashed)\n");
+		compat::setItem(label);
+		StageDemo demo(assets);
+		std::string error;
+		if (!demo.load(fight, error, false, true, true)) {
+			out += "FAILS to load: " + error + "\n";
+			problems++;
+			continue;
+		}
+		demo.setWatch(true);
+		// Held states: a fighter in one state for 20 seconds of fighting, other than standing, crouching or walking.
+		constexpr uint32_t STUCK_TICKS = 1200;
+		int32_t lastState[4] = { -1, -1, -1, -1 };
+		uint32_t held[4] = { 0, 0, 0, 0 };
+		std::vector<std::string> stuck;
+		// Whether they really fight: rounds begun and life lost.
+		int rounds = 1, lastRound = 1, lastMatch = demo.matchesStarted();
+		int32_t lastLife[4] = { -1, -1, -1, -1 };
+		int64_t lifeLost = 0;
+		Buttons buttons;
+		platform::Pad idle;
+		for (uint32_t f = 0; f < frames; f++) {
+			demo.update(buttons, idle, idle);
+			// Drawn now and then, so the drawing code runs too.
+			if (f % 60 == 0 && platform::beginFrame(BACKGROUND)) {
+				demo.draw();
+				platform::endFrame();
+			}
+			if (demo.roundNo() != lastRound || demo.matchesStarted() != lastMatch) {
+				rounds++;
+				lastRound = demo.roundNo();
+				lastMatch = demo.matchesStarted();
+			}
+			for (int p = 0; p < demo.fighterCount(); p++) {
+				const Character &c = demo.fighter(p);
+				if (lastLife[p] > c.life)
+					lifeLost += lastLife[p] - c.life;
+				lastLife[p] = c.life;
+				if (c.stateNo != lastState[p] || demo.roundState() != 2) {
+					lastState[p] = c.stateNo;
+					held[p] = 0;
+					continue;
+				}
+				const bool idleState = c.stateNo == 0 || c.stateNo == 10 || c.stateNo == 11 || c.stateNo == 12 ||
+					c.stateNo == 20;
+				if (++held[p] == STUCK_TICKS && !idleState)
+					stuck.push_back("p" + std::to_string(p + 1) + " stuck in state " + std::to_string(c.stateNo));
+			}
+		}
+		const compat::Item *notes = nullptr;
+		for (const compat::Item &item : compat::items()) {
+			if (item.name == label)
+				notes = &item;
+		}
+		const size_t missing = notes ? notes->missing.size() : 0;
+		out += std::to_string(rounds) + " rounds, " + std::to_string(lifeLost) + " life lost; " +
+			(stuck.empty() && missing == 0 ? std::string("ok") : std::to_string(stuck.size() + missing) + " notes") + "\n";
+		for (const std::string &s : stuck)
+			out += "    " + s + "\n";
+		if (notes) {
+			for (const std::string &m : notes->missing)
+				out += "    " + m + "\n";
+		}
+		problems += (int)(stuck.size() + missing) > 0;
+		platform::writeWholeFile(path.c_str(), out);
+	}
+	compat::end();
+	out += "\n" + std::to_string(roster.size()) + " pairs, " + std::to_string(problems) + " with notes\n";
+	logf("soak: %d pairs, %d with notes", (int)roster.size(), problems);
+	return out;
+}
+
 int main(int argc, char **argv)
 {
 	GameConfig config;
@@ -974,7 +1080,8 @@ int main(int argc, char **argv)
 	const bool configLoaded = config.load("data/mugen360.ini", configError);
 	// Test-run options (see InputScript).
 	std::string inputPath, input2Path, forcedMode, p1Arg, p2Arg, stageArg;
-	bool checkRun = false;
+	bool checkRun = false, soakRun = false;
+	uint32_t soakFrames = 3600;
 	std::map<uint32_t, std::string> shots;
 	uint32_t quitFrame = UINT32_MAX;
 	int32_t testPower = -1, testP2Life = -1;
@@ -1021,6 +1128,13 @@ int main(int argc, char **argv)
 			stageArg = argv[++i];
 		else if (arg == "--game" && i + 1 < argc)
 			config.game = argv[++i];
+		else if (arg == "--soak") {
+			// --soak [folder]: every character against the next, computer against computer (13d).
+			soakRun = true;
+			if (i + 1 < argc && argv[i + 1][0] != '-')
+				config.game = argv[++i];
+		} else if (arg == "--soakframes" && i + 1 < argc)
+			soakFrames = (uint32_t)text::atoi(argv[++i]);
 		else if (arg == "--check") {
 			// --check [folder]: a game's compatibility report, without playing (13b).
 			checkRun = true;
@@ -1028,10 +1142,10 @@ int main(int argc, char **argv)
 				config.game = argv[++i];
 		}
 	}
-	const bool testRun = !inputPath.empty() || !shots.empty() || quitFrame != UINT32_MAX || checkRun;
+	const bool testRun = !inputPath.empty() || !shots.empty() || quitFrame != UINT32_MAX || checkRun || soakRun;
 	if (!platform::init(testRun && !show))
 		return 1;
-	logf("mugen360: milestone 13c, compatibility gaps, build %s", buildVersion());
+	logf("mugen360: milestone 13d, soaks, build %s", buildVersion());
 	// The options, saved in save/config.ini. Test runs keep Ikemen's defaults, so a player's saved options never
 	// change a test's result.
 	Settings settings;
@@ -1063,6 +1177,17 @@ int main(int argc, char **argv)
 	if (!stageArg.empty())
 		config.stage = stageArg;
 	logf("game: p1=%s p2=%s stage=%s", config.player1.c_str(), config.player2.c_str(), config.stage.c_str());
+	// --soak: fight every pair, write soak_<game>.txt next to the log, and stop.
+	if (soakRun) {
+		std::string name = config.game.empty() ? std::string("mugen360") : config.game;
+		name = name.substr(name.find_last_of('/') + 1);
+		const std::string path = "soak_" + name + ".txt";
+		const std::string report = runSoak(config, settings, soakFrames, path);
+		logf("soak: report %s %s", platform::writeWholeFile(path.c_str(), report) ? "written to" : "couldn't be written to",
+			path.c_str());
+		platform::shutdown();
+		return 0;
+	}
 	// --check: load everything the game names, write compat_<game>.txt next to the log, and stop.
 	if (checkRun) {
 		const std::string report = compat::checkGame(config);

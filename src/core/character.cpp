@@ -404,6 +404,7 @@ void Character::changeAnim(int32_t no, const AnimationTable *table)
 		animShared_ = false;
 	} else if (no != -2) {
 		logf("char: %s: no action %d (state %d)", name.c_str(), no, stateNo);
+		compat::note(compat::Kind::Missing, "action " + std::to_string(no));
 	}
 }
 
@@ -464,6 +465,7 @@ void Character::stateChange1(int32_t no, const Character *owner)
 	state_ = stateOwner_->source_->states_.find(stateNo);
 	if (!state_) {
 		logf("char: %s: changed to missing state %d (from %d)", name.c_str(), no, prevStateNo);
+		compat::note(compat::Kind::Missing, "state " + std::to_string(no));
 		state_ = &emptyState_;
 	}
 	persist_.assign(state_->ctrls.size(), 0);

@@ -30,7 +30,7 @@ Item *currentItem()
 }
 
 const char *const KIND_NAMES[(int)Kind::KIND_COUNT] = { "controller", "not done", "trigger", "expression", "file",
-	"stage key", "background", "select.def" };
+	"stage key", "background", "select.def", "missing" };
 
 std::string kb(size_t bytes)
 {

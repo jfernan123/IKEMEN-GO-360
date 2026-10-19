@@ -23,6 +23,7 @@ enum class Kind : uint8_t {
 	Stage,      // a stage key or section not read yet
 	Background, // a background element type, trans or BGCtrl type not supported
 	Select,     // a select.def entry not supported
+	Missing,    // a state or animation a character asks for that it doesn't have (13d's soaks)
 	KIND_COUNT
 };
 

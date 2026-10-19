@@ -89,6 +89,8 @@ findstr /c:"survival: match 2" tests\out\latest_survival.log >nul || (echo FAIL:
 findstr /c:"game: tests/game: motif data/ikemen1/system.def" tests\out\latest_game.log >nul || (echo FAIL: the game folder's mugen.cfg and system.def were not read & exit /b 1)
 findstr /c:"select: stage Training Stage Z" tests\out\latest_game.log >nul || (echo FAIL: the game folder's stage list was not used & exit /b 1)
 findstr /c:"Characters: 3 of 3 load" tests\out\compat_game.txt >nul || (echo FAIL: the compatibility check did not load the test game's characters & exit /b 1)
+findstr /c:"3 pairs" tests\out\soak_game.txt >nul || (echo FAIL: the soak did not run every pair of the test game & exit /b 1)
+findstr /c:"controller makerainbow" tests\out\soak_game.txt >nul || (echo FAIL: the soak did not note Odd KFM's unknown controller & exit /b 1)
 findstr /c:"makerainbow" tests\out\compat_game.txt >nul || (echo FAIL: the compatibility check missed an unknown controller & exit /b 1)
 findstr /c:"match: round 1" tests\out\latest_game.log >nul || (echo FAIL: the game folder's fight did not start & exit /b 1)
 findstr /c:"options: p1 A = RB" tests\out\latest_keys.log >nul || (echo FAIL: the joystick config did not take RB for A & exit /b 1)
@@ -207,6 +209,8 @@ echo     game folder
 copy /y m360.log tests\out\latest_game.log >nul
 "%EXE%" --check tests\game --quit 1 >nul || exit /b 1
 copy /y compat_game.txt tests\out\compat_game.txt >nul
+"%EXE%" --soak tests\game --soakframes 1800 --quit 1 >nul || exit /b 1
+copy /y soak_game.txt tests\out\soak_game.txt >nul
 exit /b 0
 
 :keys
