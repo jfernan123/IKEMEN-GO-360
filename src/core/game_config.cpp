@@ -74,7 +74,9 @@ void GameConfig::readSelect(const std::string &text, bool extraStagesSection)
 		}
 		const std::string def = findCharacter(name);
 		if (def.empty()) {
-			logf("game: can't find character %s; left out", name.c_str());
+			// Ikemen's useDummy: a character that isn't there keeps its cell, empty, so the grid doesn't shift.
+			logf("game: can't find character %s; an empty cell", name.c_str());
+			characters.push_back("dummyslot");
 			return;
 		}
 		characters.push_back(def);

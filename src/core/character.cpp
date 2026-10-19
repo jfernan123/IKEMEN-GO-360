@@ -460,11 +460,14 @@ void Character::changeState(int32_t no, int32_t animNoNew, int32_t ctrlNew, cons
 
 void Character::stateChange1(int32_t no, const Character *owner)
 {
+	// The owner is a player, never a helper (Ikemen keeps the owner's playerNo): a helper's states are its player's,
+	// and the player outlives the helper (a helper's throw whose helper is destroyed keeps working).
 	if (owner)
-		stateOwner_ = owner;
+		stateOwner_ = owner->root_ ? owner->root_ : owner;
 	if (!traceLabel.empty())
 		logf("%s frame %u: state %d -> %d%s (time %d, anim %d, pos %.2f,%.2f, vel %.2f,%.2f)", traceLabel.c_str(),
-			world_ ? world_->gameTime : 0, stateNo, no, stateOwner_ != this ? " of the opponent" : "", stateTime,
+			world_ ? world_->gameTime : 0, stateNo, no, stateOwner_ != (root_ ? root_ : this) ? " of the opponent" : "",
+			stateTime,
 			animNo, x, y, vx, vy);
 	prevStateNo = stateNo;
 	stateNo = std::max(0, no);
@@ -1722,6 +1725,9 @@ void Character::actionRun()
 		ctrl = false;
 		if (!traceLabel.empty())
 			logf("%s frame %u: KO", traceLabel.c_str(), world_ ? world_->gameTime : 0);
+		// The KO scream, sound 11,0, unless a fighter asserts nokosnd.
+		if (!(world_ && (world_->globalSpecial & Special::NoKoSnd)))
+			source_->sound_.play(11, 0);
 		if (!stchtmp_ && moveType != 'H') {
 			ghv_.fallflag = true;
 			minus_ = 1;
@@ -2229,6 +2235,10 @@ void Character::runHitDef(const StateController &sc)
 	setB("keepstate", hd.keepstate);
 	if (paramI(sc, "hitonce", 0, i))
 		hd.hitonce = i != 0 ? 1 : 0;
+	if (const std::string *team = sc.param("affectteam")) {
+		const char t = team->empty() ? 'E' : (char)std::toupper((unsigned char)(*team)[0]);
+		hd.affectTeam = t == 'B' ? 0 : t == 'F' ? -1 : 1;
+	}
 	setI("damage", hd.hitDamage);
 	if (paramI(sc, "damage", 1, i))
 		hd.guardDamage = i;
@@ -3311,12 +3321,22 @@ void Character::hitDetection()
 		for (auto &helper : c->helpers_)
 			self(helper.get(), self);
 	};
-	if (enemies().empty()) {
-		if (p2_)
-			addWithHelpers(p2_, addWithHelpers);
-	} else {
-		for (Character *e : enemies())
-			addWithHelpers(e, addWithHelpers);
+	// affectteam (Ikemen's teamOk): enemies, the attacker's own side, or both.
+	if (hitdef_.affectTeam >= 0) {
+		if (enemies().empty()) {
+			if (p2_)
+				addWithHelpers(p2_, addWithHelpers);
+		} else {
+			for (Character *e : enemies())
+				addWithHelpers(e, addWithHelpers);
+		}
+	}
+	if (hitdef_.affectTeam <= 0) {
+		Character *leader = root_ ? root_ : this;
+		addWithHelpers(leader, addWithHelpers);
+		for (Character *partner : leader->partners_)
+			addWithHelpers(partner, addWithHelpers);
+		getters.erase(std::remove(getters.begin(), getters.end(), this), getters.end());
 	}
 	std::stable_sort(getters.begin(), getters.end(), [this](const Character *a, const Character *b) {
 		return std::fabs(a->worldX() - worldX()) < std::fabs(b->worldX() - worldX());
@@ -3421,7 +3441,8 @@ void Character::runAssertSpecial(const StateController &sc)
 		{ "nojugglecheck", Special::NoJuggleCheck }, { "unguardable", Special::Unguardable },
 		{ "noko", Special::NoKo }, { "intro", Special::Intro }, { "roundnotover", Special::RoundNotOver },
 		{ "nobardisplay", Special::NoBarDisplay }, { "nofallhitflag", Special::NoFallHitFlag },
-		{ "timerfreeze", Special::TimerFreeze }, { "nocornerpush", Special::NoCornerPush } };
+		{ "timerfreeze", Special::TimerFreeze }, { "nocornerpush", Special::NoCornerPush }, { "nobg", Special::NoBg },
+		{ "nofg", Special::NoFg }, { "nokosnd", Special::NoKoSnd } };
 	for (const char *param : { "flag", "flag2", "flag3" }) {
 		const std::string *v = sc.param(param);
 		if (!v)
@@ -3431,6 +3452,8 @@ void Character::runAssertSpecial(const StateController &sc)
 		for (const auto &[n, bit] : names) {
 			if (flag == n) {
 				special_ |= bit;
+				if ((bit & (Special::NoBg | Special::NoFg | Special::NoKoSnd)) && world_)
+					world_->globalSpecial |= bit;
 				known = true;
 			}
 		}

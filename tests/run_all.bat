@@ -38,6 +38,7 @@ call :arcade || exit /b 1
 call :storyboard || exit /b 1
 call :victory || exit /b 1
 call :continue || exit /b 1
+call :selecttimer || exit /b 1
 call :team || exit /b 1
 call :survival || exit /b 1
 call :simul || exit /b 1
@@ -97,6 +98,8 @@ findstr /c:"controller makerainbow" tests\out\soak_game.txt >nul || (echo FAIL: 
 findstr /c:"makerainbow" tests\out\compat_game.txt >nul || (echo FAIL: the compatibility check missed an unknown controller & exit /b 1)
 findstr /c:"match: round 1" tests\out\latest_game.log >nul || (echo FAIL: the game folder's fight did not start & exit /b 1)
 findstr /c:"victory: Kung Fu Man beats Kung Fu Man: " tests\out\latest_victory.log >nul || (echo FAIL: the victory screen did not show after the match & exit /b 1)
+findstr /c:"select: timer ran out" tests\out\latest_selecttimer.log >nul || (echo FAIL: the select timer did not run out & exit /b 1)
+findstr /c:"match: round 1" tests\out\latest_selecttimer.log >nul || (echo FAIL: the select timer did not lead to a fight & exit /b 1)
 findstr /c:"continue: counting down" tests\out\latest_continue.log >nul || (echo FAIL: the continue screen did not show after the arcade loss & exit /b 1)
 findstr /c:"continue: yes" tests\out\latest_continue.log >nul || (echo FAIL: Start did not continue & exit /b 1)
 findstr /c:"victory: done at" tests\out\latest_victory.log >nul || (echo FAIL: the victory screen did not end & exit /b 1)
@@ -205,6 +208,12 @@ exit /b 0
 echo     title menu
 "%EXE%" --title --cpu --input tests/inputs/title.txt --quit 600 --trace %SHOW% >nul || exit /b 1
 copy /y m360.log tests\out\latest_title.log >nul
+exit /b 0
+
+:selecttimer
+echo     select timer
+"%EXE%" --title --cpu --selecttimer 2 --input tests\inputs\selecttimer.txt --quit 1400 --trace %SHOW% >nul || exit /b 1
+copy /y m360.log tests\out\latest_selecttimer.log >nul
 exit /b 0
 
 :continue

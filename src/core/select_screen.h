@@ -211,6 +211,21 @@ private:
 	// The stage line.
 	float stagePos_[2] = { 0, 0 };
 	TextLayout stageActive_, stageActive2_, stageDone_;
+	// The select timer (Ikemen's timer.* and main.f_drawTimer): count seconds of framespercount ticks, shown after
+	// displaytime; -1 count is off. selectTimer_ is Ikemen's timerSelect (-1 once it has run out), timerShown_ the
+	// number drawn. Set by load(), no default values (see xenia_scan).
+	TextLayout timerText_;
+	std::string timerFormat_;
+	int32_t timerCount_, timerFrames_, timerDisplay_, selectTimer_, timerShown_;
+	// The timer ran out this tick: the pick, the palette and the stage are taken as they stand.
+	bool timerExpired() const { return timerCount_ >= 0 && selectTimer_ == -1; }
+	void restartTimer() { selectTimer_ = timerDisplay_; }
+
+public:
+	// For the tests: a select timer of this many counts, as if the screenpack set timer.count.
+	void setTimerCount(int32_t count) { timerCount_ = count; }
+
+private:
 	std::string stageText_ = "Stage %i: %s", stageRandomText_ = "Stage: Random";
 	int32_t stageMoveSnd_[2] = { -1, 0 }, stageDoneSnd_[2] = { -1, 0 }, stageSwitch_ = 2;
 	AnimLayout stageBg_, stageRandom_;

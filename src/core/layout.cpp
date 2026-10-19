@@ -30,13 +30,13 @@ void loadFonts(const IniSection &files, const std::string &defPath, FontTable &o
 		if (name.empty())
 			continue;
 		std::string error = "can't find " + name;
-		for (const std::string &path : { directoryOf(defPath) + name, "data/" + name, "data/font/" + name }) {
-			if (!fileExists(path))
-				continue;
+		// Ikemen's LoadFile with {def, "", "data/"} and "font/": next to the def, the game's root, data/, each also
+		// under font/.
+		const std::string path = searchFile(name, { defPath, "", "data/" }, { "font/" });
+		if (fileExists(path)) {
 			auto font = std::make_unique<Font>();
 			if (font->load(path, error))
 				out[number] = std::move(font);
-			break;
 		}
 		if (!out.count(number))
 			logf("fonts: %s: font%d: %s", defPath.c_str(), number, error.c_str());

@@ -83,6 +83,8 @@ struct HitDef {
 	int32_t id = 0, chainid = -1;
 	// 1 hits once and is spent, 0 can hit each target once, -1 is spent (or not yet decided: throws default to 1).
 	int32_t hitonce = -1;
+	// affectteam: 1 enemies (E, the default), 0 both sides (B), -1 the attacker's own side (F).
+	int32_t affectTeam = 1;
 	int32_t numhits = 1;
 	// Power for the attacker (get) and the one hit (give), on hit and on guard.
 	int32_t hitGetPower = NOT_SET, guardGetPower = NOT_SET, hitGivePower = NOT_SET, guardGivePower = NOT_SET;

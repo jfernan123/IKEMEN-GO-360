@@ -75,6 +75,10 @@ public:
 		partner_[1] = partner2;
 	}
 	bool loaded() const { return loaded_; }
+	// [Files] fightfx.sff, fightfx.air and common.snd, found; empty when the fight screen uses the shared ones.
+	const std::string &fightfxSff() const { return fightfxSff_; }
+	const std::string &fightfxAir() const { return fightfxAir_; }
+	const std::string &commonSnd() const { return commonSnd_; }
 	const RoundTimings &timings() const { return timings_; }
 
 	// A new match (win icons cleared) and a new round (everything back to its start, the fade in begins).
@@ -201,6 +205,7 @@ private:
 	void drawRound(int32_t layer, const Match &match, const Character &p1, const Character &p2);
 
 	bool loaded_ = false;
+	std::string fightfxSff_, fightfxAir_, commonSnd_;
 	std::string path_;
 	ScreenSpace space_;
 	int32_t localWidth_ = 320, localHeight_ = 240;

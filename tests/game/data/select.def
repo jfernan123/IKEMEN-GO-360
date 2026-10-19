@@ -5,7 +5,7 @@ kfm, stages/stage0.def, includestage=0
 oddkfm
 dummyslot
 randomselect
-nobody          ; not on disk: left out
+nobody          ; not on disk: an empty cell
 
 [ExtraStages]
 stages/stageZ.def

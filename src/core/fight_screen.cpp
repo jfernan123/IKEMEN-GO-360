@@ -204,19 +204,26 @@ bool FightScreen::load(const std::string &defPath, std::string &error)
 		error = defPath + " has no [Files]";
 		return false;
 	}
+	// Files as Ikemen's LoadFile finds them: next to fight.def, the game's root, data/.
 	const std::string dir = directoryOf(defPath);
 	const std::string sffName = files->text("sff");
 	std::string sffError;
-	if (sffName.empty() || (!sff_.load(dir + sffName, sffError) && !sff_.load("data/" + sffName, sffError))) {
+	if (sffName.empty() || !sff_.load(findBesideDef(dir, sffName), sffError)) {
 		error = defPath + ": " + (sffName.empty() ? "no sff in [Files]" : sffError);
 		return false;
 	}
 	renderer_ = std::make_unique<SpriteRenderer>(sff_);
 	const std::string sndName = files->text("snd");
 	std::string sndError;
-	if (!sndName.empty() && !snd_.load(dir + sndName, sndError) && !snd_.load("data/" + sndName, sndError))
+	if (!sndName.empty() && !snd_.load(findBesideDef(dir, sndName), sndError))
 		logf("fightscreen: %s: no sounds: %s", defPath.c_str(), sndError.c_str());
 	loadFonts(*files, defPath, fonts_);
+	// A fight screen can bring its own shared effects and sounds (Ikemen's fightfx.sff / fightfx.air / common.snd).
+	for (const auto &[key, member] : { std::pair{ "fightfx.sff", &fightfxSff_ }, std::pair{ "fightfx.air", &fightfxAir_ },
+			 std::pair{ "common.snd", &commonSnd_ } }) {
+		const std::string name = files->text(key);
+		*member = name.empty() ? std::string() : findBesideDef(dir, name);
+	}
 
 	for (int i = 0; i < 2; i++) {
 		const std::string p = i == 0 ? "p1." : "p2.";

@@ -1,0 +1,11 @@
+# Stage 13e select timer: VS MODE > 1P VS 2P from the title, then nothing pressed; a 2-count select timer
+# (--selecttimer 2) runs out and picks player 1's character and palette, player 2's, and the stage, and the fight starts.
+#   build\pc\mugen360.exe --title --cpu --selecttimer 2 --input tests\inputs\selecttimer.txt --quit 1400 --trace
+# Expect "select: timer ran out", "select: p1 Kung Fu Man", "select: p2 ", "select: stage " and "match: round 1".
+30 -
+2 D
+10 -
+2 a
+10 -
+2 a
+1300 -

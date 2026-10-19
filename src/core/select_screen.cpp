@@ -134,6 +134,17 @@ bool MotifSelect::load(Motif &motif, const GameConfig &config, std::string &erro
 	fadeIn_.read("fadein.", s);
 	fadeOut_.read("fadeout.", s);
 	s.floats("stage.pos", { &stagePos_[0], &stagePos_[1] });
+	timerText_.read("timer.", s);
+	timerFormat_ = s.has("timer.text") ? s.text("timer.text") : std::string("%i");
+	timerCount_ = -1;
+	timerFrames_ = 60;
+	timerDisplay_ = 10;
+	s.readInt("timer.count", timerCount_);
+	s.readInt("timer.framespercount", timerFrames_);
+	timerFrames_ = std::max(1, timerFrames_);
+	s.readInt("timer.displaytime", timerDisplay_);
+	selectTimer_ = timerShown_ = 0;
+	motif.resolveFont(timerText_);
 	stageActive_.read("stage.active.", s);
 	stageActive2_.read("stage.active2.", s);
 	stageDone_.read("stage.done.", s);
@@ -480,6 +491,7 @@ void MotifSelect::reset(SelectMode mode, bool secondController, int32_t presetTe
 	phase_ = Phase::Characters;
 	cancelled_ = false;
 	timer_ = 0;
+	selectTimer_ = 0;
 	versusStarted_ = false;
 	stage_ = 0;
 	stageCount_ = 0;
@@ -607,7 +619,9 @@ void MotifSelect::updateSide(int index, const platform::Pad &now, const platform
 	Side &side = sides_[index];
 	const bool up = pressed(now.up, before.up), down = pressed(now.down, before.down);
 	const bool left = pressed(now.left, before.left), right = pressed(now.right, before.right);
-	const bool done = pressed(doneButton(now), doneButton(before));
+	// A select timer that has run out confirms what's under the cursor (Ikemen's timerSelect == -1).
+	const bool expired = timerExpired();
+	const bool done = pressed(doneButton(now), doneButton(before)) || expired;
 	const bool start = pressed(now.start, before.start), cancel = pressed(now.back, before.back);
 	if (side.state == -1) {
 		// Ikemen's f_teamMenu: up / down choose Single, Simul or Turns; the member counts are fixed at what mugen360
@@ -627,6 +641,7 @@ void MotifSelect::updateSide(int index, const platform::Pad &now, const platform
 			side.numChars = side.teamMode == TEAM_SINGLE ? 1 : 2;
 			side.state = 0;
 			motif_->play(side.teamDoneSnd);
+			restartTimer();
 			logf("select: p%d team %s", index + 1, teamNames_[side.teamMode].c_str());
 		}
 		return;
@@ -641,13 +656,25 @@ void MotifSelect::updateSide(int index, const platform::Pad &now, const platform
 			cancelled_ = true;
 			return;
 		}
-		const int32_t cell = cellIndex(side.x, side.y);
+		int32_t cell = cellIndex(side.x, side.y);
+		// Out of time on an empty cell or the random one: a random character (Ikemen's f_randomChar).
+		if (expired && (cell < 0 || cell >= (int32_t)roster_.size() || !isPlayable(cell))) {
+			std::vector<int32_t> real;
+			for (int32_t i = 0; i < (int32_t)roster_.size(); i++) {
+				if (isPlayable(i))
+					real.push_back(i);
+			}
+			if (!real.empty())
+				cell = real[(size_t)random((int32_t)real.size())];
+			side.randomShown = cell;
+		}
 		if (done && cell >= 0 && cell < (int32_t)roster_.size() && !roster_[(size_t)cell].empty) {
 			// The random cell picks whoever it's showing.
 			side.chosen = roster_[(size_t)cell].random ? std::max(0, side.randomShown) : cell;
 			if (side.chosen < 0 || roster_[(size_t)side.chosen].random)
 				return;
 			motif_->play(side.doneSnd);
+			restartTimer();
 			const Entry &e = roster_[(size_t)side.chosen];
 			// Straight to the palette menu, on palette 1 (Ikemen's paletteselect 3); one palette needs no menu.
 			side.palIndex = 1;
@@ -666,6 +693,7 @@ void MotifSelect::updateSide(int index, const platform::Pad &now, const platform
 	if (done) {
 		side.palette = side.palIndex > count ? side.randomPreview : e.palettes[(size_t)side.palIndex - 1];
 		motif_->play(side.palDoneSnd);
+		restartTimer();
 		confirmPick(index);
 	} else if (up || right || down || left) {
 		side.palIndex = cyclePalette(side.palIndex, count, up || right ? 1 : -1);
@@ -722,6 +750,20 @@ void MotifSelect::update(const platform::Pad &pad1, const platform::Pad &pad2)
 	cellRandom_.action();
 	stageBg_.action();
 
+	// The select timer while characters and the stage are being chosen (Ikemen's main.f_drawTimer).
+	if (timerCount_ >= 0 && (phase_ == Phase::Characters || phase_ == Phase::Stage) && !fadeIn_.isActive()) {
+		const int32_t num = (int32_t)std::lround((double)(timerCount_ * timerFrames_ - selectTimer_ + timerDisplay_) /
+			(double)timerFrames_);
+		if (num <= -1) {
+			if (selectTimer_ != -1)
+				logf("select: timer ran out");
+			selectTimer_ = -1;
+			timerShown_ = 0;
+		} else if (selectTimer_ != -1) {
+			selectTimer_++;
+			timerShown_ = std::max(0, num);
+		}
+	}
 	const platform::Pad now[2] = { pad1, pad2 };
 	switch (phase_) {
 	case Phase::Characters:
@@ -772,8 +814,9 @@ void MotifSelect::update(const platform::Pad &pad1, const platform::Pad &pad2)
 					stage_ = 0;
 			}
 		}
-		if (pressed(doneButton(p), doneButton(b))) {
+		if (pressed(doneButton(p), doneButton(b)) || timerExpired()) {
 			motif_->play(stageDoneSnd_);
+			restartTimer();
 			if (stage_ == 0)
 				stage_ = 1 + random(count);
 			logf("select: stage %s", stageNames_[(size_t)stage_ - 1].c_str());
@@ -1228,6 +1271,14 @@ void MotifSelect::drawElements()
 	for (int i = 0; i < 2; i++)
 		drawTeamMenu(i);
 	drawStage();
+	if (timerCount_ >= 0 && (phase_ == Phase::Characters || phase_ == Phase::Stage) &&
+		(selectTimer_ == -1 || selectTimer_ >= timerDisplay_)) {
+		std::string line = timerFormat_;
+		const size_t at = line.find("%i");
+		if (at != std::string::npos)
+			line.replace(at, 2, std::to_string(timerShown_));
+		timerText_.draw(line, 0, 0, timerText_.layout.layer, motif_->fonts(), motif_->space());
+	}
 }
 
 } // namespace m360

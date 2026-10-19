@@ -89,10 +89,11 @@ int run13Tests()
 	expect(gameRoot() == "tests/game/", "its folder is the file root");
 	expect(config.motif == "data/ikemen1/system.def", "mugen.cfg's motif");
 	expect(config.fight == "data/fight.def", "system.def's fight.def, found under data/");
-	expect(config.characters.size() == 5 && config.characters[0] == "data/chars/kfm720/kfm720.def" &&
+	expect(config.characters.size() == 6 && config.characters[0] == "data/chars/kfm720/kfm720.def" &&
 			config.characters[1] == "data/chars/kfm/kfm.def" && config.characters[2] == "chars/oddkfm/oddkfm.def" &&
-			config.characters[3] == "dummyslot" && config.characters[4] == "randomselect",
-		"select.def's roster, the missing character left out");
+			config.characters[3] == "dummyslot" && config.characters[4] == "randomselect" &&
+			config.characters[5] == "dummyslot",
+		"select.def's roster, the missing character an empty cell");
 	expect(config.stages.size() == 3 && config.stages[0] == "data/stages/stageZ.def" &&
 			config.stages[1] == "data/stages/kfm.def" && config.stages[2] == "data/stages/stage1.def",
 		"[ExtraStages], then the characters' stages unless includestage = 0");

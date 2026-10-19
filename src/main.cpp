@@ -239,11 +239,16 @@ struct FightAssets {
 	{
 		if (loaded)
 			return true;
-		if (!effects.load(FIGHTFX_SFF, FIGHTFX_AIR, error) || !commonSound.load(COMMON_SND, error))
-			return false;
 		fightScreenLoaded = !config.fight.empty() && fightScreen.load(config.fight, fightError);
 		if (config.fight.empty())
 			fightError = "none";
+		// The fight screen's own fightfx and common.snd, else the shared ones (found in the game's folder first).
+		const bool own = fightScreenLoaded && !fightScreen.fightfxSff().empty() && !fightScreen.fightfxAir().empty();
+		if (!effects.load(own ? fightScreen.fightfxSff() : FIGHTFX_SFF, own ? fightScreen.fightfxAir() : FIGHTFX_AIR,
+				error) ||
+			!commonSound.load(fightScreenLoaded && !fightScreen.commonSnd().empty() ? fightScreen.commonSnd() : COMMON_SND,
+				error))
+			return false;
 		loaded = true;
 		return true;
 	}
@@ -376,9 +381,17 @@ public:
 	{
 		if (side < 0 || side >= 2)
 			return;
-		for (int i = 0; i < count_; i++)
-			if (side_[i] == side)
-				players_[i].life = std::clamp(value, 1, players_[i].lifeMax());
+		// Plain comparisons: std::clamp here built an instruction Xenia skips (mcrf, see xenia_scan).
+		for (int i = 0; i < count_; i++) {
+			if (side_[i] != side)
+				continue;
+			int32_t life = value;
+			if (life > players_[i].lifeMax())
+				life = players_[i].lifeMax();
+			if (life < 1)
+				life = 1;
+			players_[i].life = life;
+		}
 	}
 	void setFighterStats(int side, int32_t life, int32_t power)
 	{
@@ -448,6 +461,7 @@ public:
 	// One game tick: the round, then each phase for both players before the next (Ikemen's charList order).
 	void tick(const platform::Pad &pad1, const platform::Pad &pad2)
 	{
+		world_.globalSpecial = 0;
 		const bool globallyPaused = effects_.paused();
 		Character *const fighters[4] = { &players_[0], &players_[1], &players_[2], &players_[3] };
 		const Match::Event event =
@@ -558,9 +572,14 @@ public:
 		const PalFX *stagePalFX = effects_.stagePalFX();
 		const float stageBrightness = effects_.superBrightness();
 		// Ikemen's order: the fight screen's layer -1 and 0 behind the characters, 1 and 2 in front.
-		if (stage_.ikemen)
+		// nobg: black behind the fighters instead of the stage; nofg: no stage in front (Ikemen's GSF_nobg / nofg).
+		const bool noBg = (world_.globalSpecial & Special::NoBg) != 0, noFg = (world_.globalSpecial & Special::NoFg) != 0;
+		if (noBg)
+			platform::fillRect(0, 0, platform::SCREEN_WIDTH, platform::SCREEN_HEIGHT, 0xFF000000);
+		if (stage_.ikemen && !noBg)
 			stage_.draw(-1, view, stagePalFX, stageBrightness);
-		stage_.draw(0, view, stagePalFX, stageBrightness);
+		if (!noBg)
+			stage_.draw(0, view, stagePalFX, stageBrightness);
 		fightScreen_.draw(-1, match_, players_[0], players_[1]);
 		effects_.draw(view, (float)stage_.zoffset * stage_.localScale, -1);
 		fightScreen_.draw(0, match_, players_[0], players_[1]);
@@ -568,7 +587,8 @@ public:
 		for (int i = count_ - 1; i >= 0; i--)
 			players_[i].draw(view, (float)stage_.zoffset * stage_.localScale, groundFor(players_[i]));
 		effects_.draw(view, (float)stage_.zoffset * stage_.localScale, 0);
-		stage_.draw(1, view, stagePalFX, stageBrightness);
+		if (!noFg)
+			stage_.draw(1, view, stagePalFX, stageBrightness);
 		fightScreen_.draw(1, match_, players_[0], players_[1]);
 		effects_.draw(view, (float)stage_.zoffset * stage_.localScale, 1);
 		// A pillarboxed stage: black at the sides, over whatever of the stage and the fighters reached past it.
@@ -998,7 +1018,8 @@ std::string storyboardFor(const std::string &defPath, const std::string &section
 // playing both, for `frames` ticks without intros, on the stages in turn. A pair's notes: states it holds too long
 // in a fight (stuck), states and animations it lacks, controllers that run as no-ops. The report is written after
 // every pair, so if one crashes the game, the report ends at the pair that did it.
-std::string runSoak(const GameConfig &config, const Settings &settings, uint32_t frames, const std::string &path)
+std::string runSoak(const GameConfig &config, const Settings &settings, uint32_t frames, const std::string &path,
+	size_t firstPair)
 {
 	std::vector<std::string> roster;
 	for (const std::string &c : config.characters) {
@@ -1014,7 +1035,7 @@ std::string runSoak(const GameConfig &config, const Settings &settings, uint32_t
 	assets.settings = &settings;
 	compat::begin();
 	int problems = 0;
-	for (size_t i = 0; i < roster.size(); i++) {
+	for (size_t i = firstPair; i < roster.size(); i++) {
 		GameConfig fight = config;
 		fight.mode = "versus";
 		fight.player1 = roster[i];
@@ -1105,9 +1126,11 @@ int main(int argc, char **argv)
 	// Test runs skip storyboards (logo, intro, arcade intros and endings) unless --storyboards.
 	bool storyboards = false;
 	uint32_t soakFrames = 3600;
+	// --soakstart N: begin at pair N (from 0), to go back to one that crashed.
+	size_t soakStart = 0;
 	std::map<uint32_t, std::string> shots;
 	uint32_t quitFrame = UINT32_MAX;
-	int32_t testPower = -1, testP1Life = -1, testP2Life = -1, testWins = -1;
+	int32_t testPower = -1, testP1Life = -1, testP2Life = -1, testWins = -1, testSelectTimer = -1;
 	// --noai: player 2 stays idle even in modes against the computer, so a test script's hits land the same way.
 	bool noAi = false;
 	bool trace = false, quickStart = false, cpu = false, show = false, forceSelect = false, forceTitle = false;
@@ -1147,6 +1170,8 @@ int main(int argc, char **argv)
 			testP2Life = text::atoi(argv[++i]);
 		else if (arg == "--p1life" && i + 1 < argc)
 			testP1Life = text::atoi(argv[++i]);
+		else if (arg == "--selecttimer" && i + 1 < argc)
+			testSelectTimer = text::atoi(argv[++i]);
 		else if (arg == "--wins" && i + 1 < argc)
 			testWins = text::atoi(argv[++i]);
 		else if (arg == "--p1" && i + 1 < argc)
@@ -1164,6 +1189,8 @@ int main(int argc, char **argv)
 				config.game = argv[++i];
 		} else if (arg == "--soakframes" && i + 1 < argc)
 			soakFrames = (uint32_t)text::atoi(argv[++i]);
+		else if (arg == "--soakstart" && i + 1 < argc)
+			soakStart = (size_t)std::max(0, text::atoi(argv[++i]));
 		else if (arg == "--check") {
 			// --check [folder]: a game's compatibility report, without playing (13b).
 			checkRun = true;
@@ -1214,7 +1241,7 @@ int main(int argc, char **argv)
 		std::string name = config.game.empty() ? std::string("mugen360") : config.game;
 		name = name.substr(name.find_last_of('/') + 1);
 		const std::string path = "soak_" + name + ".txt";
-		const std::string report = runSoak(config, settings, soakFrames, path);
+		const std::string report = runSoak(config, settings, soakFrames, path, soakStart);
 		logf("soak: report %s %s", platform::writeWholeFile(path.c_str(), report) ? "written to" : "couldn't be written to",
 			path.c_str());
 		platform::shutdown();
@@ -1253,6 +1280,8 @@ int main(int argc, char **argv)
 			logf("mugen360: %s", error.c_str());
 		MotifSelect motifSelect;
 		const bool motifSelectLoaded = motifLoaded && motifSelect.load(motif, config, error);
+		if (motifSelectLoaded && testSelectTimer >= 0)
+			motifSelect.setTimerCount(testSelectTimer);
 		if (motifLoaded && !motifSelectLoaded)
 			logf("mugen360: %s; using the plain select screen", error.c_str());
 		TitleScreen title;

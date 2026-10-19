@@ -395,6 +395,28 @@ paths use forward slashes.
      fight), and its notes: states held 20 seconds mid-round (stuck, other than standing, crouching, walking),
      states and animations it lacks, no-op controllers, load problems. The report is rewritten after each pair, so
      after a crash it ends at the pair that crashed.
+   - 13e the game's screens (done):
+     - Storyboards (`core/storyboard`, Ikemen's storyboard.go): scenes with clear colour, background, layers
+       (animations, sprites, typed text), sounds, music, fades, end time, jump; clearcolor / layerall.pos carried
+       over. The screenpack's logo and intro play before the title; a character's arcade intro before its first
+       match and its ending after its last, then [End Credits], then the title. Start skips a scene; a button or
+       Back cancels. Test runs skip them unless `--storyboards`.
+     - Victory screen (`core/victory_screen`, MotifVictory): VictoryBG, winner and loser portraits, the winner's
+       name and its victory quote ([Quotes] victoryN, the VictoryQuote controller) typed and wrapped. After a decided
+       match in Arcade, Versus, Quick Match and Watch.
+     - Continue screen (`core/continue_screen`, MotifContinue): MUGEN's legacy yes / no and Ikemen's countdown, over
+       the lost arcade fight's last frame. Yes replays the match; no plays [Game Over Screen]'s storyboard, then the
+       title. Not yet: the characters' continue poses.
+     - Select timer (timer.count / framespercount / displaytime): when it runs out, what's under the cursor is
+       picked (a random character on an empty cell), the palette and the stage confirmed.
+     - Test options: `--wins N`, `--p1life`, `--selecttimer N`.
+     Not yet: [Win Screen] and the Survival / Time Attack results screens, hiscores.
+   - First real game, DC vs MARVEL 2025 (MUGEN 1.1, 151 characters, 32 stages; kept out of the repository): all
+     characters, stages, the screenpack and its lifebars load. Fixed for it: files named from the game's root in
+     fight.def (sff, snd, fonts, its own fightfx and common.snd) and stages ([BGdef] spr), Ikemen's ignoreMostErrors
+     comparisons ("AnimElem >= 5" reads as "= 5"), AnimElem ranges ("AnimElem = 1, = [45, 55]"), a controller's
+     first "type" winning, words in priority / affectteam / afterimage.trans / BindToTarget pos, parameters Ikemen
+     ignores (Null's, "name" labels), and HitDef affectteam (B, F).
 
 ## Asset notice
 

@@ -41,6 +41,8 @@ struct FightWorld {
 	SoundBank *commonSound = nullptr;
 	// The stage's [StageInfo] autoturn.
 	bool autoTurn = true;
+	// Global AssertSpecial flags this tick (Special::NoBg, NoFg, NoKoSnd), cleared as each tick starts.
+	mutable uint32_t globalSpecial = 0;
 	// How the round ended (WinKO, WinTime, WinPerfect...): by KO, at time over, and the winners at full life.
 	bool finishKO = false, finishTimeOver = false, perfect = false;
 	float cameraZoom = 1;
@@ -65,7 +67,9 @@ namespace Special {
 constexpr uint32_t NoWalk = 1, NoAutoTurn = 2, NoStandGuard = 4, NoCrouchGuard = 8, NoAirGuard = 16, Invisible = 32,
 				   NoShadow = 64, NoJuggleCheck = 128, Unguardable = 256, NoKo = 512, Intro = 1024,
 				   RoundNotOver = 2048, NoBarDisplay = 4096, NoFallHitFlag = 8192, TimerFreeze = 16384,
-				   NoCornerPush = 32768;
+				   NoCornerPush = 32768,
+				   // Global ones (Ikemen's GSF): any fighter asserting them changes the whole fight this tick.
+				   NoBg = 65536, NoFg = 131072, NoKoSnd = 262144;
 }
 
 // A MUGEN character, run by its own state files. Loads its .def, SFF, AIR, CMD and CNS (states and constants) and
