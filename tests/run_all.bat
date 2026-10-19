@@ -37,6 +37,7 @@ call :title || exit /b 1
 call :arcade || exit /b 1
 call :storyboard || exit /b 1
 call :victory || exit /b 1
+call :continue || exit /b 1
 call :team || exit /b 1
 call :survival || exit /b 1
 call :simul || exit /b 1
@@ -96,6 +97,8 @@ findstr /c:"controller makerainbow" tests\out\soak_game.txt >nul || (echo FAIL: 
 findstr /c:"makerainbow" tests\out\compat_game.txt >nul || (echo FAIL: the compatibility check missed an unknown controller & exit /b 1)
 findstr /c:"match: round 1" tests\out\latest_game.log >nul || (echo FAIL: the game folder's fight did not start & exit /b 1)
 findstr /c:"victory: Kung Fu Man beats Kung Fu Man: " tests\out\latest_victory.log >nul || (echo FAIL: the victory screen did not show after the match & exit /b 1)
+findstr /c:"continue: counting down" tests\out\latest_continue.log >nul || (echo FAIL: the continue screen did not show after the arcade loss & exit /b 1)
+findstr /c:"continue: yes" tests\out\latest_continue.log >nul || (echo FAIL: Start did not continue & exit /b 1)
 findstr /c:"victory: done at" tests\out\latest_victory.log >nul || (echo FAIL: the victory screen did not end & exit /b 1)
 findstr /c:"storyboard: data/ikemen1/logo.def: 1 scenes" tests\out\latest_storyboard.log >nul || (echo FAIL: the logo storyboard did not play & exit /b 1)
 findstr /c:"storyboard: data/chars/kfm/intro.def: 5 scenes" tests\out\latest_storyboard.log >nul || (echo FAIL: KFM's arcade intro did not play & exit /b 1)
@@ -202,6 +205,12 @@ exit /b 0
 echo     title menu
 "%EXE%" --title --cpu --input tests/inputs/title.txt --quit 600 --trace %SHOW% >nul || exit /b 1
 copy /y m360.log tests\out\latest_title.log >nul
+exit /b 0
+
+:continue
+echo     continue screen
+"%EXE%" --title --wins 1 --p1life 1 --input tests\inputs\continue.txt --quit 4600 --trace %SHOW% >nul || exit /b 1
+copy /y m360.log tests\out\latest_continue.log >nul
 exit /b 0
 
 :victory

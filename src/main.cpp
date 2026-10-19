@@ -36,6 +36,7 @@
 #include "core/debug_text.h"
 #include "core/effects.h"
 #include "core/compat.h"
+#include "core/continue_screen.h"
 #include "core/file.h"
 #include "core/game_config.h"
 #include "core/fight_screen.h"
@@ -973,7 +974,7 @@ private:
 	size_t current_ = 0;
 };
 
-enum class Screen { Title, Options, Select, Stage, Animations, Sprites, Storyboard, Victory };
+enum class Screen { Title, Options, Select, Stage, Animations, Sprites, Storyboard, Victory, Continue };
 
 // A storyboard a .def names under [section] key (a character's [Arcade] intro.storyboard, a screenpack's [Files]
 // logo.storyboard), found as Ikemen finds it (next to the .def, the game's root, data/); empty if there's none.
@@ -1106,7 +1107,7 @@ int main(int argc, char **argv)
 	uint32_t soakFrames = 3600;
 	std::map<uint32_t, std::string> shots;
 	uint32_t quitFrame = UINT32_MAX;
-	int32_t testPower = -1, testP2Life = -1, testWins = -1;
+	int32_t testPower = -1, testP1Life = -1, testP2Life = -1, testWins = -1;
 	// --noai: player 2 stays idle even in modes against the computer, so a test script's hits land the same way.
 	bool noAi = false;
 	bool trace = false, quickStart = false, cpu = false, show = false, forceSelect = false, forceTitle = false;
@@ -1144,6 +1145,8 @@ int main(int argc, char **argv)
 			testPower = text::atoi(argv[++i]);
 		else if (arg == "--p2life" && i + 1 < argc)
 			testP2Life = text::atoi(argv[++i]);
+		else if (arg == "--p1life" && i + 1 < argc)
+			testP1Life = text::atoi(argv[++i]);
 		else if (arg == "--wins" && i + 1 < argc)
 			testWins = text::atoi(argv[++i]);
 		else if (arg == "--p1" && i + 1 < argc)
@@ -1348,6 +1351,8 @@ int main(int argc, char **argv)
 				stage->setTestPower(testPower);
 			if (stageLoaded && testP2Life >= 0)
 				stage->setTestLife(1, testP2Life);
+			if (stageLoaded && testP1Life >= 0)
+				stage->setTestLife(0, testP1Life);
 			if (!stageLoaded)
 				logf("mugen360: %s", error.c_str());
 			if (selectLoaded)
@@ -1382,6 +1387,22 @@ int main(int argc, char **argv)
 		Press storySkip, storyCancel;
 		// What follows the victory screen (the next match, the select screen...).
 		std::function<void()> afterVictory;
+		// The continue screen after an arcade loss, over the lost fight's last frame (13e).
+		ContinueScreen continueScreen;
+		if (motifLoaded)
+			continueScreen.load(motif);
+		std::shared_ptr<StageDemo> continueBackdrop;
+		// After the game ends (a "no" to continue, or the arcade route's ending and credits): the title, else the
+		// select screen.
+		auto toTitle = [&](bool secondController) {
+			if (titleLoaded) {
+				title.reset();
+				screen = gameScreen = Screen::Title;
+			} else {
+				resetSelect(secondController);
+				screen = gameScreen = Screen::Select;
+			}
+		};
 		std::function<void()> nextStory = [&]() {
 			while (!storyQueue.empty()) {
 				const std::string path = storyQueue.front();
@@ -1456,7 +1477,8 @@ int main(int argc, char **argv)
 			// handles it itself (it moves to Exit).
 			const bool back = buttons.back.update(pad.back);
 			// The screenpack select screen handles Back itself (out of the palette menu, else back to the title).
-			const bool selectHandlesBack = (screen == Screen::Select && motifSelectLoaded) || screen == Screen::Storyboard;
+			const bool selectHandlesBack = (screen == Screen::Select && motifSelectLoaded) || screen == Screen::Storyboard ||
+				screen == Screen::Victory || screen == Screen::Continue;
 			if (back && screen == Screen::Stage && selectLoaded) {
 				stage.reset();
 				resetSelect(secondController);
@@ -1481,13 +1503,16 @@ int main(int argc, char **argv)
 				wantedMusic = "match " + std::to_string(stage->matchCount());
 			else if (gameScreen == Screen::Victory)
 				wantedMusic = "victory";
+			else if (gameScreen == Screen::Continue)
+				wantedMusic = "continue";
 			else if (gameScreen == Screen::Storyboard && story)
 				wantedMusic = "story " + story->path() + " " + std::to_string(story->sceneIndex());
 			if (wantedMusic != musicFor) {
 				musicFor = wantedMusic;
 				if (wantedMusic == "title" || wantedMusic == "select")
 					music.request(motifLoaded ? motif.music(wantedMusic) : MusicTrack{}, true);
-				else if (wantedMusic == "vs" || wantedMusic == "option" || wantedMusic == "victory")
+				else if (wantedMusic == "vs" || wantedMusic == "option" || wantedMusic == "victory" ||
+					wantedMusic == "continue")
 					music.request(motif.music(wantedMusic), false);
 				else if (text::startsWith(wantedMusic, "story ")) {
 					// A scene with its own bgm starts it; one without leaves the music playing.
@@ -1513,6 +1538,28 @@ int main(int argc, char **argv)
 			if (pad.menu) {
 				gameplayPad.start = false;
 				gameplayPad.lb = false;
+			}
+			if (screen == Screen::Continue) {
+				if (continueBackdrop)
+					continueBackdrop->draw();
+				continueScreen.update(gameplayPad);
+				continueScreen.draw();
+				finishFrame();
+				if (continueScreen.done()) {
+					continueBackdrop.reset();
+					if (continueScreen.continued()) {
+						// Continue: the same match again.
+						startFight(selectedFight);
+						screen = gameScreen = Screen::Stage;
+					} else {
+						// Game over: [Game Over Screen]'s storyboard, then the title.
+						const std::string gameOver = continueScreen.gameOverScreen()
+							? storyboardFor(motif.path(), "game over screen", "storyboard")
+							: std::string();
+						playStories({ gameOver }, [&, secondController]() { toTitle(secondController); });
+					}
+				}
+				continue;
 			}
 			if (screen == Screen::Victory) {
 				motifSelect.updateVictory(gameplayPad, pad2);
@@ -1640,6 +1687,9 @@ int main(int argc, char **argv)
 					const int32_t power[2] = { stage->fighterPower(0), stage->fighterPower(1) };
 					const int32_t timeLeft = stage->timeLeft();
 					const std::string quotes[2] = { stage->victoryQuote(0), stage->victoryQuote(1) };
+					// An arcade loss keeps the fight's last frame, for the continue screen to draw over.
+					if ((mode == SelectMode::Arcade || mode == SelectMode::TeamArcade) && winner == 1)
+						continueBackdrop = std::move(stage);
 					stage.reset();
 					bool nextTurn = false;
 					// A Simul match is a normal best-of match; only Turns goes member by member.
@@ -1654,6 +1704,7 @@ int main(int argc, char **argv)
 						}
 						nextTurn = turns.result(winner);
 						if (nextTurn) {
+							continueBackdrop.reset();
 							startFight(selectedFight);
 							musicFor.clear();
 						} else {
@@ -1691,14 +1742,31 @@ int main(int argc, char **argv)
 						} else {
 							if (arcadeMode)
 								logf("arcade: %s", winner == 0 ? "route complete" : "route lost");
-							// A finished arcade route shows the character's ending first.
-							const std::string ending = arcadeMode && winner == 0
-								? storyboardFor(selectedFight.player1, "arcade", "ending.storyboard")
-								: std::string();
-							playStories({ ending }, [&, secondController]() {
-								resetSelect(secondController);
-								screen = gameScreen = Screen::Select;
-							});
+							if (arcadeMode && winner != 0 && motifLoaded && continueScreen.enabled()) {
+								// Lost: Continue? (Ikemen's continue screen, arcade only).
+								continueScreen.start();
+								screen = gameScreen = Screen::Continue;
+							} else {
+								continueBackdrop.reset();
+								// A finished arcade route: the character's ending, the end credits, then the title.
+								const bool complete = arcadeMode && winner == 0;
+								std::vector<std::string> stories;
+								if (complete) {
+									stories.push_back(storyboardFor(selectedFight.player1, "arcade", "ending.storyboard"));
+									int32_t credits = 1;
+									const IniSection *endCredits = motif.section("end credits");
+									if (endCredits && (!endCredits->readInt("enabled", credits) || credits != 0))
+										stories.push_back(storyboardFor(motif.path(), "end credits", "storyboard"));
+								}
+								playStories(stories, [&, secondController, complete]() {
+									if (complete) {
+										toTitle(secondController);
+									} else {
+										resetSelect(secondController);
+										screen = gameScreen = Screen::Select;
+									}
+								});
+							}
 						}
 					};
 					const bool victoryMode = mode == SelectMode::Arcade || mode == SelectMode::TeamArcade ||
