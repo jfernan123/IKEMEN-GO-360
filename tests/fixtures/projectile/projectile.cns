@@ -66,3 +66,23 @@ type = ChangeState
 trigger1 = time >= 1
 value = 0
 ctrl = 1
+
+; 13c: ProjCancelTime. Right after a clash cancels projectile 8, the owner passes through state 1002.
+[Statedef -2]
+
+[State -2, cancelled]
+type = ChangeState
+trigger1 = stateno = 0 && ProjCancelTime(8) >= 0 && ProjCancelTime(8) < 5
+value = 1002
+
+[Statedef 1002]
+type = S
+movetype = I
+physics = S
+ctrl = 0
+
+[State 1002, done]
+type = ChangeState
+trigger1 = time >= 10
+value = 0
+ctrl = 1

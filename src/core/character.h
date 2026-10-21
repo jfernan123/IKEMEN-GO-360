@@ -21,6 +21,7 @@
 namespace m360 {
 
 class FightEffects;
+class Stage;
 
 // What a character sees of the fight around it, in stage units, kept up to date by the game each frame.
 struct FightWorld {
@@ -38,6 +39,25 @@ struct FightWorld {
 	bool inputWait = false;    // inputs are ignored (time over, waiting for win poses)
 	FightEffects *effects = nullptr;
 	SoundBank *commonSound = nullptr;
+	// The stage's [StageInfo] autoturn.
+	bool autoTurn = true;
+	// How the round ended (WinKO, WinTime, WinPerfect...): by KO, at time over, and the winners at full life.
+	bool finishKO = false, finishTimeOver = false, perfect = false;
+	float cameraZoom = 1;
+	// The stage, for StageVar.
+	const Stage *stage = nullptr;
+};
+
+// How the stage draws the fighters on its floor (its [Shadow] and [Reflection]), in screen-ready values: the shadow's
+// strength after fading, yscale, colour and offset, and the reflection's (all offsets in game units).
+struct GroundDraw {
+	int shadowIntensity;
+	float shadowYScale;
+	uint32_t shadowColour;
+	float shadowOffsetX, shadowOffsetY;
+	int reflection;
+	uint32_t reflectionColour;
+	float reflectionYScale, reflectionOffsetX, reflectionOffsetY;
 };
 
 // AssertSpecial flags a character can hold for a frame (the ones that do something so far).
@@ -55,6 +75,10 @@ constexpr uint32_t NoWalk = 1, NoAutoTurn = 2, NoStandGuard = 4, NoCrouchGuard =
 // toward where it faces.
 class Character : public ExprContext {
 public:
+	Character() = default;
+	Character(const Character &) = delete;
+	Character &operator=(const Character &) = delete;
+	~Character() override;
 	bool load(const std::string &defPath, int paletteNo, std::string &error);
 	// A round begins: at its start position with full life, its fight state cleared, into state 5900 (which goes on
 	// to the intro or to standing). A new match also empties the power gauge.
@@ -102,7 +126,7 @@ public:
 	void tick();
 
 	// reflection: the stage's reflection intensity (0 none), the character mirrored on the floor.
-	void draw(const View &view, float groundY, int shadowIntensity, float shadowYScale, int reflection = 0);
+	void draw(const View &view, float groundY, const GroundDraw &ground);
 	// The attack (red) and hurt (blue) boxes the hit detection uses, for the debug view.
 	void drawBoxes(const View &view, float groundY) const;
 
@@ -244,15 +268,24 @@ private:
 	void runHitBy(const StateController &sc, bool notHitBy);
 	void runAssertSpecial(const StateController &sc);
 
-	// Targets and binding (Ikemen's addTarget, dropTargets, exitTarget, targetBind, updateBinding).
-	// Only the opponent can be a target here: one player against one.
-	bool isTargetBound() const { return bindTo_ != nullptr && targetedBy_ && bindTo_ == p2_; }
+	// Targets and binding (Ikemen's addTarget, dropTargets, exitTarget, targetDrop, targetBind, updateBinding).
+	// Anyone this character hit and still has as a target: an enemy, the other in Simul, a helper (13c).
+	bool isTargetBound() const;
 	void resetBind();
 	void updateBinding();
+	void addTarget(Character &g);
+	void removeTarget(Character &g);
+	// Drops every target (Ikemen's targetDrop with excludeid -1).
 	void dropTarget();
-	// The opponent while it's this character's target, else null.
-	Character *target() const { return targetP2_ ? p2_ : nullptr; }
+	// Off every attacker's list and every target off this one's: a destroyed helper or a reset round.
+	void forgetTargets();
+	// The first target, else null; and Ikemen's getTarget(id, -1): the targets hit by HitDef id (-1 for all).
+	Character *target() const { return targets_.empty() ? nullptr : targets_.front(); }
+	std::vector<Character *> targetsWithId(int32_t id) const;
+	bool projectileContact(int32_t id) const;
+	bool stageVar(const std::string &key, Value &out, std::string &textOut) override;
 	bool runTargetController(const StateController &sc);
+	void runTargetControllerOn(const StateController &sc, Character &target);
 
 	// Parameter helpers for controllers.
 	bool paramF(const StateController &sc, const char *name, size_t index, float &out);
@@ -362,9 +395,10 @@ private:
 	int32_t juggle_ = 0;            // this attack's juggle cost (statedef juggle)
 	float customDefense_ = 1, fallDefenseMul_ = 1;
 	bool defenseMulDelay_ = false;
-	// Targets: whether the opponent is this character's target, and this character is the opponent's (with the
-	// juggle points it has left against it).
-	bool targetP2_ = false, targetedBy_ = false;
+	// Targets: who this character has hit and still holds as targets, who holds it, and whether anyone does (with
+	// the juggle points it has left against them).
+	std::vector<Character *> targets_, attackers_;
+	bool targetedBy_ = false;
 	int32_t juggleLeft_ = 15;
 	// The attacker's backward displacement while its target is pinned to a screen corner.
 	float cornerPushVel_ = 0, cornerPushMul_ = 0.7f;

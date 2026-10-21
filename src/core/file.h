@@ -27,6 +27,10 @@ const std::string &gameRoot();
 std::string searchFile(const std::string &file, const std::vector<std::string> &dirs,
 	const std::vector<std::string> &defaultDirs = {});
 
+// A file a .def names, as Ikemen's LoadFile with {def, "", "data/"} finds it: next to the .def (in folder "dir"),
+// else from the game's root, else under data/. Not found: next to the .def, for the error message.
+std::string findBesideDef(const std::string &dir, const std::string &name);
+
 // The folder part of a path, with its trailing '/': "data/chars/kfm/kfm.def" gives "data/chars/kfm/".
 std::string directoryOf(const std::string &path);
 

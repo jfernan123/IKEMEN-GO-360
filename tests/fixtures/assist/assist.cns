@@ -1,0 +1,25 @@
+; The assist: once the round runs, the fighter calls helper 50, which stands 50 pixels in front of it in
+; state 9000 (KFM's standing animation, so it has a Clsn2 box) until it's hit.
+[Statedef -2]
+
+[State -2, call the assist]
+type = Helper
+trigger1 = !IsHelper && NumHelper(50) = 0 && RoundState = 2
+id = 50
+name = "Assist"
+stateno = 9000
+pos = 50, 0
+postype = p1
+helpertype = normal
+
+[Statedef 9000]
+type = S
+movetype = I
+physics = S
+anim = 0
+ctrl = 0
+velset = 0, 0
+
+[State 9000, stay]
+type = Null
+trigger1 = 1

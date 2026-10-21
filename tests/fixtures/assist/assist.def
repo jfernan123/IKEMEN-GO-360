@@ -1,0 +1,17 @@
+; Milestone 13c: a fighter whose helper (id 50) stands in front of it and can be hit, as an MvC-style assist.
+; Kung Fu Man's files with one extra state file.
+[Info]
+name = "Assist Test"
+displayname = "Assist Test"
+mugenversion = 1.0
+localcoord = 320,240
+
+[Files]
+cmd = ../../../data/chars/kfm/kfm.cmd
+cns = ../../../data/chars/kfm/kfm.cns
+st = assist.cns
+st1 = ../../../data/chars/kfm/kfm.cns
+stcommon = ../../../data/common1.cns
+sprite = ../../../data/chars/kfm/kfm.sff
+anim = ../../../data/chars/kfm/kfm.air
+sound = ../../../data/chars/kfm/kfm.snd

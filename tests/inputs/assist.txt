@@ -1,0 +1,8 @@
+# Stage 13c: an assist helper can be hit. P2 (tests/fixtures/assist) calls helper 50, which stands in front of it;
+# P1 (tests/fixtures/targets) walks up and punches the helper, not P2.
+#   build\pc\mugen360.exe --p1 tests/fixtures/targets/targets.def --p2 tests/fixtures/assist/assist.def --input testsinputsssist.txt --quickstart --quit 90 --trace
+# Expect "p1 frame ...: state 1500 hits: ... on p2h50", the helper into 5000, and P1 1500 -> 1501 -> 1502 (NumTarget(7) and
+# Target, IsHelper: the helper is a target).
+18 R
+2 x
+60 -

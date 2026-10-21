@@ -11,6 +11,7 @@
 #include "core/effects.h"
 #include "core/ini.h"
 #include "core/log.h"
+#include "core/stage.h"
 #include "core/text.h"
 #include "platform/platform.h"
 
@@ -21,12 +22,10 @@ namespace {
 // The most ChangeStates one frame may chain before MUGEN calls it a loop.
 constexpr int MAX_STATE_LOOP = 2500;
 
-// A character's file as Ikemen's char.go finds it (LoadFile with {def, "", "data/"}): next to the .def, else from the
-// game's root, else under data/ (where common1.cns lives). Not found: next to the .def, for the error message.
+// A character's file as Ikemen's char.go finds it: next to the .def, the game's root, data/ (where common1.cns lives).
 std::string findFile(const std::string &dir, const std::string &name)
 {
-	const std::string found = searchFile(name, { dir, "", "data/" });
-	return fileExists(found) ? found : dir + name;
+	return findBesideDef(dir, name);
 }
 
 Value number(const std::string &s)
@@ -348,7 +347,8 @@ void Character::startRound(float px, float py, int face, bool newMatch)
 	juggle_ = 0;
 	customDefense_ = fallDefenseMul_ = 1;
 	defenseMulDelay_ = false;
-	targetP2_ = targetedBy_ = false;
+	forgetTargets();
+	targetedBy_ = false;
 	juggleLeft_ = 0;
 	cornerPushVel_ = 0;
 	cornerPushMul_ = 0.7f;
@@ -415,7 +415,7 @@ bool Character::shouldFaceP2() const
 // Turns to face the opponent, with the turning animation (5 standing, 6 crouching).
 void Character::autoTurn()
 {
-	if (!shouldFaceP2() || (special_ & Special::NoAutoTurn))
+	if (!shouldFaceP2() || (special_ & Special::NoAutoTurn) || (world_ && !world_->autoTurn))
 		return;
 	if (stateType == 'S' && animNo != 5)
 		changeAnim(5);
@@ -1082,13 +1082,17 @@ bool Character::runMiscController(const StateController &sc)
 		if (paramI(sc, "value", 0, i)) {
 			hitCount_ += i;
 			uniqHitCount_ += i;
-			if (Character *t = target())
+			for (Character *t : targets_)
 				t->ghv_.hitcount += i;
 		}
 		return true;
 	case CtrlType::BindToTarget: {
-		// Binds this character to its target: pos x, y from the target, "foot" / "mid" / "head".
-		Character *t = target();
+		// Binds this character to its first target of HitDef id (any without one): pos x, y from the target,
+		// "foot" / "mid" / "head".
+		int32_t bindId = -1;
+		paramI(sc, "id", 0, bindId);
+		const std::vector<Character *> bindTargets = targetsWithId(bindId);
+		Character *t = bindTargets.empty() ? nullptr : bindTargets.front();
 		if (!t)
 			return true;
 		int32_t time = 1;
@@ -1567,11 +1571,13 @@ void Character::actionPrepare()
 	}
 	if (unhittableTime_ > 0)
 		unhittableTime_--;
-	// The opponent stops being a target once it's no longer being hit.
-	if (targetP2_ && p2_ && p2_->moveType != 'H' && !p2_->stchtmp_) {
-		if (p2_->ghv_.type != HitType::None)
-			p2_->ghv_.hitid = -1;
-		targetP2_ = false;
+	// A target stops being one once it's no longer being hit.
+	for (Character *t : std::vector<Character *>(targets_)) {
+		if (t->moveType != 'H' && !t->stchtmp_) {
+			if (t->ghv_.type != HitType::None)
+				t->ghv_.hitid = -1;
+			removeTarget(*t);
+		}
 	}
 	minus_ = 0;
 	for (auto &helper : helpers_)
@@ -1692,8 +1698,10 @@ void Character::actionRun()
 	}
 
 	// Whoever this character holds follows it.
-	if (Character *t = target(); t && t->bindTo_ == this)
-		t->updateBinding();
+	for (Character *t : targets_) {
+		if (t->bindTo_ == this)
+			t->updateBinding();
+	}
 
 	// KO (Ikemen's actionFinish): out of life, it falls (5030) unless already being hit, which ends in a fall anyway.
 	if (!hitPause() && !ko_ && life <= 0 && !(special_ & Special::NoKo)) {
@@ -1873,10 +1881,11 @@ void Character::body(float &left, float &right, float &top) const
 	top = worldY() - height_ * localScale;
 }
 
-void Character::draw(const View &view, float groundY, int shadowIntensity, float shadowYScale, int reflection)
+void Character::draw(const View &view, float groundY, const GroundDraw &ground)
 {
 	for (auto &helper : helpers_)
-		helper->draw(view, groundY, shadowIntensity, shadowYScale, reflection);
+		helper->draw(view, groundY, ground);
+	const int shadowIntensity = ground.shadowIntensity, reflection = ground.reflection;
 	auto drawProjectiles = [&](bool foreground) {
 	for (const Projectile &projectile : projectiles_) {
 		if (!projectile.active)
@@ -1915,21 +1924,38 @@ void Character::draw(const View &view, float groundY, int shadowIntensity, float
 	const float sx = view.screenX((x + shake) * localScale - view.camX);
 	if (reflection > 0) {
 		// Mirrored about the ground, as far below it as the character is above, added onto the floor at the stage's
-		// intensity (Ikemen's reflection: Add transparency, src * intensity, dst * (255 - intensity)).
+		// intensity (Ikemen's reflection: Add transparency, src * intensity, dst * (255 - intensity)), mixed toward
+		// the stage's colour by the intensity, stretched by its yscale and moved by its offset.
 		SpriteDraw mirrored;
 		mirrored.trans = Trans::Add;
 		mirrored.srcAlpha = (uint8_t)reflection;
 		mirrored.dstAlpha = (uint8_t)(255 - reflection);
-		mirrored.scaleY = -1;
-		drawAnim(sx, view.screenY(groundY - y * localScale - view.camY), mirrored);
+		mirrored.scaleY = -ground.reflectionYScale;
+		if (ground.reflectionColour != 0)
+			mirrored.tint = (uint32_t)reflection << 24 | ground.reflectionColour;
+		const float rx = view.screenX((x + shake) * localScale + ground.reflectionOffsetX - view.camX);
+		drawAnim(rx, view.screenY(groundY - y * localScale * ground.reflectionYScale + ground.reflectionOffsetY - view.camY),
+			mirrored);
 	}
-	if (shadowIntensity > 0 && !(special_ & Special::NoShadow)) {
+	if (!(special_ & Special::NoShadow) && (shadowIntensity > 0 || ground.shadowColour != 0)) {
 		// The shadow lies on the ground under the character, the sprite flattened by the stage's shadow yscale: a
-		// positive one falls toward the viewer (drawn upside down), a negative one into the screen.
-		SpriteDraw shadow;
-		shadow.shadow = shadowIntensity;
-		shadow.scaleY = -shadowYScale;
-		drawAnim(sx, view.screenY(groundY - view.camY), shadow);
+		// positive one falls toward the viewer (drawn upside down), a negative one into the screen. Ikemen draws it
+		// twice: darkened by the intensity, then the stage's colour subtracted.
+		const float shx = view.screenX((x + shake) * localScale + ground.shadowOffsetX - view.camX);
+		const float shy = view.screenY(groundY + ground.shadowOffsetY - view.camY);
+		if (shadowIntensity > 0) {
+			SpriteDraw shadow;
+			shadow.shadow = shadowIntensity;
+			shadow.scaleY = -ground.shadowYScale;
+			drawAnim(shx, shy, shadow);
+		}
+		if (ground.shadowColour != 0) {
+			SpriteDraw subtract;
+			subtract.trans = Trans::Sub;
+			subtract.tint = 0xFF000000u | ground.shadowColour;
+			subtract.scaleY = -ground.shadowYScale;
+			drawAnim(shx, shy, subtract);
+		}
 	}
 	// MUGEN 1.0 afterimages sample old animation and position frames. Each older visible sample receives the next
 	// PalBright/PalContrast step, as in Ikemen's AfterImage setup.
@@ -2454,7 +2480,7 @@ void Character::runHelper(const StateController &sc)
 Character *Character::findHelper(int32_t id)
 {
 	for (auto &helper : helpers_) {
-		if (!helper->destroyed_ && (id == 0 || helper->helperId_ == id))
+		if (!helper->destroyed_ && (id <= 0 || helper->helperId_ == id))
 			return helper.get();
 		if (Character *nested = helper->findHelper(id))
 			return nested;
@@ -2676,6 +2702,10 @@ void Character::cancelProjectile(Projectile &projectile)
 	if (--projectile.hits > 0)
 		return;
 	projectile.removing = true;
+	// Ikemen's flagProjCancel: the owner's ProjCancelTime counts from now.
+	projectileContactType_ = 'C';
+	projectileContactTime_ = 0;
+	projectileContactId_ = projectile.id;
 	if (projectile.cancelAnim < 0 ||
 		!setProjectileAnimation(projectile, projectile.cancelAnim, projectile.cancelAnimPrefix))
 		projectile.active = false;
@@ -3122,7 +3152,7 @@ int Character::hitResultCheck(Character &g)
 				hd.envShakePhase, hd.envShakeMul, hd.envShakeDir);
 	}
 	// Each is now on the other's list: the getter is this character's target, with juggle points against it.
-	targetP2_ = true;
+	addTarget(g);
 	if (!g.targetedBy_) {
 		g.targetedBy_ = true;
 		g.juggleLeft_ = airJuggle_;
@@ -3246,8 +3276,8 @@ void Character::beginHitDetection()
 	prevFallflag_ = ghv_.fallflag;
 	// No longer being hit: off the attacker's target list, out of its hold.
 	if ((moveType != 'H' || stateNo == 5150) && targetedBy_) {
-		if (p2_)
-			p2_->targetP2_ = false;
+		for (Character *a : std::vector<Character *>(attackers_))
+			a->removeTarget(*this);
 		if (isTargetBound())
 			resetBind();
 		targetedBy_ = false;
@@ -3260,13 +3290,25 @@ void Character::hitDetection()
 {
 	for (auto &helper : helpers_)
 		helper->hitDetection();
-	// Every enemy, in Simul both (Ikemen checks each attacker against each opponent).
+	// Ikemen's hitDetectionPlayer: everyone on the other side, each enemy (both in Simul) and its helpers (13c: an
+	// assist or summon can be hit), nearest first.
+	std::vector<Character *> getters;
+	const auto addWithHelpers = [&getters](Character *c, const auto &self) -> void {
+		getters.push_back(c);
+		for (auto &helper : c->helpers_)
+			self(helper.get(), self);
+	};
 	if (enemies().empty()) {
 		if (p2_)
-			hitDetectionAgainst(*p2_);
-		return;
+			addWithHelpers(p2_, addWithHelpers);
+	} else {
+		for (Character *e : enemies())
+			addWithHelpers(e, addWithHelpers);
 	}
-	for (Character *g : enemies())
+	std::stable_sort(getters.begin(), getters.end(), [this](const Character *a, const Character *b) {
+		return std::fabs(a->worldX() - worldX()) < std::fabs(b->worldX() - worldX());
+	});
+	for (Character *g : getters)
 		hitDetectionAgainst(*g);
 }
 
@@ -3291,7 +3333,8 @@ void Character::hitDetectionAgainst(Character &target)
 	if (g->resolveReversal(*this))
 		return;
 	const bool canJuggle = (special_ & Special::NoJuggleCheck) ||
-		juggle_ <= (g->targetedBy_ ? g->juggleLeft_ : airJuggle_) || !targetP2_;
+		juggle_ <= (g->targetedBy_ ? g->juggleLeft_ : airJuggle_) ||
+		std::find(targets_.begin(), targets_.end(), g) == targets_.end();
 	if (!canJuggle) {
 		if (!traceLabel.empty() && clsnHits(*g))
 			logf("%s frame %u: state %d juggle rejected, cost %d, %d left", traceLabel.c_str(),
@@ -3331,9 +3374,10 @@ void Character::hitDetectionAgainst(Character &target)
 	if (!traceLabel.empty()) {
 		const GetHitVars &v = g->ghv_;
 		logf("%s frame %u: state %d %s: damage %d, pause %d, shake %d, hittime %d, slide %d, vel %.2f,%.2f, "
-			 "animtype %d",
+			 "animtype %d%s%s",
 			traceLabel.c_str(), world_ ? world_->gameTime : 0, stateNo, result == 2 ? "guarded" : "hits", v.damage,
-			hitPauseTime_, v.hitshaketime, v.hittime, v.slidetime, v.xvel, v.yvel, (int)v.animtype);
+			hitPauseTime_, v.hitshaketime, v.hittime, v.slidetime, v.xvel, v.yvel, (int)v.animtype,
+			g->root_ ? ", on " : "", g->root_ ? g->traceLabel.c_str() : "");
 	}
 }
 
@@ -3398,7 +3442,7 @@ void Character::updateBinding()
 	if (!bindTo_)
 		return;
 	const Character &bt = *bindTo_;
-	if (bt.target() == this) {
+	if (std::find(bt.targets_.begin(), bt.targets_.end(), this) != bt.targets_.end()) {
 		vx = facing * bt.facing * bt.vx * bt.localScale / localScale;
 		vy = bt.vy * bt.localScale / localScale;
 	}
@@ -3407,26 +3451,97 @@ void Character::updateBinding()
 	ghv_.xoff = ghv_.yoff = 0;
 }
 
-void Character::dropTarget()
+Character::~Character()
 {
-	if (Character *t = target()) {
-		if (t->isTargetBound())
-			t->resetBind();
-		t->targetedBy_ = false;
-	}
-	targetP2_ = false;
+	forgetTargets();
 }
 
-// The Target* controllers act on whoever this character has hit and still has as a target (here: the opponent,
-// while it's being hit); "id" picks targets hit by HitDefs of that id.
+bool Character::isTargetBound() const
+{
+	return bindTo_ != nullptr && targetedBy_ &&
+		std::find(attackers_.begin(), attackers_.end(), bindTo_) != attackers_.end();
+}
+
+void Character::addTarget(Character &g)
+{
+	if (std::find(targets_.begin(), targets_.end(), &g) == targets_.end())
+		targets_.push_back(&g);
+	if (std::find(g.attackers_.begin(), g.attackers_.end(), this) == g.attackers_.end())
+		g.attackers_.push_back(this);
+}
+
+void Character::removeTarget(Character &g)
+{
+	targets_.erase(std::remove(targets_.begin(), targets_.end(), &g), targets_.end());
+	g.attackers_.erase(std::remove(g.attackers_.begin(), g.attackers_.end(), this), g.attackers_.end());
+	if (g.attackers_.empty())
+		g.targetedBy_ = false;
+}
+
+void Character::dropTarget()
+{
+	for (Character *t : std::vector<Character *>(targets_)) {
+		if (t->isTargetBound() && t->bindTo_ == this)
+			t->resetBind();
+		removeTarget(*t);
+	}
+}
+
+void Character::forgetTargets()
+{
+	for (Character *t : std::vector<Character *>(targets_)) {
+		if (t->bindTo_ == this)
+			t->resetBind();
+		removeTarget(*t);
+	}
+	for (Character *a : std::vector<Character *>(attackers_))
+		a->removeTarget(*this);
+}
+
+std::vector<Character *> Character::targetsWithId(int32_t id) const
+{
+	std::vector<Character *> out;
+	for (Character *t : targets_) {
+		if (id < 0 || t->ghv_.hitid == id)
+			out.push_back(t);
+	}
+	return out;
+}
+
+// The Target* controllers act on every target hit by HitDef "id" (all of them without one: Ikemen's getTarget).
 bool Character::runTargetController(const StateController &sc)
 {
-	Character *t = target();
 	int32_t id = -1;
-	if (paramI(sc, "id", 0, id) && t && id >= 0 && t->ghv_.hitid != id)
-		t = nullptr;
-	if (!t)
+	paramI(sc, "id", 0, id);
+	if (sc.type == CtrlType::TargetDrop) {
+		// Ikemen's targetDrop: keeps the targets hit by HitDef excludeid (keepone: one of them, at random); with no
+		// excludeid, drops them all.
+		int32_t exclude = -1, keepOne = 1;
+		paramI(sc, "excludeid", 0, exclude);
+		paramI(sc, "keepone", 0, keepOne);
+		std::vector<Character *> keep = exclude < 0 ? std::vector<Character *>() : targetsWithId(exclude);
+		if (keepOne && keep.size() > 1) {
+			random_ = random_ * 1103515245u + 12345u;
+			Character *one = keep[(random_ >> 16) % keep.size()];
+			keep.assign(1, one);
+		}
+		for (Character *t : std::vector<Character *>(targets_)) {
+			if (std::find(keep.begin(), keep.end(), t) != keep.end())
+				continue;
+			if (t->isTargetBound() && t->bindTo_ == this)
+				t->resetBind();
+			removeTarget(*t);
+		}
 		return false;
+	}
+	for (Character *t : targetsWithId(id))
+		runTargetControllerOn(sc, *t);
+	return false;
+}
+
+void Character::runTargetControllerOn(const StateController &sc, Character &target)
+{
+	Character *t = &target;
 	const float ratio = localScale / t->localScale;
 	float f = 0;
 	int32_t i = 0;
@@ -3485,17 +3600,8 @@ bool Character::runTargetController(const StateController &sc)
 		if (paramI(sc, "value", 0, i))
 			t->power = std::clamp(t->power + i, 0, (int32_t)t->constF("data.power", 3000));
 		break;
-	case CtrlType::TargetDrop: {
-		// Drops the targets not hit by HitDef excludeid (with one target, keepone changes nothing).
-		int32_t exclude = -1;
-		paramI(sc, "excludeid", 0, exclude);
-		if (exclude >= 0 && t->ghv_.hitid != exclude)
-			dropTarget();
-		break;
-	}
 	default: break;
 	}
-	return false;
 }
 
 // --- Triggers --------------------------------------------------------------------------------------------------------
@@ -3539,8 +3645,15 @@ Value Character::trigger(Trig t, Value arg)
 	case Trig::RoundNo: return Value::I(world_ ? world_->roundNo : 1);
 	case Trig::RoundsExisted: return Value::I(world_ ? world_->roundsExisted : 0);
 	case Trig::MatchOver: return Value::B(world_ && world_->matchOver);
-	case Trig::Win: return Value::B(world_ && world_->winTeam == playerNo);
-	case Trig::Lose: return Value::B(world_ && world_->winTeam == 1 - playerNo);
+	// Ikemen's win / lose: the side is playerNo & 1, so Simul partners share their leader's result.
+	case Trig::Win: return Value::B(world_ && world_->winTeam == (playerNo & 1));
+	case Trig::Lose: return Value::B(world_ && world_->winTeam == 1 - (playerNo & 1));
+	case Trig::WinKO: return Value::B(world_ && world_->winTeam == (playerNo & 1) && world_->finishKO);
+	case Trig::WinTime: return Value::B(world_ && world_->winTeam == (playerNo & 1) && world_->finishTimeOver);
+	case Trig::WinPerfect: return Value::B(world_ && world_->winTeam == (playerNo & 1) && world_->perfect);
+	case Trig::LoseKO: return Value::B(world_ && world_->winTeam == 1 - (playerNo & 1) && world_->finishKO);
+	case Trig::LoseTime: return Value::B(world_ && world_->winTeam == 1 - (playerNo & 1) && world_->finishTimeOver);
+	case Trig::CameraZoom: return Value::F(world_ ? world_->cameraZoom : 1);
 	case Trig::DrawGame: return Value::B(world_ && world_->roundState >= 3 && world_->winTeam < 0);
 	case Trig::AiLevel: return Value::I(aiLevel);
 	case Trig::NumExplod:
@@ -3548,10 +3661,7 @@ Value Character::trigger(Trig t, Value arg)
 	// IsHelper(id), NumHelper(id), NumTarget(id): -1 for any.
 	case Trig::IsHelper: return Value::B(parent_ != nullptr && (arg.toI() < 0 || helperId_ == arg.toI()));
 	case Trig::NumHelper: return Value::I((root_ ? root_ : this)->helperCount(arg.toI()));
-	case Trig::NumTarget: {
-		const Character *tgt = target();
-		return Value::I(tgt && (arg.toI() < 0 || tgt->ghv_.hitid == arg.toI()) ? 1 : 0);
-	}
+	case Trig::NumTarget: return Value::I((int32_t)targetsWithId(arg.toI()).size());
 	case Trig::NumPartner: return Value::I((int32_t)(root_ ? root_ : this)->partners_.size());
 	case Trig::NumProjID: {
 		int32_t count = 0;
@@ -3559,7 +3669,8 @@ Value Character::trigger(Trig t, Value arg)
 			count += projectile.active && projectile.id == arg.toI();
 		return Value::I(count);
 	}
-	case Trig::ProjCancelTime: return Value::I(-1);
+	case Trig::ProjCancelTime:
+		return Value::I(projectileContact(arg.toI()) && projectileContactType_ == 'C' ? projectileContactTime_ : -1);
 	// Player IDs: player 1 is 56, player 2 57 (MUGEN's first ids), helpers after them.
 	case Trig::ID: return Value::I(parent_ ? 1000 + helperId_ : 56 + playerNo);
 	case Trig::PlayerIDExist: return Value::B(arg.toI() == 56 || arg.toI() == 57);
@@ -3637,14 +3748,97 @@ Value Character::trigger(Trig t, Value arg)
 	case Trig::AnimExist: return Value::B(source_->anims_.find(arg.toI()) != nullptr);
 	// A value written for 1280x720, in this character's units.
 	case Trig::Const720p: return Value::F(arg.toF() * (320.0f / localScale) / 1280.0f);
+	case Trig::Const240p: return Value::F(arg.toF() * (320.0f / localScale) / 320.0f);
+	case Trig::Const480p: return Value::F(arg.toF() * (320.0f / localScale) / 640.0f);
 	case Trig::ProjHitTime:
-		return Value::I(projectileContactId_ == arg.toI() && projectileContactType_ == 'H' ? projectileContactTime_ : -1);
+		return Value::I(projectileContact(arg.toI()) && projectileContactType_ == 'H' ? projectileContactTime_ : -1);
 	case Trig::ProjGuardedTime:
-		return Value::I(projectileContactId_ == arg.toI() && projectileContactType_ == 'G' ? projectileContactTime_ : -1);
+		return Value::I(projectileContact(arg.toI()) && projectileContactType_ == 'G' ? projectileContactTime_ : -1);
 	case Trig::ProjContactTime:
-		return Value::I(projectileContactId_ == arg.toI() && projectileContactType_ != 0 ? projectileContactTime_ : -1);
+		return Value::I(projectileContact(arg.toI()) && projectileContactType_ != 'C' ? projectileContactTime_ : -1);
 	default: return Value::I(0);
 	}
+}
+
+// Ikemen's StageVar (compiler.go's stagevar keys): the stage's settings, positions in this character's units.
+bool Character::stageVar(const std::string &key, Value &out, std::string &textOut)
+{
+	const Stage *s = world_ ? world_->stage : nullptr;
+	if (!s)
+		return false;
+	if (key == "info.name" || key == "info.displayname" || key == "info.author") {
+		textOut = key == "info.name" ? s->name : key == "info.displayname" ? s->displayName : s->author;
+		return true;
+	}
+	const float units = s->localScale / localScale;
+	const StageCamera &c = s->camera;
+	const auto colour = [&](uint32_t rgb, int shift) { return Value::I((int32_t)(rgb >> shift & 0xFF)); };
+	if (key == "camera.boundleft") out = Value::I((int32_t)((float)c.boundleft * units));
+	else if (key == "camera.boundright") out = Value::I((int32_t)((float)c.boundright * units));
+	else if (key == "camera.boundhigh") out = Value::I((int32_t)((float)c.boundhigh * units));
+	else if (key == "camera.boundlow") out = Value::I((int32_t)((float)c.boundlow * units));
+	else if (key == "camera.verticalfollow") out = Value::F(c.verticalfollow);
+	else if (key == "camera.floortension") out = Value::I((int32_t)((float)c.floortension * units));
+	else if (key == "camera.tension") out = Value::I((int32_t)((float)c.tension * units));
+	else if (key == "camera.tensionhigh") out = Value::I((int32_t)((float)c.tensionhigh * units));
+	else if (key == "camera.tensionlow") out = Value::I((int32_t)((float)c.tensionlow * units));
+	else if (key == "camera.tensionvel") out = Value::F(c.tensionvel);
+	else if (key == "camera.cuthigh") out = Value::I(c.cuthigh);
+	else if (key == "camera.cutlow") out = Value::I(c.cutlow);
+	else if (key == "camera.startzoom") out = Value::F(c.startzoom);
+	else if (key == "camera.zoomin") out = Value::F(c.zoomin);
+	else if (key == "camera.zoomout") out = Value::F(c.zoomout);
+	else if (key == "camera.zoomindelay") out = Value::F(c.zoomindelay);
+	else if (key == "camera.zoominspeed") out = Value::F(c.zoominspeed);
+	else if (key == "camera.zoomoutspeed") out = Value::F(c.zoomoutspeed);
+	else if (key == "camera.yscrollspeed") out = Value::F(c.yscrollspeed);
+	else if (key == "camera.ytension.enable") out = Value::B(c.ytensionenable);
+	else if (key == "camera.autocenter") out = Value::B(c.autocenter);
+	else if (key == "camera.lowestcap") out = Value::B(c.lowestcap);
+	else if (key == "playerinfo.leftbound") out = Value::F(s->leftbound * units);
+	else if (key == "playerinfo.rightbound") out = Value::F(s->rightbound * units);
+	else if (key == "playerinfo.p1startx") out = Value::F((float)s->p[0].x * units);
+	else if (key == "playerinfo.p2startx") out = Value::F((float)s->p[1].x * units);
+	else if (key == "playerinfo.p1starty") out = Value::F((float)s->p[0].y * units);
+	else if (key == "playerinfo.p2starty") out = Value::F((float)s->p[1].y * units);
+	else if (key == "playerinfo.p1facing") out = Value::I(s->p[0].facing);
+	else if (key == "playerinfo.p2facing") out = Value::I(s->p[1].facing);
+	else if (key == "bound.screenleft") out = Value::I((int32_t)((float)s->screenleft * units));
+	else if (key == "bound.screenright") out = Value::I((int32_t)((float)s->screenright * units));
+	else if (key == "stageinfo.autoturn") out = Value::B(s->autoTurn);
+	else if (key == "stageinfo.localcoord.x") out = Value::I(s->localWidth);
+	else if (key == "stageinfo.localcoord.y") out = Value::I(s->localHeight);
+	else if (key == "stageinfo.resetbg") out = Value::B(s->resetBg);
+	else if (key == "stageinfo.zoffset") out = Value::I((int32_t)((float)s->zoffset * units));
+	else if (key == "stageinfo.xscale") out = Value::F(s->scaleX);
+	else if (key == "stageinfo.yscale") out = Value::F(s->scaleY);
+	else if (key == "shadow.intensity") out = Value::I(s->shadow.intensity);
+	else if (key == "shadow.color.r") out = colour(s->shadow.colour, 16);
+	else if (key == "shadow.color.g") out = colour(s->shadow.colour, 8);
+	else if (key == "shadow.color.b") out = colour(s->shadow.colour, 0);
+	else if (key == "shadow.yscale") out = Value::F(s->shadow.yscale);
+	else if (key == "shadow.fade.range.begin") out = Value::I((int32_t)((float)s->shadow.fadeBegin * units));
+	else if (key == "shadow.fade.range.end") out = Value::I((int32_t)((float)s->shadow.fadeEnd * units));
+	else if (key == "shadow.offset.x") out = Value::F(s->shadow.offsetX * units);
+	else if (key == "shadow.offset.y") out = Value::F(s->shadow.offsetY * units);
+	else if (key == "reflection.intensity") out = Value::I(s->reflection);
+	else if (key == "reflection.yscale") out = Value::F(s->reflectionYScale);
+	else if (key == "reflection.offset.x") out = Value::F(s->reflectionOffsetX * units);
+	else if (key == "reflection.offset.y") out = Value::F(s->reflectionOffsetY * units);
+	else if (key == "reflection.color.r") out = colour(s->reflectionColour, 16);
+	else if (key == "reflection.color.g") out = colour(s->reflectionColour, 8);
+	else if (key == "reflection.color.b") out = colour(s->reflectionColour, 0);
+	else {
+		compat::note(compat::Kind::Trigger, "stagevar(" + key + ")");
+		return false;
+	}
+	return true;
+}
+
+// Ikemen's projTimeTrigger: the last projectile contact is of this id (0 for any).
+bool Character::projectileContact(int32_t id) const
+{
+	return projectileContactType_ != 0 && (id <= 0 || id == projectileContactId_);
 }
 
 char Character::flag(Flag f)
@@ -3805,7 +3999,11 @@ ExprContext *Character::redirect(Redirect r, int32_t arg)
 	case Redirect::Parent: return parent_;
 	case Redirect::Root: return root_ ? root_ : this;
 	case Redirect::Helper: return (root_ ? root_ : this)->findHelper(arg);
-	case Redirect::Target: return target();
+	case Redirect::Target: {
+		// Target(id): the first target hit by HitDef id; plain Target, the first of any.
+		const std::vector<Character *> list = targetsWithId(arg);
+		return list.empty() ? nullptr : list.front();
+	}
 	default: return nullptr;
 	}
 }

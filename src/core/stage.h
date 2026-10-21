@@ -33,7 +33,7 @@ public:
 	// The view for a camera position: localcoord scaled to the screen's width, the cut split by cuthigh / cutlow.
 	View view(float camX, float camY) const;
 
-	std::string name;
+	std::string name, displayName, author;
 	// [Info] ikemenversion is set: layer -1 is drawn (MUGEN doesn't draw it).
 	bool ikemen = false;
 	bool resetBg = true;
@@ -57,9 +57,19 @@ public:
 		float yscale = 0.4f;
 		// Fully shown below fadeBegin (closer to the ground), gone above fadeEnd; both 0: no fading.
 		int32_t fadeEnd = 0, fadeBegin = 0;
+		// color (0xRRGGBB, subtracted after the darkening; ignored in MUGEN 1.1 stages) and offset, in stage units.
+		uint32_t colour = 0;
+		float offsetX = 0, offsetY = 0;
 	} shadow;
 	// [Reflection] intensity: the fighters mirrored on the floor, 0 (none) to 255.
 	int32_t reflection = 0;
+	// [Reflection] color (the reflection mixed toward it by the intensity), yscale and offset; [StageInfo] autoturn
+	// (fighters turn to face their opponent) and xscale / yscale (StageVar only). Set by load(): default values
+	// here made GCC build them with an instruction Xenia skips (see xenia_scan).
+	uint32_t reflectionColour;
+	float reflectionYScale, reflectionOffsetX, reflectionOffsetY;
+	bool autoTurn;
+	float scaleX, scaleY;
 	// [Music] bgmusic and its settings, found as Ikemen's SearchFile finds it.
 	MusicTrack music;
 

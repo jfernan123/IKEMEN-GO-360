@@ -68,11 +68,19 @@ public:
 	static int32_t cyclePalette(int32_t index, int32_t count, int32_t direction);
 	int32_t rosterSize() const { return (int32_t)roster_.size(); }
 	bool isRandom(int32_t cell) const { return cell < (int32_t)roster_.size() && roster_[(size_t)cell].random; }
+	// A cell that holds a character (not the random cell, not an empty dummyslot / skipslot one).
+	bool isPlayable(int32_t cell) const
+	{
+		return cell >= 0 && cell < (int32_t)roster_.size() && !roster_[(size_t)cell].random &&
+			!roster_[(size_t)cell].empty;
+	}
 
 private:
 	struct Entry {
 		std::string def, name;
 		bool random = false;
+		// select.def's dummyslot / skipslot: a cell with no character in it.
+		bool empty = false;
 		// Portrait sprites are scaled by the screenpack's width over the character's localcoord (Ikemen's resolution
 		// fix), animations also by its [Size] scale.
 		float resFix = 1, sizeScaleX = 1, sizeScaleY = 1;

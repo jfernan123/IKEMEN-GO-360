@@ -208,6 +208,11 @@ bool MotifSelect::load(Motif &motif, const GameConfig &config, std::string &erro
 	for (const std::string &def : config.characters) {
 		Entry e;
 		e.def = def;
+		if (def == "dummyslot" || def == "skipslot") {
+			e.empty = true;
+			roster_.push_back(std::move(e));
+			continue;
+		}
 		if (def == "randomselect") {
 			e.random = true;
 			roster_.push_back(std::move(e));
@@ -230,7 +235,7 @@ bool MotifSelect::load(Motif &motif, const GameConfig &config, std::string &erro
 		// [Size] xscale / yscale from its constants, else 320 / localcoord (Ikemen's cns_scale).
 		e.sizeScaleX = e.sizeScaleY = 320.0f / (float)std::max(1, localW);
 		const std::string dir = directoryOf(def);
-		const std::vector<IniSection> cns = readDef(dir + files->text("cns"));
+		const std::vector<IniSection> cns = readDef(findBesideDef(dir, files->text("cns")));
 		if (const IniSection *size = findSection(cns, "size")) {
 			size->readFloat("xscale", e.sizeScaleX);
 			size->readFloat("yscale", e.sizeScaleY);
@@ -247,7 +252,7 @@ bool MotifSelect::load(Motif &motif, const GameConfig &config, std::string &erro
 		}
 		if (versus_.faceSprite(0) >= 0)
 			keep.emplace_back((uint16_t)versus_.faceSprite(0), (uint16_t)versus_.faceSprite(1));
-		if (charAnims.load(dir + files->text("anim"), animError)) {
+		if (charAnims.load(findBesideDef(dir, files->text("anim")), animError)) {
 			e.hasStance = sides_[0].faceAnim >= 0 && charAnims.get(sides_[0].faceAnim, e.stance);
 			e.hasDone = sides_[0].faceDoneAnim >= 0 && charAnims.get(sides_[0].faceDoneAnim, e.done);
 			e.hasVersus = versus_.faceAnim() >= 0 && charAnims.get(versus_.faceAnim(), e.versus);
@@ -260,7 +265,7 @@ bool MotifSelect::load(Motif &motif, const GameConfig &config, std::string &erro
 		}
 		e.sff = std::make_unique<Sff>();
 		std::string sffError;
-		if (!e.sff->load(dir + files->text("sprite"), sffError, true)) {
+		if (!e.sff->load(findBesideDef(dir, files->text("sprite")), sffError, true)) {
 			logf("select: %s; left out", sffError.c_str());
 			continue;
 		}
@@ -403,7 +408,7 @@ float MotifSelect::cellScale(int32_t column, int32_t row) const
 const MotifSelect::Entry *MotifSelect::entryAt(int32_t x, int32_t y) const
 {
 	const int32_t i = cellIndex(x, y);
-	return i >= 0 && i < (int32_t)roster_.size() ? &roster_[(size_t)i] : nullptr;
+	return i >= 0 && i < (int32_t)roster_.size() && !roster_[(size_t)i].empty ? &roster_[(size_t)i] : nullptr;
 }
 
 // Ikemen's f_cellMovement, one press: along the row or column, wrapping if the screenpack says so, over empty cells
@@ -413,7 +418,10 @@ void MotifSelect::cellMovement(int32_t &x, int32_t &y, int32_t dx, int32_t dy) c
 	const int32_t startX = x, startY = y;
 	const auto usable = [&](int32_t cx, int32_t cy) {
 		const CellOverride *o = override(cx, cy);
-		return (entryAt(cx, cy) || moveOverEmpty_) && !(o && o->skip);
+		// select.def's skipslot is a cell the cursor passes over, as a screenpack's skip.
+		const int32_t i = cellIndex(cx, cy);
+		const bool skipSlot = i >= 0 && i < (int32_t)roster_.size() && roster_[(size_t)i].def == "skipslot";
+		return (entryAt(cx, cy) || moveOverEmpty_) && !(o && o->skip) && !skipSlot;
 	};
 	if (dy != 0) {
 		for (int32_t i = 0; i < rows_; i++) {
@@ -561,7 +569,7 @@ void MotifSelect::confirmPick(int index)
 			// Arcade: make one shuffled route through the real roster, then take its first opponent.
 			std::vector<int32_t> real;
 			for (int32_t i = 0; i < (int32_t)roster_.size(); i++) {
-				if (!roster_[(size_t)i].random)
+				if (isPlayable(i))
 					real.push_back(i);
 			}
 			const auto player = std::find(real.begin(), real.end(), side.chosen);
@@ -629,7 +637,7 @@ void MotifSelect::updateSide(int index, const platform::Pad &now, const platform
 			return;
 		}
 		const int32_t cell = cellIndex(side.x, side.y);
-		if (done && cell >= 0 && cell < (int32_t)roster_.size()) {
+		if (done && cell >= 0 && cell < (int32_t)roster_.size() && !roster_[(size_t)cell].empty) {
 			// The random cell picks whoever it's showing.
 			side.chosen = roster_[(size_t)cell].random ? std::max(0, side.randomShown) : cell;
 			if (side.chosen < 0 || roster_[(size_t)side.chosen].random)
@@ -695,7 +703,7 @@ void MotifSelect::update(const platform::Pad &pad1, const platform::Pad &pad2)
 			side.randomCount = randomSwitch_;
 			std::vector<int32_t> real;
 			for (int32_t i = 0; i < (int32_t)roster_.size(); i++) {
-				if (!roster_[(size_t)i].random)
+				if (isPlayable(i))
 					real.push_back(i);
 			}
 			side.randomShown = real[(size_t)random((int32_t)real.size())];
@@ -827,7 +835,7 @@ bool MotifSelect::nextArcadeMatch()
 		return false;
 	std::vector<int32_t> real;
 	for (int32_t i = 0; i < (int32_t)roster_.size(); i++)
-		if (!roster_[(size_t)i].random)
+		if (isPlayable(i))
 			real.push_back(i);
 	setArcadeOpponent(real);
 	stage_ = stages_.empty() ? 0 : 1 + random((int32_t)stages_.size());
@@ -848,7 +856,7 @@ bool MotifSelect::nextSurvivalMatch()
 	survival_.advance();
 	std::vector<int32_t> real;
 	for (int32_t i = 0; i < (int32_t)roster_.size(); i++)
-		if (!roster_[(size_t)i].random)
+		if (isPlayable(i))
 			real.push_back(i);
 	Side &cpu = sides_[1];
 	cpu.teamChosen.clear();

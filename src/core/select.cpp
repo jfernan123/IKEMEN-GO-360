@@ -52,8 +52,8 @@ bool SelectScreen::load(const GameConfig &config, std::string &error)
 	base_ = config;
 	roster_.clear();
 	for (const std::string &def : config.characters) {
-		// The random cell is only on the screenpack select screen.
-		if (def == "randomselect")
+		// The random cell and empty cells are only on the screenpack select screen.
+		if (def == "randomselect" || def == "dummyslot" || def == "skipslot")
 			continue;
 		Entry e;
 		e.def = def;
@@ -76,7 +76,7 @@ bool SelectScreen::load(const GameConfig &config, std::string &error)
 		if (files) {
 			e.portraits = std::make_unique<Sff>();
 			std::string sffError;
-			if (e.portraits->load(directoryOf(def) + files->text("sprite"), sffError, true)) {
+			if (e.portraits->load(findBesideDef(directoryOf(def), files->text("sprite")), sffError, true)) {
 				e.portraits->keepOnly({ { 9000, 0 }, { 9000, 1 } });
 				e.renderer = std::make_unique<SpriteRenderer>(*e.portraits);
 			} else {
