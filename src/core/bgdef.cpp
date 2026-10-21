@@ -4,6 +4,7 @@
 #include <climits>
 #include <cmath>
 
+#include "core/compat.h"
 #include "core/layout.h"
 #include "core/log.h"
 #include "core/text.h"
@@ -53,7 +54,10 @@ void BgDef::load(const std::vector<IniSection> &sections, const std::string &pre
 		case 'a': bg.type = BgElement::Type::Anim; break;
 		case 'p': bg.type = BgElement::Type::Parallax; break;
 		case 'd': bg.type = BgElement::Type::Dummy; break;
-		default: logf("bgdef: %s: %s: type %s isn't supported", defPath.c_str(), bg.name.c_str(), type.c_str()); continue;
+		default:
+			logf("bgdef: %s: %s: type %s isn't supported", defPath.c_str(), bg.name.c_str(), type.c_str());
+			compat::note(compat::Kind::Background, "type " + type);
+			continue;
 		}
 		s.readInt("layerno", bg.layer);
 		int32_t actionNo = -1;
@@ -94,6 +98,7 @@ void BgDef::load(const std::vector<IniSection> &sections, const std::string &pre
 			bg.trans = Trans::Sub, bg.srcAlpha = 255, bg.dstAlpha = 255, bg.mask = true;
 		} else if (!trans.empty() && trans != "none" && trans != "default") {
 			logf("bgdef: %s: %s: trans %s isn't supported", defPath.c_str(), bg.name.c_str(), trans.c_str());
+			compat::note(compat::Kind::Background, "trans " + trans);
 		}
 		if (bg.trans != Trans::None && s.has("alpha")) {
 			int32_t src = bg.srcAlpha, dst = bg.dstAlpha;
@@ -176,8 +181,10 @@ void BgDef::load(const std::vector<IniSection> &sections, const std::string &pre
 	}
 	if (!unread.empty()) {
 		std::string list;
-		for (const std::string &key : unread)
+		for (const std::string &key : unread) {
 			list += (list.empty() ? "" : ", ") + key;
+			compat::note(compat::Kind::Background, prefix + " " + key);
+		}
 		logf("bgdef: %s: %s elements: not read yet: %s", defPath.c_str(), prefix.c_str(), list.c_str());
 	}
 	if (stage_)
@@ -248,6 +255,7 @@ void BgDef::loadControllers(const std::vector<IniSection> &sections, const std::
 		}
 		if (!known) {
 			logf("bgdef: %s: %s: BGCtrl type %s isn't supported", defPath.c_str(), s.name.c_str(), type.c_str());
+			compat::note(compat::Kind::Background, "BGCtrl type " + type);
 			continue;
 		}
 		s.readInt("time", ctrl.start);

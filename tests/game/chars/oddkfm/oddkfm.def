@@ -1,0 +1,17 @@
+; A test character for the 13b compatibility report: Kung Fu Man's files (found under data/ through Ikemen's
+; search order), plus odd.cns, which uses a controller and a trigger mugen360 doesn't know.
+[Info]
+name = "Odd KFM"
+displayname = "Odd KFM"
+mugenversion = 1.0
+localcoord = 320,240
+
+[Files]
+cmd     = chars/kfm/kfm.cmd
+cns     = chars/kfm/kfm.cns
+st      = odd.cns
+st1     = chars/kfm/kfm.cns
+stcommon = common1.cns
+sprite  = chars/kfm/kfm.sff
+anim    = chars/kfm/kfm.air
+sound   = chars/kfm/kfm.snd

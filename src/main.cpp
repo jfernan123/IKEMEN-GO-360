@@ -34,6 +34,7 @@
 #include "core/character.h"
 #include "core/debug_text.h"
 #include "core/effects.h"
+#include "core/compat.h"
 #include "core/file.h"
 #include "core/game_config.h"
 #include "core/fight_screen.h"
@@ -948,6 +949,7 @@ int main(int argc, char **argv)
 	const bool configLoaded = config.load("data/mugen360.ini", configError);
 	// Test-run options (see InputScript).
 	std::string inputPath, input2Path, forcedMode, p1Arg, p2Arg, stageArg;
+	bool checkRun = false;
 	std::map<uint32_t, std::string> shots;
 	uint32_t quitFrame = UINT32_MAX;
 	int32_t testPower = -1, testP2Life = -1;
@@ -994,11 +996,17 @@ int main(int argc, char **argv)
 			stageArg = argv[++i];
 		else if (arg == "--game" && i + 1 < argc)
 			config.game = argv[++i];
+		else if (arg == "--check") {
+			// --check [folder]: a game's compatibility report, without playing (13b).
+			checkRun = true;
+			if (i + 1 < argc && argv[i + 1][0] != '-')
+				config.game = argv[++i];
+		}
 	}
-	const bool testRun = !inputPath.empty() || !shots.empty() || quitFrame != UINT32_MAX;
+	const bool testRun = !inputPath.empty() || !shots.empty() || quitFrame != UINT32_MAX || checkRun;
 	if (!platform::init(testRun && !show))
 		return 1;
-	logf("mugen360: milestone 13a, game folders, build %s", buildVersion());
+	logf("mugen360: milestone 13b, compatibility report, build %s", buildVersion());
 	// The options, saved in save/config.ini. Test runs keep Ikemen's defaults, so a player's saved options never
 	// change a test's result.
 	Settings settings;
@@ -1030,6 +1038,17 @@ int main(int argc, char **argv)
 	if (!stageArg.empty())
 		config.stage = stageArg;
 	logf("game: p1=%s p2=%s stage=%s", config.player1.c_str(), config.player2.c_str(), config.stage.c_str());
+	// --check: load everything the game names, write compat_<game>.txt next to the log, and stop.
+	if (checkRun) {
+		const std::string report = compat::checkGame(config);
+		std::string name = config.game.empty() ? std::string("mugen360") : config.game;
+		name = name.substr(name.find_last_of('/') + 1);
+		const std::string path = "compat_" + name + ".txt";
+		logf("check: report %s %s", platform::writeWholeFile(path.c_str(), report) ? "written to" : "couldn't be written to",
+			path.c_str());
+		platform::shutdown();
+		return 0;
+	}
 	InputScript script, script2;
 	if (!inputPath.empty() && !script.load(inputPath))
 		logf("mugen360: can't read input script %s", inputPath.c_str());

@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstring>
 
+#include "core/compat.h"
 #include "core/file.h"
 #include "core/effects.h"
 #include "core/ini.h"
@@ -20,14 +21,12 @@ namespace {
 // The most ChangeStates one frame may chain before MUGEN calls it a loop.
 constexpr int MAX_STATE_LOOP = 2500;
 
-// A file next to the character, else under data/ (where common1.cns lives), else as given.
+// A character's file as Ikemen's char.go finds it (LoadFile with {def, "", "data/"}): next to the .def, else from the
+// game's root, else under data/ (where common1.cns lives). Not found: next to the .def, for the error message.
 std::string findFile(const std::string &dir, const std::string &name)
 {
-	for (const std::string &path : { dir + name, "data/" + name, name }) {
-		if (fileExists(path))
-			return path;
-	}
-	return dir + name;
+	const std::string found = searchFile(name, { dir, "", "data/" });
+	return fileExists(found) ? found : dir + name;
 }
 
 Value number(const std::string &s)
@@ -77,7 +76,7 @@ bool Character::load(const std::string &defPath, int paletteNo, std::string &err
 		error = defPath + " has no [Files] section";
 		return false;
 	}
-	if (!source_->sff_.load(dir + files->text("sprite"), error, true))
+	if (!source_->sff_.load(findFile(dir, files->text("sprite")), error, true))
 		return false;
 	// pal1 .. pal12: .act palette files, the character's palettes 1,n (an SFF v1's only ones; in an SFF v2 they replace
 	// the file's own) (Ikemen's loadPalettes).
@@ -87,22 +86,22 @@ bool Character::load(const std::string &defPath, int paletteNo, std::string &err
 		if (!act.empty() && readActPalette(findFile(dir, act), pal))
 			source_->sff_.setPalette(1, (uint16_t)n, pal);
 	}
-	if (!source_->anims_.load(dir + files->text("anim"), error))
+	if (!source_->anims_.load(findFile(dir, files->text("anim")), error))
 		return false;
 	source_->renderer_ = std::make_unique<SpriteRenderer>(source_->sff_);
 	// Palette n is 1,n in an SFF v2; a missing one falls back to the sprites' own.
 	palette_ = source_->sff_.paletteIndex(1, (uint16_t)paletteNo);
 	source_->renderer_->setPalette(palette_);
 	const std::string soundFile = files->text("sound");
-	if (!soundFile.empty() && !source_->sound_.load(dir + soundFile, error))
+	if (!soundFile.empty() && !source_->sound_.load(findFile(dir, soundFile), error))
 		return false;
 
 	const std::string cmd = files->text("cmd");
-	if (!cmd.empty() && !commands.load(dir + cmd, error))
+	if (!cmd.empty() && !commands.load(findFile(dir, cmd), error))
 		return false;
 	const std::string cns = files->text("cns");
 	if (!cns.empty())
-		loadConstants(dir + cns);
+		loadConstants(findFile(dir, cns));
 
 	// States: st, st0..st9 in order, then the CMD (its -1), then the common states. The first to define a state
 	// keeps it, so a character's own files override common1.cns.
@@ -118,7 +117,7 @@ bool Character::load(const std::string &defPath, int paletteNo, std::string &err
 			return false;
 	}
 	if (!cmd.empty())
-		source_->states_.load(dir + cmd, error);
+		source_->states_.load(findFile(dir, cmd), error);
 	const std::string common = files->text("stcommon");
 	if (!common.empty() && !source_->states_.load(findFile(dir, common), error))
 		return false;
@@ -889,8 +888,9 @@ bool Character::runController(const StateController &sc)
 	default:
 		if (runMiscController(sc))
 			return false;
-		// Accepted, not done yet: listed on the debug screen.
+		// Accepted, not done yet: listed on the debug screen and in --check's report.
 		unsupported_[sc.typeName]++;
+		compat::note(compat::Kind::NotDone, text::toLower(sc.typeName));
 		return false;
 	}
 }
@@ -3377,8 +3377,10 @@ void Character::runAssertSpecial(const StateController &sc)
 				known = true;
 			}
 		}
-		if (!known)
+		if (!known) {
 			unsupported_["assertspecial " + flag]++;
+			compat::note(compat::Kind::NotDone, "assertspecial " + flag);
+		}
 	}
 }
 

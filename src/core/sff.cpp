@@ -4,6 +4,7 @@
 #include <cstring>
 
 #include "core/bytes.h"
+#include "core/compat.h"
 #include "core/file.h"
 #include "core/log.h"
 #include "lodepng.h"
@@ -228,6 +229,7 @@ bool Sff::load(const std::string &path, std::string &error, bool character)
 		error = "can't read " + path;
 		return false;
 	}
+	compat::addSpriteBytes(file.size());
 	return loadBytes(file, path, error, character);
 }
 
@@ -312,6 +314,7 @@ bool Sff::loadBytes(const std::vector<uint8_t> &file, const std::string &path, s
 		return loadV1(file, path, error, character);
 	if (version[0] != 2) {
 		error = path + ": SFF version " + std::to_string(version[0]) + " isn't supported";
+		compat::note(compat::Kind::File, "SFF version " + std::to_string(version[0]));
 		return false;
 	}
 	r.skip(4 + 16);

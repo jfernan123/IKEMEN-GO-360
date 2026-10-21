@@ -2,6 +2,7 @@
 [Characters]
 kfm720, stages/stage1.def
 kfm, stages/stage0.def, includestage=0
+oddkfm
 randomselect
 nobody          ; not on disk: left out
 

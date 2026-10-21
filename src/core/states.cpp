@@ -3,6 +3,7 @@
 #include <cctype>
 #include <cstring>
 
+#include "core/compat.h"
 #include "core/file.h"
 #include "core/log.h"
 #include "core/text.h"
@@ -230,6 +231,33 @@ bool StateController::triggered(ExprContext &ctx) const
 	return false;
 }
 
+namespace {
+
+// --check's report (13b): what a load problem says mugen360 lacks. An unknown controller type or trigger is a missing
+// feature; any other parameter that doesn't parse is an expression mugen360 can't read yet.
+void noteMissing(const std::string &what)
+{
+	const std::string unknownType = "unknown controller type ", unknownTrigger = "unknown trigger at '";
+	if (what.compare(0, unknownType.size(), unknownType) == 0) {
+		compat::note(compat::Kind::Controller, text::toLower(what.substr(unknownType.size())));
+		return;
+	}
+	const size_t trigger = what.find(unknownTrigger);
+	if (trigger != std::string::npos) {
+		const size_t start = trigger + unknownTrigger.size();
+		compat::note(compat::Kind::Trigger, text::toLower(what.substr(start, what.find('\'', start) - start)));
+		return;
+	}
+	const size_t eq = what.find(" = ");
+	const size_t colon = eq == std::string::npos ? std::string::npos : what.find(": ", eq);
+	if (colon != std::string::npos)
+		compat::note(compat::Kind::Expression, what.substr(colon + 2));
+	else if (what.find(" isn't one of ") != std::string::npos)
+		compat::note(compat::Kind::Expression, what.substr(0, what.find(" = ")) + " value");
+}
+
+} // namespace
+
 bool StateTable::load(const std::string &path, std::string &error)
 {
 	std::vector<uint8_t> bytes;
@@ -240,6 +268,7 @@ bool StateTable::load(const std::string &path, std::string &error)
 	const std::vector<std::string> lines = text::splitLines(std::string(bytes.begin(), bytes.end()));
 	auto problem = [&](int line, const std::string &what) {
 		stats_.problems.push_back(path + ":" + std::to_string(line) + ": " + what);
+		noteMissing(what);
 	};
 	std::map<int32_t, bool> seenHere;
 
