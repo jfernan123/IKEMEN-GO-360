@@ -25,6 +25,8 @@ struct ExprNode {
 	Op op = Op::Add;                               // Binary; AnimElem's comparison
 	bool negate = false;                           // != forms
 	bool lowOpen = false, highOpen = false;        // Range: ( and ) ends
+	bool isRange = false;                          // AnimElem with ", = [lo, hi]"
+	int32_t hi = 0;
 	std::string name;                              // Command, Const, GetHitVar, FlagIs letters
 	std::string key;                               // StageVar's key
 	int32_t a = 0, b = 0;                          // AnimElem element & time; TimeMod; HitDefAttr masks
@@ -251,12 +253,20 @@ private:
 		return neg ? -v : v;
 	}
 	// "=" or "!="; true for "!=".
+	// Ikemen's checkEquality with ignoreMostErrors, its default: "=" or "!=", else anything up to a symbol ending in
+	// '=' is skipped and that symbol reads as "=" (so "AnimElem >= 5" is "AnimElem = 5", as MUGEN takes it).
 	bool equality()
 	{
 		if (takeSym("="))
 			return false;
 		if (takeSym("!="))
 			return true;
+		for (size_t at = pos_; t_[at].kind != Token::End; at++) {
+			if (t_[at].kind == Token::Sym && !t_[at].text.empty() && t_[at].text.back() == '=') {
+				pos_ = at + 1;
+				return false;
+			}
+		}
 		fail("expected '=' or '!='");
 	}
 
@@ -514,7 +524,22 @@ private:
 				const std::string op = t_[pos_++].text;
 				n->op = op == "=" ? Op::Eq : op == "!=" ? Op::Ne : op == "<" ? Op::Lt : op == ">" ? Op::Gt
 					: op == "<=" ? Op::Le : Op::Ge;
-				n->b = integer();
+				if ((n->op == Op::Eq || n->op == Op::Ne) && (isSym("[") || isSym("("))) {
+					// "AnimElem = 1, = [45, 55]": the time inside a range (Ikemen's evaluateComparison).
+					n->lowOpen = t_[pos_++].text == "(";
+					n->b = integer();
+					expect(",");
+					n->hi = integer();
+					if (takeSym("]"))
+						n->highOpen = false;
+					else if (takeSym(")"))
+						n->highOpen = true;
+					else
+						fail("expected ']' or ')'");
+					n->isRange = true;
+				} else {
+					n->b = integer();
+				}
 				n->hasCompare = true;
 			} else if (isSym(",") && (peek(1).kind == Token::Num || (peek(1).kind == Token::Sym && peek(1).text == "-" &&
 										 peek(2).kind == Token::Num))) {
@@ -794,10 +819,14 @@ Value evalNode(const ExprNode *n, ExprContext &ctx)
 	case NodeKind::AnimElem: {
 		const int32_t t = ctx.trigger(Trig::AnimElemTime, Value::I(n->a)).toI();
 		bool r;
-		if (n->hasCompare)
+		if (n->isRange) {
+			const bool inside = (n->lowOpen ? t > n->b : t >= n->b) && (n->highOpen ? t < n->hi : t <= n->hi);
+			r = (n->op == Op::Eq) == inside;
+		} else if (n->hasCompare) {
 			r = arith(n->op, Value::I(t), Value::I(n->b)).i != 0;
-		else
+		} else {
 			r = t == 0;
+		}
 		return Value::B(r != n->negate);
 	}
 	case NodeKind::TimeMod: {

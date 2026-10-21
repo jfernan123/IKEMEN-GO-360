@@ -234,6 +234,11 @@ void Character::loadConstants(const std::string &cnsPath)
 	if (!readFile(cnsPath, bytes))
 		return;
 	const std::vector<IniSection> sections = parseIni(std::string(bytes.begin(), bytes.end()));
+	source_->quotes_.assign(100, std::string());
+	if (const IniSection *q = findSection(sections, "quotes")) {
+		for (int i = 0; i < 100; i++)
+			source_->quotes_[(size_t)i] = q->text("victory" + std::to_string(i));
+	}
 	for (const char *group : { "data", "size", "velocity", "movement" }) {
 		const IniSection *s = findSection(sections, group);
 		if (!s)
@@ -300,8 +305,10 @@ void Character::startRound(float px, float py, int face, bool newMatch)
 	posReset();
 	ctrl = false;
 	life = lifeMax();
-	if (newMatch)
+	if (newMatch) {
 		power = 0;
+		winQuote_ = -1;
+	}
 	ko_ = overAlive_ = overKo_ = false;
 	powerGain_ = 0;
 	attackMul_ = 1;
@@ -453,11 +460,14 @@ void Character::changeState(int32_t no, int32_t animNoNew, int32_t ctrlNew, cons
 
 void Character::stateChange1(int32_t no, const Character *owner)
 {
+	// The owner is a player, never a helper (Ikemen keeps the owner's playerNo): a helper's states are its player's,
+	// and the player outlives the helper (a helper's throw whose helper is destroyed keeps working).
 	if (owner)
-		stateOwner_ = owner;
+		stateOwner_ = owner->root_ ? owner->root_ : owner;
 	if (!traceLabel.empty())
 		logf("%s frame %u: state %d -> %d%s (time %d, anim %d, pos %.2f,%.2f, vel %.2f,%.2f)", traceLabel.c_str(),
-			world_ ? world_->gameTime : 0, stateNo, no, stateOwner_ != this ? " of the opponent" : "", stateTime,
+			world_ ? world_->gameTime : 0, stateNo, no, stateOwner_ != (root_ ? root_ : this) ? " of the opponent" : "",
+			stateTime,
 			animNo, x, y, vx, vy);
 	prevStateNo = stateNo;
 	stateNo = std::max(0, no);
@@ -1184,9 +1194,13 @@ bool Character::runMiscController(const StateController &sc)
 	case CtrlType::BGPalFX:
 		runGlobalPalFX(sc, false);
 		return true;
-	// Accepted with nothing to do here: rumble, the winner's quote and sound panning.
-	case CtrlType::ForceFeedback:
 	case CtrlType::VictoryQuote:
+		// The quote the victory screen shows (Ikemen's victoryQuote: the root's winquote).
+		if (paramI(sc, "value", 0, i))
+			(root_ ? root_ : this)->winQuote_ = i;
+		return true;
+	// Accepted with nothing to do here: rumble and sound panning.
+	case CtrlType::ForceFeedback:
 	case CtrlType::SndPan:
 		return true;
 	case CtrlType::DisplayToClipboard:
@@ -1711,6 +1725,9 @@ void Character::actionRun()
 		ctrl = false;
 		if (!traceLabel.empty())
 			logf("%s frame %u: KO", traceLabel.c_str(), world_ ? world_->gameTime : 0);
+		// The KO scream, sound 11,0, unless a fighter asserts nokosnd.
+		if (!(world_ && (world_->globalSpecial & Special::NoKoSnd)))
+			source_->sound_.play(11, 0);
 		if (!stchtmp_ && moveType != 'H') {
 			ghv_.fallflag = true;
 			minus_ = 1;
@@ -2218,6 +2235,10 @@ void Character::runHitDef(const StateController &sc)
 	setB("keepstate", hd.keepstate);
 	if (paramI(sc, "hitonce", 0, i))
 		hd.hitonce = i != 0 ? 1 : 0;
+	if (const std::string *team = sc.param("affectteam")) {
+		const char t = team->empty() ? 'E' : (char)std::toupper((unsigned char)(*team)[0]);
+		hd.affectTeam = t == 'B' ? 0 : t == 'F' ? -1 : 1;
+	}
 	setI("damage", hd.hitDamage);
 	if (paramI(sc, "damage", 1, i))
 		hd.guardDamage = i;
@@ -3300,12 +3321,22 @@ void Character::hitDetection()
 		for (auto &helper : c->helpers_)
 			self(helper.get(), self);
 	};
-	if (enemies().empty()) {
-		if (p2_)
-			addWithHelpers(p2_, addWithHelpers);
-	} else {
-		for (Character *e : enemies())
-			addWithHelpers(e, addWithHelpers);
+	// affectteam (Ikemen's teamOk): enemies, the attacker's own side, or both.
+	if (hitdef_.affectTeam >= 0) {
+		if (enemies().empty()) {
+			if (p2_)
+				addWithHelpers(p2_, addWithHelpers);
+		} else {
+			for (Character *e : enemies())
+				addWithHelpers(e, addWithHelpers);
+		}
+	}
+	if (hitdef_.affectTeam <= 0) {
+		Character *leader = root_ ? root_ : this;
+		addWithHelpers(leader, addWithHelpers);
+		for (Character *partner : leader->partners_)
+			addWithHelpers(partner, addWithHelpers);
+		getters.erase(std::remove(getters.begin(), getters.end(), this), getters.end());
 	}
 	std::stable_sort(getters.begin(), getters.end(), [this](const Character *a, const Character *b) {
 		return std::fabs(a->worldX() - worldX()) < std::fabs(b->worldX() - worldX());
@@ -3379,7 +3410,7 @@ void Character::hitDetectionAgainst(Character &target)
 			 "animtype %d%s%s",
 			traceLabel.c_str(), world_ ? world_->gameTime : 0, stateNo, result == 2 ? "guarded" : "hits", v.damage,
 			hitPauseTime_, v.hitshaketime, v.hittime, v.slidetime, v.xvel, v.yvel, (int)v.animtype,
-			g->root_ ? ", on " : "", g->root_ ? g->traceLabel.c_str() : "");
+			g->parent_ ? ", on " : "", g->parent_ ? g->traceLabel.c_str() : "");
 	}
 }
 
@@ -3410,7 +3441,8 @@ void Character::runAssertSpecial(const StateController &sc)
 		{ "nojugglecheck", Special::NoJuggleCheck }, { "unguardable", Special::Unguardable },
 		{ "noko", Special::NoKo }, { "intro", Special::Intro }, { "roundnotover", Special::RoundNotOver },
 		{ "nobardisplay", Special::NoBarDisplay }, { "nofallhitflag", Special::NoFallHitFlag },
-		{ "timerfreeze", Special::TimerFreeze }, { "nocornerpush", Special::NoCornerPush } };
+		{ "timerfreeze", Special::TimerFreeze }, { "nocornerpush", Special::NoCornerPush }, { "nobg", Special::NoBg },
+		{ "nofg", Special::NoFg }, { "nokosnd", Special::NoKoSnd } };
 	for (const char *param : { "flag", "flag2", "flag3" }) {
 		const std::string *v = sc.param(param);
 		if (!v)
@@ -3420,6 +3452,8 @@ void Character::runAssertSpecial(const StateController &sc)
 		for (const auto &[n, bit] : names) {
 			if (flag == n) {
 				special_ |= bit;
+				if ((bit & (Special::NoBg | Special::NoFg | Special::NoKoSnd)) && world_)
+					world_->globalSpecial |= bit;
 				known = true;
 			}
 		}
@@ -3835,6 +3869,24 @@ bool Character::stageVar(const std::string &key, Value &out, std::string &textOu
 		return false;
 	}
 	return true;
+}
+
+std::string Character::victoryQuote()
+{
+	const std::vector<std::string> &quotes = source_->quotes_;
+	int32_t index = winQuote_;
+	if (index < 0 || index >= (int32_t)quotes.size() || quotes[(size_t)index].empty()) {
+		std::vector<int32_t> available;
+		for (int32_t q = 0; q < (int32_t)quotes.size(); q++) {
+			if (!quotes[(size_t)q].empty())
+				available.push_back(q);
+		}
+		if (available.empty())
+			return {};
+		random_ = random_ * 1103515245u + 12345u;
+		index = available[(random_ >> 16) % available.size()];
+	}
+	return quotes[(size_t)index];
 }
 
 // Ikemen's projTimeTrigger: the last projectile contact is of this id (0 for any).

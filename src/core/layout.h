@@ -18,7 +18,13 @@ namespace m360 {
 struct ScreenSpace {
 	float scale = 1;
 	float originX = 0, originY = 0;
+	// The screenpack's area on the screen, in screen pixels: all of it, or (a 4:3 screenpack on the 16:9 screen) a
+	// centred area with black bars at the sides, as the stages are.
+	float width = (float)platform::SCREEN_WIDTH;
+	// Fitted inside the screen, keeping its shape (Ikemen keeps the aspect).
 	static ScreenSpace forLocalcoord(int32_t width, int32_t height);
+	// Black over the bars beside the area, after a screen has drawn (its backgrounds may reach past it).
+	void drawBars() const;
 	float x(float localX) const { return originX + localX * scale; }
 	float y(float localY) const { return originY + localY * scale; }
 };

@@ -1,0 +1,19 @@
+; A state with a malformed controller header ("[State ..)" without its "]"), as in DC vs MARVEL's Captain America:
+; Ikemen skips that controller only, so the ChangeState after it still belongs to the state.
+[Statedef 9901]
+type = A
+
+[State 9901, before]
+type = Null
+trigger1 = 1
+
+[State 9901, VarSet)
+type = VarSet
+trigger1 = 1
+v = 1
+value = 1
+
+[State 9901, after]
+type = ChangeState
+trigger1 = AnimTime = 0
+value = 0

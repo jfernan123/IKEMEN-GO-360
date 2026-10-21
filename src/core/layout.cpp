@@ -15,9 +15,24 @@ ScreenSpace ScreenSpace::forLocalcoord(int32_t width, int32_t height)
 	ScreenSpace space;
 	if (width <= 0 || height <= 0)
 		return space;
-	space.scale = (float)platform::SCREEN_WIDTH / (float)width;
-	space.originY = (platform::SCREEN_HEIGHT - height * space.scale) / 2;
+	space.scale = std::min((float)platform::SCREEN_WIDTH / (float)width, (float)platform::SCREEN_HEIGHT / (float)height);
+	space.width = (float)width * space.scale;
+	space.originX = ((float)platform::SCREEN_WIDTH - space.width) / 2;
+	space.originY = ((float)platform::SCREEN_HEIGHT - (float)height * space.scale) / 2;
 	return space;
+}
+
+void ScreenSpace::drawBars() const
+{
+	if (originX >= 1) {
+		platform::fillRect(0, 0, originX, platform::SCREEN_HEIGHT, 0xFF000000);
+		platform::fillRect(originX + width, 0, platform::SCREEN_WIDTH - (originX + width), platform::SCREEN_HEIGHT,
+			0xFF000000);
+	}
+	if (originY >= 1) {
+		platform::fillRect(0, 0, platform::SCREEN_WIDTH, originY, 0xFF000000);
+		platform::fillRect(0, platform::SCREEN_HEIGHT - originY, platform::SCREEN_WIDTH, originY, 0xFF000000);
+	}
 }
 
 void loadFonts(const IniSection &files, const std::string &defPath, FontTable &out)
@@ -30,13 +45,13 @@ void loadFonts(const IniSection &files, const std::string &defPath, FontTable &o
 		if (name.empty())
 			continue;
 		std::string error = "can't find " + name;
-		for (const std::string &path : { directoryOf(defPath) + name, "data/" + name, "data/font/" + name }) {
-			if (!fileExists(path))
-				continue;
+		// Ikemen's LoadFile with {def, "", "data/"} and "font/": next to the def, the game's root, data/, each also
+		// under font/.
+		const std::string path = searchFile(name, { defPath, "", "data/" }, { "font/" });
+		if (fileExists(path)) {
 			auto font = std::make_unique<Font>();
 			if (font->load(path, error))
 				out[number] = std::move(font);
-			break;
 		}
 		if (!out.count(number))
 			logf("fonts: %s: font%d: %s", defPath.c_str(), number, error.c_str());

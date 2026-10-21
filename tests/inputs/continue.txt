@@ -1,0 +1,20 @@
+# Stage 13e continue screen: ARCADE as in arcade.txt, a one-round match (--wins 1) with player 1 at 1 life
+# (--p1life 1) walking into the computer until it lands a hit; ikemen1's continue countdown shows over the lost
+# fight, Start continues, and the same match starts again.
+#   build\pc\mugen360.exe --title --wins 1 --p1life 1 --input tests\inputs\continue.txt --quit 4600 --trace
+# Expect "arcade: route lost", "continue: counting down", "continue: yes" and a second "match: round 1".
+30 -
+2 a
+10 -
+2 a
+40 -
+2 a
+10 -
+2 a
+200 -
+2 s
+300 -
+600 R
+2600 -
+2 s
+1000 -

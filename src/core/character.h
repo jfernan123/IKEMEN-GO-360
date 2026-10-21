@@ -41,6 +41,8 @@ struct FightWorld {
 	SoundBank *commonSound = nullptr;
 	// The stage's [StageInfo] autoturn.
 	bool autoTurn = true;
+	// Global AssertSpecial flags this tick (Special::NoBg, NoFg, NoKoSnd), cleared as each tick starts.
+	mutable uint32_t globalSpecial = 0;
 	// How the round ended (WinKO, WinTime, WinPerfect...): by KO, at time over, and the winners at full life.
 	bool finishKO = false, finishTimeOver = false, perfect = false;
 	float cameraZoom = 1;
@@ -65,7 +67,9 @@ namespace Special {
 constexpr uint32_t NoWalk = 1, NoAutoTurn = 2, NoStandGuard = 4, NoCrouchGuard = 8, NoAirGuard = 16, Invisible = 32,
 				   NoShadow = 64, NoJuggleCheck = 128, Unguardable = 256, NoKo = 512, Intro = 1024,
 				   RoundNotOver = 2048, NoBarDisplay = 4096, NoFallHitFlag = 8192, TimerFreeze = 16384,
-				   NoCornerPush = 32768;
+				   NoCornerPush = 32768,
+				   // Global ones (Ikemen's GSF): any fighter asserting them changes the whole fight this tick.
+				   NoBg = 65536, NoFg = 131072, NoKoSnd = 262144;
 }
 
 // A MUGEN character, run by its own state files. Loads its .def, SFF, AIR, CMD and CNS (states and constants) and
@@ -283,6 +287,13 @@ private:
 	Character *target() const { return targets_.empty() ? nullptr : targets_.front(); }
 	std::vector<Character *> targetsWithId(int32_t id) const;
 	bool projectileContact(int32_t id) const;
+
+public:
+	// The victory screen's quote (Ikemen's getVictoryQuote): the one VictoryQuote picked, else a random one of the
+	// character's; empty when it has none.
+	std::string victoryQuote();
+
+private:
 	bool stageVar(const std::string &key, Value &out, std::string &textOut) override;
 	bool runTargetController(const StateController &sc);
 	void runTargetControllerOn(const StateController &sc, Character &target);
@@ -297,6 +308,10 @@ private:
 	AnimationTable anims_;
 	StateTable states_;
 	std::map<std::string, Value> constants_;
+	// [Quotes] victory0..victory99 from the constants file (Ikemen's gi.quotes); empty where unset.
+	std::vector<std::string> quotes_;
+	// The VictoryQuote controller's choice this match, -1 for none (a random one is shown).
+	int32_t winQuote_ = -1;
 	std::string defPath_;
 	std::unique_ptr<SpriteRenderer> renderer_;
 	SoundBank sound_;

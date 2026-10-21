@@ -146,7 +146,10 @@ bool isTextParam(CtrlType type, const std::string &p)
 	static const char *const anywhere[] = { "attr", "hitflag", "guardflag", "animtype", "air.animtype",
 		"fall.animtype", "ground.type", "air.type", "sparkno", "guard.sparkno", "hitsound", "guardsound",
 		"reversal.attr", "postype", "trans", "waveform", "flag", "flag2", "flag3", "p2getp1state", "space",
-		"getpower", "givepower", "text", "palfx.color", "projhitanim", "projremanim", "projcancelanim", "projsprpriority" };
+		"getpower", "givepower", "text", "palfx.color", "projhitanim", "projremanim", "projcancelanim", "projsprpriority",
+		// Words, or parameters a controller doesn't have that MUGEN characters write anyway (Ikemen ignores them):
+		// "name" labels, helpertype on an Explod, statetype / movetype / physics on a ChangeState.
+		"affectteam", "afterimage.trans", "helpertype", "name", "statetype", "movetype", "physics" };
 	for (const char *n : anywhere) {
 		if (p == n)
 			return true;
@@ -162,7 +165,10 @@ bool isTextParam(CtrlType type, const std::string &p)
 		return true;
 	if (type == CtrlType::Helper && (p == "helpertype" || p == "name"))
 		return true;
-	if (type == CtrlType::HitDef && p == "priority")
+	if ((type == CtrlType::HitDef || type == CtrlType::ReversalDef || type == CtrlType::Projectile) && p == "priority")
+		return true;
+	// Null does nothing with what it's given; old StateTypeSet "value" isn't a parameter (Ikemen ignores both).
+	if (type == CtrlType::Null || (type == CtrlType::StateTypeSet && p == "value"))
 		return true;
 	return false;
 }
@@ -357,8 +363,19 @@ bool StateTable::load(const std::string &path, std::string &error)
 				i++;
 				continue;
 			}
-			if (!stateHeader(head))
+			if (!stateHeader(head)) {
+				// Ikemen's SectionName: a "[" line without its "]" ("[State 1201, VarSet)") isn't a section; it and
+				// its keys are skipped, and the state goes on at the next header.
+				if (head.back() != ']') {
+					for (i++; i < lines.size(); i++) {
+						const std::string next = uncommented(lines[i]);
+						if (!next.empty() && next[0] == '[')
+							break;
+					}
+					continue;
+				}
 				break;
+			}
 			StateController sc;
 			sc.file = path;
 			sc.line = (int)i + 1;
@@ -402,8 +419,11 @@ bool StateTable::load(const std::string &path, std::string &error)
 					continue;
 				}
 				if (name == "type") {
-					sc.typeName = text::toLower(value);
-					sc.type = ctrlType(sc.typeName);
+					// The first "type" wins, as every key in an Ikemen section.
+					if (sc.typeName.empty()) {
+						sc.typeName = text::toLower(value);
+						sc.type = ctrlType(sc.typeName);
+					}
 				} else if (name == "persistent") {
 					sc.persistent = text::atoi(value);
 				} else if (name == "ignorehitpause") {
@@ -441,7 +461,14 @@ bool StateTable::load(const std::string &path, std::string &error)
 				if (!isExpressionParam(sc.type, p.name))
 					continue;
 				std::string err;
-				p.exprs = parseExprList(resourcePrefix(p.text, p.prefix), err);
+				// BindToTarget's "pos = x, y, mid": the third is a word (foot / mid / head), read from the text.
+				std::string source = p.text;
+				if (sc.type == CtrlType::BindToTarget && p.name == "pos") {
+					const size_t second = source.find(',', source.find(',') + 1);
+					if (second != std::string::npos && source.find(',') != std::string::npos)
+						source.resize(second);
+				}
+				p.exprs = parseExprList(resourcePrefix(source, p.prefix), err);
 				if (!err.empty()) {
 					problem(sc.line, sc.typeName + " " + p.name + " = " + p.text + ": " + err);
 					stats_.paramErrors++;

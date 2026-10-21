@@ -73,6 +73,11 @@ private:
 	int32_t footerWindow_[4] = { 0, 0, 0, 0 };
 	bool footer_ = false;
 	int32_t moveSnd_[2] = { -1, 0 }, doneSnd_[2] = { -1, 0 }, cancelSnd_[2] = { -1, 0 };
+	// menu.boxcursor.*: set by load() (no default values here, see xenia_scan).
+	bool boxCursor_;
+	int32_t boxCoords_[4], boxPulse_[3];
+	uint32_t boxColour_;
+	float boxPhase_;
 	ScreenFade fadeIn_, fadeOut_;
 
 	TitleChoice pending_ = TitleChoice::None, result_ = TitleChoice::None;

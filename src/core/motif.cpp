@@ -55,6 +55,8 @@ View Motif::view() const
 	View v;
 	v.scale = space_.scale;
 	v.topCut = -space_.originY / space_.scale;
+	v.originX = space_.originX;
+	v.width = space_.width;
 	return v;
 }
 

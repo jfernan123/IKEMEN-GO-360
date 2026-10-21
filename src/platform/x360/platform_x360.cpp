@@ -186,7 +186,7 @@ void pace()
 
 } // namespace
 
-bool init(bool)
+bool init(bool, const char *)
 {
 	if (!NT_SUCCESS(xsdk_gpu_open())) {
 		logLine("platform: GPU open failed");

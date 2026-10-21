@@ -96,6 +96,7 @@ bool MotifSelect::load(Motif &motif, const GameConfig &config, std::string &erro
 	}
 	motif.loadBg("selectbg", bg_, clearColour_);
 	versus_.load(motif);
+	victory_.load(motif);
 	IniSection s;
 	for (const auto &pair : SELECT_DEFAULTS)
 		s.values[pair[0]] = pair[1];
@@ -133,6 +134,17 @@ bool MotifSelect::load(Motif &motif, const GameConfig &config, std::string &erro
 	fadeIn_.read("fadein.", s);
 	fadeOut_.read("fadeout.", s);
 	s.floats("stage.pos", { &stagePos_[0], &stagePos_[1] });
+	timerText_.read("timer.", s);
+	timerFormat_ = s.has("timer.text") ? s.text("timer.text") : std::string("%i");
+	timerCount_ = -1;
+	timerFrames_ = 60;
+	timerDisplay_ = 10;
+	s.readInt("timer.count", timerCount_);
+	s.readInt("timer.framespercount", timerFrames_);
+	timerFrames_ = std::max(1, timerFrames_);
+	s.readInt("timer.displaytime", timerDisplay_);
+	selectTimer_ = timerShown_ = 0;
+	motif.resolveFont(timerText_);
 	stageActive_.read("stage.active.", s);
 	stageActive2_.read("stage.active2.", s);
 	stageDone_.read("stage.done.", s);
@@ -252,6 +264,10 @@ bool MotifSelect::load(Motif &motif, const GameConfig &config, std::string &erro
 		}
 		if (versus_.faceSprite(0) >= 0)
 			keep.emplace_back((uint16_t)versus_.faceSprite(0), (uint16_t)versus_.faceSprite(1));
+		for (int slot = 0; slot < 2; slot++) {
+			if (victory_.sprite(slot, 0) >= 0)
+				keep.emplace_back((uint16_t)victory_.sprite(slot, 0), (uint16_t)victory_.sprite(slot, 1));
+		}
 		if (charAnims.load(findBesideDef(dir, files->text("anim")), animError)) {
 			e.hasStance = sides_[0].faceAnim >= 0 && charAnims.get(sides_[0].faceAnim, e.stance);
 			e.hasDone = sides_[0].faceDoneAnim >= 0 && charAnims.get(sides_[0].faceDoneAnim, e.done);
@@ -263,9 +279,10 @@ bool MotifSelect::load(Motif &motif, const GameConfig &config, std::string &erro
 				}
 			}
 		}
+		// Only the sprites the screens draw, read from the file in pieces (13: a big roster's files are GBs).
 		e.sff = std::make_unique<Sff>();
 		std::string sffError;
-		if (!e.sff->load(findBesideDef(dir, files->text("sprite")), sffError, true)) {
+		if (!e.sff->loadSome(findBesideDef(dir, files->text("sprite")), keep, sffError, true)) {
 			logf("select: %s; left out", sffError.c_str());
 			continue;
 		}
@@ -300,11 +317,10 @@ bool MotifSelect::load(Motif &motif, const GameConfig &config, std::string &erro
 		portrait.resFix = portraitScale * (float)motif.localWidth() / (float)std::max(1, localW);
 		std::string sffError;
 		portrait.sff = std::make_unique<Sff>();
-		if (!spr.empty() && (portrait.sff->load(directoryOf(stage) + spr, sffError) || portrait.sff->load("data/" + spr, sffError))) {
-			std::vector<std::pair<uint16_t, uint16_t>> keep = { { (uint16_t)stagePortraitSpr_[0], (uint16_t)stagePortraitSpr_[1] } };
-			if (versus_.stageSprite(0) >= 0)
-				keep.emplace_back((uint16_t)versus_.stageSprite(0), (uint16_t)versus_.stageSprite(1));
-			portrait.sff->keepOnly(keep);
+		std::vector<std::pair<uint16_t, uint16_t>> keep = { { (uint16_t)stagePortraitSpr_[0], (uint16_t)stagePortraitSpr_[1] } };
+		if (versus_.stageSprite(0) >= 0)
+			keep.emplace_back((uint16_t)versus_.stageSprite(0), (uint16_t)versus_.stageSprite(1));
+		if (!spr.empty() && portrait.sff->loadSome(findBesideDef(directoryOf(stage), spr), keep, sffError)) {
 			portrait.renderer = std::make_unique<SpriteRenderer>(*portrait.sff);
 		} else {
 			portrait.sff.reset();
@@ -475,6 +491,7 @@ void MotifSelect::reset(SelectMode mode, bool secondController, int32_t presetTe
 	phase_ = Phase::Characters;
 	cancelled_ = false;
 	timer_ = 0;
+	selectTimer_ = 0;
 	versusStarted_ = false;
 	stage_ = 0;
 	stageCount_ = 0;
@@ -602,7 +619,9 @@ void MotifSelect::updateSide(int index, const platform::Pad &now, const platform
 	Side &side = sides_[index];
 	const bool up = pressed(now.up, before.up), down = pressed(now.down, before.down);
 	const bool left = pressed(now.left, before.left), right = pressed(now.right, before.right);
-	const bool done = pressed(doneButton(now), doneButton(before));
+	// A select timer that has run out confirms what's under the cursor (Ikemen's timerSelect == -1).
+	const bool expired = timerExpired();
+	const bool done = pressed(doneButton(now), doneButton(before)) || expired;
 	const bool start = pressed(now.start, before.start), cancel = pressed(now.back, before.back);
 	if (side.state == -1) {
 		// Ikemen's f_teamMenu: up / down choose Single, Simul or Turns; the member counts are fixed at what mugen360
@@ -622,6 +641,7 @@ void MotifSelect::updateSide(int index, const platform::Pad &now, const platform
 			side.numChars = side.teamMode == TEAM_SINGLE ? 1 : 2;
 			side.state = 0;
 			motif_->play(side.teamDoneSnd);
+			restartTimer();
 			logf("select: p%d team %s", index + 1, teamNames_[side.teamMode].c_str());
 		}
 		return;
@@ -636,13 +656,25 @@ void MotifSelect::updateSide(int index, const platform::Pad &now, const platform
 			cancelled_ = true;
 			return;
 		}
-		const int32_t cell = cellIndex(side.x, side.y);
+		int32_t cell = cellIndex(side.x, side.y);
+		// Out of time on an empty cell or the random one: a random character (Ikemen's f_randomChar).
+		if (expired && (cell < 0 || cell >= (int32_t)roster_.size() || !isPlayable(cell))) {
+			std::vector<int32_t> real;
+			for (int32_t i = 0; i < (int32_t)roster_.size(); i++) {
+				if (isPlayable(i))
+					real.push_back(i);
+			}
+			if (!real.empty())
+				cell = real[(size_t)random((int32_t)real.size())];
+			side.randomShown = cell;
+		}
 		if (done && cell >= 0 && cell < (int32_t)roster_.size() && !roster_[(size_t)cell].empty) {
 			// The random cell picks whoever it's showing.
 			side.chosen = roster_[(size_t)cell].random ? std::max(0, side.randomShown) : cell;
 			if (side.chosen < 0 || roster_[(size_t)side.chosen].random)
 				return;
 			motif_->play(side.doneSnd);
+			restartTimer();
 			const Entry &e = roster_[(size_t)side.chosen];
 			// Straight to the palette menu, on palette 1 (Ikemen's paletteselect 3); one palette needs no menu.
 			side.palIndex = 1;
@@ -661,6 +693,7 @@ void MotifSelect::updateSide(int index, const platform::Pad &now, const platform
 	if (done) {
 		side.palette = side.palIndex > count ? side.randomPreview : e.palettes[(size_t)side.palIndex - 1];
 		motif_->play(side.palDoneSnd);
+		restartTimer();
 		confirmPick(index);
 	} else if (up || right || down || left) {
 		side.palIndex = cyclePalette(side.palIndex, count, up || right ? 1 : -1);
@@ -717,6 +750,20 @@ void MotifSelect::update(const platform::Pad &pad1, const platform::Pad &pad2)
 	cellRandom_.action();
 	stageBg_.action();
 
+	// The select timer while characters and the stage are being chosen (Ikemen's main.f_drawTimer).
+	if (timerCount_ >= 0 && (phase_ == Phase::Characters || phase_ == Phase::Stage) && !fadeIn_.isActive()) {
+		const int32_t num = (int32_t)std::lround((double)(timerCount_ * timerFrames_ - selectTimer_ + timerDisplay_) /
+			(double)timerFrames_);
+		if (num <= -1) {
+			if (selectTimer_ != -1)
+				logf("select: timer ran out");
+			selectTimer_ = -1;
+			timerShown_ = 0;
+		} else if (selectTimer_ != -1) {
+			selectTimer_++;
+			timerShown_ = std::max(0, num);
+		}
+	}
 	const platform::Pad now[2] = { pad1, pad2 };
 	switch (phase_) {
 	case Phase::Characters:
@@ -767,8 +814,9 @@ void MotifSelect::update(const platform::Pad &pad1, const platform::Pad &pad2)
 					stage_ = 0;
 			}
 		}
-		if (pressed(doneButton(p), doneButton(b))) {
+		if (pressed(doneButton(p), doneButton(b)) || timerExpired()) {
 			motif_->play(stageDoneSnd_);
+			restartTimer();
 			if (stage_ == 0)
 				stage_ = 1 + random(count);
 			logf("select: stage %s", stageNames_[(size_t)stage_ - 1].c_str());
@@ -906,6 +954,32 @@ void MotifSelect::startVersus()
 																					 : 0;
 	versus_.start(fighters, stage, matchNo);
 	versusStarted_ = true;
+}
+
+bool MotifSelect::startVictory(int winnerSide, const std::string &quote, bool computerWon)
+{
+	if (winnerSide < 0 || winnerSide > 1 ||
+		!victory_.wanted(computerWon, mode_ == SelectMode::Versus || mode_ == SelectMode::TeamVersus))
+		return false;
+	// The winner in the first slot, the loser in the second (Ikemen without keepside).
+	VersusScreen::Fighter fighters[2];
+	for (int i = 0; i < 2; i++) {
+		const Side &side = sides_[i == 0 ? winnerSide : 1 - winnerSide];
+		const int32_t chosen = side.teamChosen.empty() ? side.chosen : side.teamChosen.front();
+		if (chosen < 0 || chosen >= (int32_t)roster_.size())
+			return false;
+		const Entry &e = roster_[(size_t)chosen];
+		VersusScreen::Fighter &f = fighters[i];
+		f.name = e.name;
+		f.sff = e.sff.get();
+		f.renderer = e.renderer.get();
+		f.resFix = e.resFix;
+		f.sizeScaleX = e.sizeScaleX;
+		f.sizeScaleY = e.sizeScaleY;
+		f.palette = side.teamPalettes.empty() ? side.palette : side.teamPalettes.front();
+	}
+	victory_.start(fighters, quote);
+	return true;
 }
 
 GameConfig MotifSelect::fight() const
@@ -1135,6 +1209,7 @@ void MotifSelect::draw()
 		fadeOut_.draw();
 	else if (fadeIn_.isActive())
 		fadeIn_.draw();
+	motif_->space().drawBars();
 }
 
 // One pass of Ikemen's f_selectScreen draw order: the title, the big portraits, the grid, the cursors, the names, the
@@ -1197,6 +1272,14 @@ void MotifSelect::drawElements()
 	for (int i = 0; i < 2; i++)
 		drawTeamMenu(i);
 	drawStage();
+	if (timerCount_ >= 0 && (phase_ == Phase::Characters || phase_ == Phase::Stage) &&
+		(selectTimer_ == -1 || selectTimer_ >= timerDisplay_)) {
+		std::string line = timerFormat_;
+		const size_t at = line.find("%i");
+		if (at != std::string::npos)
+			line.replace(at, 2, std::to_string(timerShown_));
+		timerText_.draw(line, 0, 0, timerText_.layout.layer, motif_->fonts(), motif_->space());
+	}
 }
 
 } // namespace m360

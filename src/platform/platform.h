@@ -40,7 +40,9 @@ struct Vertex {
 };
 
 // hidden: no window on screen (PC test runs); the 360 ignores it.
-bool init(bool hidden = false);
+// logName: the PC's log file (test runs keep m360.log; playing writes another, so a game left open and a test run
+// don't overwrite each other's). The 360 always writes default.log.
+bool init(bool hidden = false, const char *logName = "m360.log");
 void shutdown();
 
 // Starts a frame; false once the window is closed (PC). Clears to clear_argb.

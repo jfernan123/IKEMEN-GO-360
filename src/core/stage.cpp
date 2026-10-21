@@ -147,7 +147,7 @@ bool Stage::load(const std::string &defPath, std::string &error)
 		music.readStage(*m);
 	music.resolve(defPath);
 
-	// The sprites: [BGdef] spr, next to the .def, else under data/.
+	// The sprites: [BGdef] spr, as Ikemen's LoadFile finds it (next to the .def, the game's root, data/).
 	const IniSection *bgdef = findSection(sections, "bgdef");
 	const std::string spr = bgdef ? bgdef->text("spr") : std::string();
 	if (spr.empty()) {
@@ -155,7 +155,7 @@ bool Stage::load(const std::string &defPath, std::string &error)
 		return false;
 	}
 	std::string sffError;
-	if (!sff_.load(directoryOf(defPath) + spr, sffError) && !sff_.load("data/" + spr, sffError)) {
+	if (!sff_.load(findBesideDef(directoryOf(defPath), spr), sffError)) {
 		error = sffError;
 		return false;
 	}

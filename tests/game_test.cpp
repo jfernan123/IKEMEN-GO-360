@@ -8,6 +8,7 @@
 #include "core/expr.h"
 #include "core/file.h"
 #include "core/game_config.h"
+#include "core/states.h"
 
 using namespace m360;
 
@@ -89,10 +90,11 @@ int run13Tests()
 	expect(gameRoot() == "tests/game/", "its folder is the file root");
 	expect(config.motif == "data/ikemen1/system.def", "mugen.cfg's motif");
 	expect(config.fight == "data/fight.def", "system.def's fight.def, found under data/");
-	expect(config.characters.size() == 5 && config.characters[0] == "data/chars/kfm720/kfm720.def" &&
+	expect(config.characters.size() == 6 && config.characters[0] == "data/chars/kfm720/kfm720.def" &&
 			config.characters[1] == "data/chars/kfm/kfm.def" && config.characters[2] == "chars/oddkfm/oddkfm.def" &&
-			config.characters[3] == "dummyslot" && config.characters[4] == "randomselect",
-		"select.def's roster, the missing character left out");
+			config.characters[3] == "dummyslot" && config.characters[4] == "randomselect" &&
+			config.characters[5] == "dummyslot",
+		"select.def's roster, the missing character an empty cell");
 	expect(config.stages.size() == 3 && config.stages[0] == "data/stages/stageZ.def" &&
 			config.stages[1] == "data/stages/kfm.def" && config.stages[2] == "data/stages/stage1.def",
 		"[ExtraStages], then the characters' stages unless includestage = 0");
@@ -117,6 +119,14 @@ int run13Tests()
 	expect(evalInt("StageVar(info.name) = \"mountainside temple\"") == 1, "StageVar(info.name) compares without case");
 	expect(evalInt("StageVar(info.name) != \"Training Room\"") == 1, "StageVar(info.name) !=");
 	expect(evalInt("WinKO + Const240p(10)") == 21, "WinKO and Const240p parse and evaluate");
+
+	// A malformed controller header skips that controller only (Ikemen's SectionName), not the rest of the state.
+	StateTable table;
+	std::string tableError;
+	const bool tableLoaded = table.load("tests/fixtures/malformed.cns", tableError);
+	const StateDef *odd = table.find(9901);
+	expect(tableLoaded && odd && odd->ctrls.size() == 2 && odd->ctrls[1].type == CtrlType::ChangeState,
+		"a \"[State ...)\" header drops one controller, the state keeps the rest");
 
 	GameConfig missing;
 	expect(!missing.loadGame("tests/no_such_game", error), "a folder with no game fails");

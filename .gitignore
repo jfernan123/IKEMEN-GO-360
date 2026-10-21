@@ -5,6 +5,7 @@
 # Headless test output and runtime logs.
 /tests/out/
 /m360.log
+/m360_play.log
 
 # Editor and OS files.
 /.vs/

@@ -25,6 +25,10 @@ const char *const TITLE_DEFAULTS[][2] = {
 	{ "menu.item.active.font", "f-6x9.def, 0, 0, 255, 255, 255, 255" },
 	{ "menu.window.margins.y", "12, 8" },
 	{ "menu.window.visibleitems", "5" },
+	{ "menu.boxcursor.visible", "1" },
+	{ "menu.boxcursor.coords", "-40, -10, 39, 2" },
+	{ "menu.boxcursor.col", "255, 255, 255" },
+	{ "menu.boxcursor.pulse", "30, 20, 30" },
 	{ "cursor.move.snd", "100, 0" },
 	{ "cursor.done.snd", "100, 1" },
 	{ "cancel.snd", "100, 2" },
@@ -33,7 +37,7 @@ const char *const TITLE_DEFAULTS[][2] = {
 	{ "footer.info.font", "f-4x6.def, 0, 0, 191, 191, 191, 255" },
 	{ "footer.info.text", "" },
 	{ "footer.version.font", "f-4x6.def, 0, -1, 191, 191, 191, 255" },
-	{ "footer.version.text", "MILESTONE 11" },
+	{ "footer.version.text", "MILESTONE 13" },
 	{ "footer.overlay.col", "0, 0, 64" },
 	{ "footer.overlay.alpha", "255, 100" },
 };
@@ -128,6 +132,16 @@ bool TitleScreen::load(Motif &motif, std::string &error)
 	s.readInt("menu.window.visibleitems", visibleItems_);
 	s.floats("menu.window.margins.y", { &marginTop_, &marginBottom_ });
 	s.readFloat("menu.tween.factor", tweenFactor_);
+	// The box cursor over the picked row (MUGEN screenpacks whose items are drawn in the background need it).
+	int32_t visibleFlag = 1;
+	s.readInt("menu.boxcursor.visible", visibleFlag);
+	boxCursor_ = visibleFlag != 0;
+	s.ints("menu.boxcursor.coords", { &boxCoords_[0], &boxCoords_[1], &boxCoords_[2], &boxCoords_[3] });
+	int32_t c[3] = { 255, 255, 255 };
+	s.ints("menu.boxcursor.col", { &c[0], &c[1], &c[2] });
+	boxColour_ = (uint32_t)(c[0] & 0xFF) << 16 | (uint32_t)(c[1] & 0xFF) << 8 | (uint32_t)(c[2] & 0xFF);
+	s.ints("menu.boxcursor.pulse", { &boxPulse_[0], &boxPulse_[1], &boxPulse_[2] });
+	boxPhase_ = 0;
 	item_.read("menu.item.", s);
 	active_.read("menu.item.active.", s);
 	footerTitle_.read("footer.title.", s);
@@ -390,6 +404,17 @@ void TitleScreen::draw()
 		}
 		platform::clearClip();
 	};
+	// Ikemen's boxcursor: a box at boxcursor.coords around the picked row, its alpha pulsing (Rect.SetAlphaPulse).
+	if (boxCursor_ && !items.empty()) {
+		if (boxPulse_[2] > 0)
+			boxPhase_ += 2 * 3.14159265f / (float)boxPulse_[2];
+		const float alpha = (float)boxPulse_[0] + (float)boxPulse_[1] * std::sin(boxPhase_);
+		const uint32_t a = (uint32_t)std::clamp((int)std::lround(alpha), 0, 255);
+		const float x = posX_ + (float)(level.item - 1) * spacingX_ + (float)boxCoords_[0];
+		const float y = posY_ + (float)(level.item - 1) * spacingY_ - level.currentPos + (float)boxCoords_[1];
+		platform::fillRect(space.x(x), space.y(y), (float)(boxCoords_[2] - boxCoords_[0] + 1) * space.scale,
+			(float)(boxCoords_[3] - boxCoords_[1] + 1) * space.scale, a << 24 | boxColour_);
+	}
 	drawItems(false);
 	bg_.draw(1, view);
 	drawItems(true);
@@ -412,6 +437,7 @@ void TitleScreen::draw()
 		fadeOut_.draw();
 	else if (fadeIn_.isActive())
 		fadeIn_.draw();
+	motif_->space().drawBars();
 }
 
 } // namespace m360
