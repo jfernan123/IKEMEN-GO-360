@@ -1,0 +1,13 @@
+; The 13a test game's roster (see tests/game_test.cpp).
+[Characters]
+kfm720, stages/stage1.def
+kfm, stages/stage0.def, includestage=0
+randomselect
+nobody          ; not on disk: left out
+
+[ExtraStages]
+stages/stageZ.def
+stages/kfm
+
+[Options]
+arcade.maxmatches = 6,1,1,0,0,0,0,0,0,0

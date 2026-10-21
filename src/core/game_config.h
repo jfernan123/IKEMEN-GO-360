@@ -26,15 +26,31 @@ struct GameConfig {
 	// a row so far: the fight screen's [WinCount].
 	std::string mode = "versus";
 	int winCount[2] = { 0, 0 };
-	// The select screen's roster and stages ([Characters] and [Stages], one per line as in MUGEN's select.def: "kfm",
-	// "kfm/kfm.def" or a path under data/). Empty: no select screen, the fight above starts at once.
+	// The select screen's roster and stages, found as Ikemen finds select.def's entries ("kfm", "kfm/alt.def",
+	// "stages/kfm.def"; under the game, chars/ or stages/, data/). Empty: no select screen, the fight above starts at
+	// once.
 	std::vector<std::string> characters;
 	std::vector<std::string> stages;
 	// Team modes. Empty means the single player1/player2 above; Turns uses the indexed active member on each side.
 	std::vector<Fighter> team1, team2;
 
+	// A MUGEN game's folder (13a: --game, or [Game] game = in data/mugen360.ini), empty for mugen360's own content,
+	// and select.def's arcade.maxmatches as written (not used yet).
+	std::string game;
+	std::string arcadeMaxMatches;
+
 	// A missing file keeps the defaults. Values present under [Game] replace their corresponding defaults.
 	bool load(const std::string &path, std::string &error);
+	// Plays a MUGEN game from its folder: its motif, fight.def, roster and stages replace the ones above, and its
+	// folder becomes the file root (core/file's setGameRoot). False when it has no system.def, select.def or roster.
+	bool loadGame(const std::string &folder, std::string &error);
+
+	// A select.def character or stage entry as Ikemen finds it; empty when it isn't there.
+	static std::string findCharacter(const std::string &entry);
+	static std::string findStage(const std::string &entry);
+
+private:
+	void readSelect(const std::string &text, bool extraStagesSection);
 };
 
 } // namespace m360

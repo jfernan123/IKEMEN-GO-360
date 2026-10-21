@@ -15,3 +15,5 @@ Thumbs.db
 .DS_Store
 # The options the game saves (save/config.ini).
 save/
+# MUGEN games played with --game stay out of the repository (their art belongs to others).
+games/

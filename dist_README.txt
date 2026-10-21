@@ -1,5 +1,11 @@
-MUGEN360 - milestone 11: options (homebrew test build)
-======================================================
+MUGEN360 - milestone 13a: game folders (homebrew test build)
+============================================================
+
+New (experimental): play another MUGEN game. Copy its folder next to
+default.xex (e.g. games/mygame, with its data/, chars/ and stages/) and set
+"game = games/mygame" under [Game] in data/mugen360.ini. Its menus, roster and
+stages are used; what it lacks comes from mugen360's own files. Many
+characters still need features that aren't in yet.
 
 New: OPTIONS on the title works: difficulty, time limit, life, game speed,
 rounds to win, volumes. Up/down to pick, left/right to change, an attack
