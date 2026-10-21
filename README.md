@@ -389,6 +389,12 @@ paths use forward slashes.
        [Reflection] color (Ikemen's tint), yscale and offset; [StageInfo] autoturn, xscale, yscale.
      Every MUGEN 1.1 controller type has an implementation (checked against the CtrlType list).
      Not yet: HitDef affectteam (friendly fire), Ikemen's Z axis ([Scaling], topbound / botbound), attachedchar.
+   - 13d soaks (done): `mugen360 --soak [folder] [--soakframes N] --quit 1` fights each roster character against the
+     next (the last against the first), the computer playing both, N ticks each (3600 by default), on the stages
+     in turn, drawing every 60th frame. `soak_<game>.txt` lists each pair's rounds and life lost (they really
+     fight), and its notes: states held 20 seconds mid-round (stuck, other than standing, crouching, walking),
+     states and animations it lacks, no-op controllers, load problems. The report is rewritten after each pair, so
+     after a crash it ends at the pair that crashed.
 
 ## Asset notice
 
