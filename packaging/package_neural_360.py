@@ -8,13 +8,13 @@ normal VS modes work with them too. data/mugen360.ini in the package points at t
 
 The game's art belongs to its makers: this zip is for private play. Don't commit it or upload it anywhere public.
 
-    rl\\.venv\\Scripts\\python.exe package_neural_360.py ["DC vs MARVEL 2025"]
+    rl\\.venv\\Scripts\\python.exe packaging\\package_neural_360.py ["DC vs MARVEL 2025"]
 
 --full instead packs the whole game (every character; about 4 GB, a 2.3 GB zip) as dist/mugen360_dc_vs_marvel/ and
 dist/mugen360_dc_vs_marvel_360.zip: today's engine (default.xex, data/ with the neural files) and the game under
 games/<its folder name>, minus MUGEN's own Windows program. Files already there and unchanged aren't copied again.
 
-    rl\\.venv\\Scripts\\python.exe package_neural_360.py --full
+    rl\\.venv\\Scripts\\python.exe packaging\\package_neural_360.py --full
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ import re
 import shutil
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parent.parent
 GAME = HERE / "DC vs MARVEL 2025"
 DIST = HERE / "dist" / "mugen360"
 TARGET = DIST / "games" / "neuralcap"

@@ -38,7 +38,8 @@ shared without one process holding both learners.
 
 Each pool gets simulation threads in proportion to its fights.
 
-Same network, sequence (BPTT) update, adaptive learning rate, TensorBoard tags and checkpoint format as train_ppo.py.
+Checkpoints hold the network (rl/model.py), optimizer and counters; record_clip.py, eval_pool.py and
+export_policy.py read them.
 """
 
 from __future__ import annotations
@@ -56,10 +57,10 @@ from torch.distributions import Categorical
 from torch.utils.tensorboard import SummaryWriter
 
 from eval_pool import play
-from model import Policy, add_buttons, add_skills, layer_activations, policy_from_checkpoint, redo
+from model import (Policy, add_buttons, add_skills, layer_activations, policy_from_checkpoint, redo,
+                   widen_observation)
 from pool_env import MugenPool
 from roster import discover
-from train_ppo import widen_observation
 
 
 def teacher_kl(teacher_d, teacher_b, student_d, student_b):

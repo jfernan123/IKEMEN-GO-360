@@ -3,7 +3,7 @@
 life. Writes a CSV as it goes (a stopped scan resumes from it) and a Markdown ranking at the end.
 
     python rl/scan_toughest.py --checkpoint rl/checkpoints/cap_scratch_league/snap_000491520000.pt \
-        --p1 chars/captainamerica/captainamerica.def --out rl/toughest_scan
+        --p1 chars/captainamerica/captainamerica.def --out rl/reports/toughest_scan
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ FIELDS = ["character", "win_rate", "opponent_life", "own_life", "error"]
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--game", default="DC vs MARVEL 2025")
-    parser.add_argument("--exe", default="build/rl_next/mugen360.exe")
+    parser.add_argument("--exe", default="build/rl/mugen360.exe")
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--p1", required=True)
     parser.add_argument("--stage", default="stages/gotham.def")
@@ -33,7 +33,7 @@ def main():
     parser.add_argument("--max-decisions", type=int, default=2500)
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--seed", type=int, default=4242)
-    parser.add_argument("--out", default="rl/toughest_scan", help="writes this .csv and .md")
+    parser.add_argument("--out", default="rl/reports/toughest_scan", help="writes this .csv and .md")
     args = parser.parse_args()
     saved = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
     policy = policy_from_checkpoint(saved)

@@ -4,6 +4,10 @@ Everything done to train mugen360's neural fighters, in order, from the first pi
 says what changed, why, and what came of it. **Add to this file after every training step** (new run, setting change,
 result, bug that affects training).
 
+Since the cleanup after PR #34 (2026-11-16), the launchers still in use are in `rl\scripts\`, scan results in
+`rl\reports\`, and every run uses `build\rl` (from `build_rl.bat`). The other launchers and `train_ppo.py` named below
+were removed; git history has them.
+
 Times are local (Toronto). Run ids are the TensorBoard folders in `rl/runs/`, named by start time. "Decisions" are
 policy steps: one decision = one direction + one button held for 3 engine ticks (1/20 s), so a 99 s match is up to
 about 2,000 decisions. Win rates are over the last 200 matches against that opponent unless a test is named.

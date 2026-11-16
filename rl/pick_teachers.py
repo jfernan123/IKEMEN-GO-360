@@ -30,7 +30,7 @@ STAGES = {"galactus": "stages/GalactusOutpost.def"}  # as train_cap_specialist.b
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--game", default="DC vs MARVEL 2025")
-    parser.add_argument("--exe", default="build/rl_fix/mugen360.exe")
+    parser.add_argument("--exe", default="build/rl/mugen360.exe")
     parser.add_argument("--p1", default="chars/captainamerica/captainamerica.def")
     parser.add_argument("--copies", type=int, default=6, help="history copies tried per specialist, besides the last")
     parser.add_argument("--matches", type=int, default=256)

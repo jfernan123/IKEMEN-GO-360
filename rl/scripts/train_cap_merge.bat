@@ -6,12 +6,12 @@ rem   train_cap_merge.bat [more options, such as --resume]
 rem Log: rl\checkpoints\cap_merged.log. TensorBoard: rl\runs\cap_merged\. A copy every 100 updates in
 rem rl\checkpoints\cap_merged_history\.
 setlocal
-cd /d "%~dp0"
+cd /d "%~dp0..\.."
 if not exist rl\merge_teachers.txt (
   echo Run rl\pick_teachers.py first.
   exit /b 1
 )
-rl\.venv\Scripts\python.exe rl\train_pool.py --exe build\rl_fix\mugen360.exe --game "DC vs MARVEL 2025" ^
+rl\.venv\Scripts\python.exe rl\train_pool.py --exe build\rl\mugen360.exe --game "DC vs MARVEL 2025" ^
   --p1 chars/captainamerica/captainamerica.def ^
   --p2 "chars/thanos/thanos.def,chars/doomsdayCG/doomsdayCG.def,chars/captainamerica/captainamerica.def,chars/GALACTUS/GALACTUS.def,chars/Superman/Superman.def,chars/darkseid/darkseid.def" ^
   --teachers rl\merge_teachers.txt --stage stages/gotham.def ^

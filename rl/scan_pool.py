@@ -21,7 +21,7 @@ def main():
     parser.add_argument("--matches", type=int, default=32)
     parser.add_argument("--max-decisions", type=int, default=2500)
     parser.add_argument("--threads", type=int, default=4)
-    parser.add_argument("--out", default="rl/smartai_pool_scan.csv")
+    parser.add_argument("--out", default="rl/reports/smartai_pool_scan.csv")
     args = parser.parse_args()
     names = [l.strip() for l in Path(args.characters[1:]).read_text().splitlines() if l.strip()] if args.characters.startswith("@") else \
         [c.strip() for c in args.characters.split(",") if c.strip()]

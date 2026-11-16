@@ -45,7 +45,7 @@ def main():
     parser.add_argument("--workers", type=int, default=6)
     parser.add_argument("--frame-skip", type=int, default=3)
     parser.add_argument("--max-decisions", type=int, default=2500)
-    parser.add_argument("--out", default="rl/smartai_scan.csv")
+    parser.add_argument("--out", default="rl/reports/smartai_scan.csv")
     args = parser.parse_args()
     roster = discover(args.game)
     started = time.time()

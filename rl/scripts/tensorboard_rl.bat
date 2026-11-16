@@ -1,6 +1,6 @@
 @echo off
 setlocal
-cd /d "%~dp0"
+cd /d "%~dp0..\.."
 if not exist rl\.venv\Scripts\tensorboard.exe (
   echo TensorBoard is not installed. Run setup_rl.bat first.
   exit /b 1

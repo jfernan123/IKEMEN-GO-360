@@ -5,7 +5,7 @@ starts it.
 
 The game's art belongs to its makers: this zip is for private sharing. Don't commit it or upload it anywhere public.
 
-    rl\\.venv\\Scripts\\python.exe package_pc.py ["DC vs MARVEL 2025"]
+    rl\\.venv\\Scripts\\python.exe packaging\\package_pc.py ["DC vs MARVEL 2025"]
 
 Files already in the package and unchanged aren't copied again.
 """
@@ -20,7 +20,7 @@ from pathlib import Path
 
 from package_neural_360 import sync
 
-HERE = Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parent.parent
 BUILD = HERE / "build" / "pc"
 # The Visual C++ runtime the build links against, deployed next to the exe (Microsoft allows app-local copies).
 REDIST = "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Redist/MSVC/*/x64/Microsoft.VC143.CRT"

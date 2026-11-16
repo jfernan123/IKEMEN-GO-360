@@ -9,10 +9,10 @@ rem   Nightwing (also checked, 64 matches each every 150 updates). ReDo, entropy
 rem Pass --resume to continue rl\checkpoints\cap_scratch.pt. Log: rl\checkpoints\cap_scratch.log. TensorBoard:
 rem rl\runs\cap_scratch\.
 setlocal
-cd /d "%~dp0"
+cd /d "%~dp0..\.."
 set "OPP=chars/thanos/thanos.def,chars/mvci venom/mvci venom.def,chars/doom/doom.def,chars/darkseid/darkseid.def"
 set "OPP=%OPP%,chars/nightwing/nightwing.def"
-rl\.venv\Scripts\python.exe rl\train_pool.py --exe build\rl_new\mugen360.exe --game "DC vs MARVEL 2025" ^
+rl\.venv\Scripts\python.exe rl\train_pool.py --exe build\rl\mugen360.exe --game "DC vs MARVEL 2025" ^
   --p1 chars/captainamerica/captainamerica.def --p2 "%OPP%" --stage stages/gotham.def ^
   --fights 512 --league 384 --pools 2 --random-sides --league-self 0.35 --snapshot-every 300 --league-size 16 ^
   --check-every 150 --check-matches 64 ^

@@ -1,6 +1,6 @@
 @echo off
 setlocal
-cd /d "%~dp0"
+cd /d "%~dp0..\.."
 C:\Python312\python.exe -m venv rl\.venv || exit /b 1
 rl\.venv\Scripts\python.exe -m pip install --upgrade pip || exit /b 1
 where nvidia-smi >nul 2>nul

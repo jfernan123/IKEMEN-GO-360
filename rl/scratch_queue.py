@@ -3,7 +3,7 @@ the next starts, so the PC stays as busy as it safely can. A run that stops earl
 trainer on the machine, so it can be restarted while runs are going: a specialist already running or already saved is left
 alone. Each run writes its own log; this writes rl/checkpoints/scratch_queue.log.
 
-    train_scratch_all.bat
+    rl\scripts\train_scratch_all.bat
 """
 
 from __future__ import annotations
@@ -66,7 +66,7 @@ def main():
         if waiting and len(running) < AT_ONCE and WAIT_FOR not in running and room:
             name, opponent = waiting.pop(0)
             # Don't edit the launcher while runs are inside it: cmd reads a batch file as it runs.
-            subprocess.Popen(rf'cmd /c .\train_cap_specialist.bat {name} "{opponent}" {THREADS} {EXTRA.get(name, "")}', cwd=ROOT)
+            subprocess.Popen(rf'cmd /c rl\scripts\train_cap_specialist.bat {name} "{opponent}" {THREADS} {EXTRA.get(name, "")}', cwd=ROOT)
             note(f"started {name}")
             time.sleep(60)  # until its trainer shows up
             continue
