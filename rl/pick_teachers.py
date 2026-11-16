@@ -4,6 +4,8 @@ specialist's last copy isn't always its best (cap_thanos collapsed after its pea
 choose by. Everyone else gets the general Cap (the line for *). Run it with no training going: it uses every core.
 
     rl/.venv/Scripts/python.exe rl/pick_teachers.py
+    rl/.venv/Scripts/python.exe rl/pick_teachers.py --all --copies 3    (every finished specialist, for
+                                                                 rl/scripts/train_cap_merge_all.bat)
 """
 
 from __future__ import annotations
@@ -37,13 +39,25 @@ def main():
     parser.add_argument("--frame-skip", type=int, default=3)
     parser.add_argument("--seed", type=int, default=360)
     parser.add_argument("--out", default="rl/merge_teachers.txt")
+    parser.add_argument("--all", action="store_true",
+                        help="every finished specialist from the roster queue (rl/scratch_queue.py), toughest first, "
+                             "instead of the first six; writes rl/merge_teachers_all.txt unless --out says otherwise")
     args = parser.parse_args()
+    specialists = SPECIALISTS
+    if args.all:
+        import scratch_queue
+        specialists = [(name, opponent) for name, opponent in scratch_queue.everyone()
+                       if name not in scratch_queue.EXTRA  # the Ivy run trains Ivy, not Cap
+                       and Path(f"rl/checkpoints/scratch_vs_{name}.pt").is_file() and scratch_queue.finished(name)]
+        if args.out == "rl/merge_teachers.txt":
+            args.out = "rl/merge_teachers_all.txt"
+        print(f"{len(specialists)} finished specialists", flush=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     rng = np.random.default_rng(args.seed)
     roster = discover(args.game)
     ids = {path: i for i, path in enumerate(roster.characters)}
-    lines = ["# opponent | checkpoint | stage. Written by rl/pick_teachers.py."]
-    for name, opponent in SPECIALISTS:
+    lines = ["# opponent | checkpoint | stage | the teacher's win rate. Written by rl/pick_teachers.py."]
+    for name, opponent in specialists:
         last = Path(f"rl/checkpoints/scratch_vs_{name}.pt")
         history = sorted(Path(f"rl/checkpoints/scratch_vs_{name}_history").glob("*.pt"))
         history = history[len(history) // 2:]
@@ -61,7 +75,8 @@ def main():
             if rate >= best_rate:  # a tie goes to the later copy
                 best, best_rate = path, rate
         print(f"{name}: picked {best.name} at {best_rate:.1%}", flush=True)
-        lines.append(f"{opponent} | {best.as_posix()} | {stage}")
+        lines.append(f"{opponent} | {best.as_posix()} | {stage} | {best_rate:.4f}")
+        Path(args.out).write_text("\n".join(lines) + "\n", encoding="utf-8")  # as it goes: a long pick can stop
     lines.append(f"* | {GENERAL}")
     Path(args.out).write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"wrote {args.out}")
