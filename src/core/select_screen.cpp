@@ -27,6 +27,8 @@ const char *const SELECT_DEFAULTS[][2] = {
 	{ "stage.text", "Stage %i: %s" },
 	{ "stage.random.text", "Stage: Random" },
 	{ "stage.active.switchtime", "2" },
+	// No stage portrait unless the screenpack asks for one (Ikemen's defaultMotif.ini: stage.portrait.spr = -1, 0).
+	{ "stage.portrait.spr", "-1, 0" },
 	{ "title.versus.text", "Versus Mode" },
 	{ "title.freebattle.text", "Quick Match" },
 	{ "title.arcade.text", "Arcade" },
@@ -272,19 +274,48 @@ bool MotifSelect::load(Motif &motif, const GameConfig &config, std::string &erro
 			e.hasStance = sides_[0].faceAnim >= 0 && charAnims.get(sides_[0].faceAnim, e.stance);
 			e.hasDone = sides_[0].faceDoneAnim >= 0 && charAnims.get(sides_[0].faceDoneAnim, e.done);
 			e.hasVersus = versus_.faceAnim() >= 0 && charAnims.get(versus_.faceAnim(), e.versus);
-			for (const Animation *a : { &e.stance, &e.done, &e.versus }) {
-				for (const AnimFrame &f : a->frames) {
-					if (f.group >= 0)
-						keep.emplace_back((uint16_t)f.group, (uint16_t)f.number);
-				}
+		}
+		// No face animation: the face sprite, a one-frame animation that shows forever (Ikemen: anim if set, else spr).
+		const auto oneSprite = [](const int32_t spr[2], Animation &anim) {
+			AnimFrame frame;
+			frame.group = spr[0];
+			frame.number = spr[1];
+			anim = Animation();
+			anim.frames.push_back(frame);
+		};
+		if (!e.hasStance && sides_[0].faceSpr[0] >= 0) {
+			oneSprite(sides_[0].faceSpr, e.stance);
+			e.hasStance = true;
+		}
+		if (!e.hasDone && sides_[0].faceDoneSpr[0] >= 0) {
+			oneSprite(sides_[0].faceDoneSpr, e.done);
+			e.hasDone = true;
+		}
+		for (const Animation *a : { &e.stance, &e.done, &e.versus }) {
+			for (const AnimFrame &f : a->frames) {
+				if (f.group >= 0)
+					keep.emplace_back((uint16_t)f.group, (uint16_t)f.number);
 			}
 		}
 		// Only the sprites the screens draw, read from the file in pieces (13: a big roster's files are GBs).
 		e.sff = std::make_unique<Sff>();
 		std::string sffError;
+		// pal1 .. pal12: .act palettes, the character's palettes 1,n, read as the fight reads them (Character::load).
+		std::string acts[12];
+		bool anyAct = false;
+		for (int n = 0; n < 12; n++) {
+			acts[n] = text::trim(files->text("pal" + std::to_string(n + 1)));
+			anyAct = anyAct || !acts[n].empty();
+		}
+		e.sff->setActPalettes(anyAct);
 		if (!e.sff->loadSome(findBesideDef(dir, files->text("sprite")), keep, sffError, true)) {
 			logf("select: %s; left out", sffError.c_str());
 			continue;
+		}
+		for (int n = 0; n < 12; n++) {
+			Palette pal;
+			if (!acts[n].empty() && readActPalette(findBesideDef(dir, acts[n]), pal))
+				e.sff->setPalette(1, (uint16_t)(n + 1), pal);
 		}
 		for (int32_t n = 1; n <= 12; n++) {
 			if (e.sff->paletteIndex(1, (uint16_t)n) >= 0)
@@ -317,10 +348,13 @@ bool MotifSelect::load(Motif &motif, const GameConfig &config, std::string &erro
 		portrait.resFix = portraitScale * (float)motif.localWidth() / (float)std::max(1, localW);
 		std::string sffError;
 		portrait.sff = std::make_unique<Sff>();
-		std::vector<std::pair<uint16_t, uint16_t>> keep = { { (uint16_t)stagePortraitSpr_[0], (uint16_t)stagePortraitSpr_[1] } };
+		// Only the portraits a screen shows: none at all means no stage sprite file to read.
+		std::vector<std::pair<uint16_t, uint16_t>> keep;
+		if (stagePortraitSpr_[0] >= 0)
+			keep.emplace_back((uint16_t)stagePortraitSpr_[0], (uint16_t)stagePortraitSpr_[1]);
 		if (versus_.stageSprite(0) >= 0)
 			keep.emplace_back((uint16_t)versus_.stageSprite(0), (uint16_t)versus_.stageSprite(1));
-		if (!spr.empty() && portrait.sff->loadSome(findBesideDef(directoryOf(stage), spr), keep, sffError)) {
+		if (!spr.empty() && !keep.empty() && portrait.sff->loadSome(findBesideDef(directoryOf(stage), spr), keep, sffError)) {
 			portrait.renderer = std::make_unique<SpriteRenderer>(*portrait.sff);
 		} else {
 			portrait.sff.reset();
@@ -348,6 +382,8 @@ void MotifSelect::readSide(Side &side, const std::string &p, const IniSection &s
 	side.face2.read(p + "face2.", s);
 	s.readInt(p + "face.anim", side.faceAnim);
 	s.readInt(p + "face.done.anim", side.faceDoneAnim);
+	s.ints(p + "face.spr", { &side.faceSpr[0], &side.faceSpr[1] });
+	s.ints(p + "face.done.spr", { &side.faceDoneSpr[0], &side.faceDoneSpr[1] });
 	s.ints(p + "face2.spr", { &side.face2Spr[0], &side.face2Spr[1] });
 	s.floats(p + "face.pos", { &side.facePos[0], &side.facePos[1] });
 	side.name.read(p + "name.", s);
@@ -1054,10 +1090,13 @@ void MotifSelect::drawFaces(int index)
 	if (!side.shown || side.state < 0 || shown < 0 || roster_[(size_t)shown].random)
 		return;
 	const Entry &e = roster_[(size_t)shown];
+	// An empty slot (dummyslot, skipslot) has nothing to show.
+	if (e.empty || !e.sff || !e.renderer)
+		return;
 	const ScreenSpace &space = motif_->space();
-	// The chosen palette recolours only the sprites drawn with the character's palette 1,1; a portrait with its own
+	// The chosen palette recolours only the sprites drawn with the character's base palette; a portrait with its own
 	// palette keeps it.
-	const int base = e.sff->paletteIndex(1, 1), chosen = e.sff->paletteIndex(1, (uint16_t)side.palette);
+	const int chosen = e.sff->paletteIndex(1, (uint16_t)side.palette);
 	e.renderer->setPalette(-1);
 	// face2 (9000,1, turned in 3D) behind face (the character's own animation), each clipped to its window.
 	ClipRect window;
@@ -1065,7 +1104,7 @@ void MotifSelect::drawFaces(int index)
 		SpriteDraw how;
 		side.face2.apply(how, space);
 		const Sprite *sprite = e.sff->get((uint16_t)side.face2Spr[0], (uint16_t)side.face2Spr[1]);
-		if (sprite && sprite->palette == base)
+		if (sprite && e.sff->takesChosenPalette(sprite->palette))
 			how.palette = chosen;
 		how.scaleX = side.face2.scaleX * e.resFix * space.scale;
 		how.scaleY = side.face2.scaleY * e.resFix * space.scale;
@@ -1166,7 +1205,7 @@ void MotifSelect::drawStage()
 	if (stage_ == 0 && inPass(stageRandom_.layout.layer))
 		stageRandom_.draw(stagePos_[0], stagePos_[1], stageRandom_.layout.layer, motif_->renderer(), space);
 	// The stage's own portrait, clipped to stage.portrait.window.
-	if (stage_ > 0 && inPass(stagePortrait_.layer)) {
+	if (stage_ > 0 && stagePortraitSpr_[0] >= 0 && inPass(stagePortrait_.layer)) {
 		const StagePortrait &p = stagePortraits_[(size_t)stage_ - 1];
 		if (p.renderer) {
 			SpriteDraw how;
@@ -1256,6 +1295,18 @@ void MotifSelect::drawElements()
 		} else {
 			side.drawX = tween(side.drawX, targetX, side.tweenX);
 			side.drawY = tween(side.drawY, targetY, side.tweenY);
+		}
+		// A yellow outline round the cell under the cursor (not Ikemen's: a screenpack's own cursor can be hard to
+		// see on a TV), under the screenpack's cursor.
+		if (inPass(side.cursorActive.layout.layer)) {
+			const float x = space.x(side.drawX), y = space.y(side.drawY);
+			const float w = cellW_ * space.scale, h = cellH_ * space.scale;
+			const float t = std::max(3.0f, std::floor(space.scale * 3));
+			const uint32_t yellow = 0xFFFFE000;
+			platform::fillRect(x - t, y - t, w + 2 * t, t, yellow);
+			platform::fillRect(x - t, y + h, w + 2 * t, t, yellow);
+			platform::fillRect(x - t, y, t, h, yellow);
+			platform::fillRect(x + w, y, t, h, yellow);
 		}
 		drawCell(side.state == 3 ? side.cursorDone : side.cursorActive, side.x, side.y, side.drawX, side.drawY,
 			m.renderer(), nullptr);

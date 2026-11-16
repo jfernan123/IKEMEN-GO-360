@@ -42,6 +42,7 @@ bool pressed(const platform::Pad &pad, uint8_t button)
 void Settings::reset()
 {
 	difficulty = 5;
+	aiStyle = 1;
 	life = 100;
 	time = 99;
 	gameSpeed = 0;
@@ -62,6 +63,7 @@ void Settings::reset()
 void Settings::clamp()
 {
 	difficulty = std::clamp(difficulty, 1, 8);
+	aiStyle = std::clamp(aiStyle, 0, 1);
 	life = std::clamp(life, 10, 300);
 	time = std::clamp(time, -1, 1000);
 	gameSpeed = std::clamp(gameSpeed, -9, 9);
@@ -86,6 +88,7 @@ bool Settings::load(const std::string &path)
 	const std::vector<IniSection> sections = parseIni(std::string(bytes.begin(), bytes.end()));
 	if (const IniSection *o = findSection(sections, "options")) {
 		o->readInt("difficulty", difficulty);
+		o->readInt("ai.style", aiStyle);
 		o->readInt("life", life);
 		o->readInt("time", time);
 		o->readInt("gamespeed", gameSpeed);
@@ -127,6 +130,7 @@ bool Settings::save(const std::string &path) const
 	std::string out = "; mugen360's settings, in Ikemen-GO's config.ini names. The options menu writes this file.\n";
 	out += "[Options]\n";
 	out += "Difficulty = " + std::to_string(difficulty) + "\n";
+	out += "AI.Style = " + std::to_string(aiStyle) + "\n";
 	out += "Life = " + std::to_string(life) + "\n";
 	out += "Time = " + std::to_string(time) + "\n";
 	out += "GameSpeed = " + std::to_string(gameSpeed) + "\n";

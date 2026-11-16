@@ -45,7 +45,7 @@ build needs WSL Debian with xsdk at `~/xsdk` and its GCC toolchain at `~/xsdk-gc
 | R | Start a new match |
 | Enter | Taunt / character Start button |
 | Tab | Change debug screen |
-| Esc | Back: fight to select, select to title; on the title, to EXIT |
+| Esc | Back: in a fight the pause menu; select to title; on the title, to EXIT |
 
 On a controller, use X/Y/RB for punches, A/B/RT for kicks, LB for debug information, LT for a new match, Start for
 the character's Start button or taunt, LB+Start to change screens, and Back as Esc. In the menus, the attack buttons
@@ -396,6 +396,8 @@ paths use forward slashes.
      states and animations it lacks, no-op controllers, load problems. The report is rewritten after each pair, so
      after a crash it ends at the pair that crashed.
    - 13e the game's screens (done):
+     - A startup loading screen is presented before an external game's large screenpack and sprite files load, so
+       a console or Xenia gives immediate visual confirmation that `default.xex` started.
      - Storyboards (`core/storyboard`, Ikemen's storyboard.go): scenes with clear colour, background, layers
        (animations, sprites, typed text), sounds, music, fades, end time, jump; clearcolor / layerall.pos carried
        over. The screenpack's logo and intro play before the title; a character's arcade intro before its first
@@ -417,6 +419,30 @@ paths use forward slashes.
      comparisons ("AnimElem >= 5" reads as "= 5"), AnimElem ranges ("AnimElem = 1, = [45, 55]"), a controller's
      first "type" winning, words in priority / affectteam / afterimage.trans / BindToTarget pos, parameters Ikemen
      ignores (Null's, "name" labels), and HitDef affectteam (B, F).
+   - After: the select screen's big portrait falls back to face.spr (9000,1) without a face.anim, and a yellow
+     outline marks each player's cell. Effects as MUGEN shows them: HitDef palfx (the getter's flash), PalFX color and
+     invertall (`SpriteDraw::saturation` / `invert`, Ikemen's getFxPal order), Explods frozen by SuperPause / Pause
+     unless supermovetime / pausemovetime (Ikemen's pauseStatus), Explod vel, ownpal (an Explod takes its owner's
+     PalFX, `FightEffects::setOwnerColour`), Explod shadow and projshadow, AfterImage palpostbright. Character PalFX is
+     rounded to steps of 8, as the stage's, so a flash doesn't make new textures every tick.
+   - Pause menu (`core/pause_menu`, Ikemen's menu.lua): Back in a fight opens it over the frozen fight, from the
+     screenpack's [Pause Menu] (in its localcoord) or Ikemen's defaults (320x240): Continue, Command List (the
+     character's [Files] movelist with Ikemen's glyphs from `data/glyphs.sff`), Character Change, Exit; hidebars.
+     Not yet: Button Config, the training pause menu, [PauseBgDef]. Test: `tests/inputs/pause.txt` (script key `m` is
+     Back).
+   - Memory on the 360 (a big game crashed a real console after a fight): SFF v1 sprites stay packed (PCX bytes,
+     decoded when drawn) and every sprite goes back to its packed bytes once its texture is made; a sprite file is
+     read without a copy; all textures are freed before a fight loads (`SpriteRenderer::freeAll`,
+     `platform::freeDestroyedTextures`); textures give way when free memory drops under 48 MB
+     (`platform::freeMemory`, MmQueryStatistics); the debug viewers' character loads only when they open.
+     default.log gets "memory:" lines. DC vs MARVEL's peak memory over five fights went from 332 MB to 197 MB on PC.
+     Textures on the 360 share 1 MB blocks in 4 KB pages instead of a 64 KB page each (`platform_x360` texture
+     blocks), the first step of milestone 12.
+   - A PC-only reinforcement-learning pipeline lives in `rl/`. The hidden `--rl-server` interface advances fights
+     through normal controller inputs and exposes both players' state and current collision boxes. Recurrent PPO
+     trains one character-conditioned policy over random DC vs MARVEL roster matchups, first against SmartAI and
+     later against a pool of frozen policy snapshots. See `rl/README.md`; generated environments and weights stay
+     outside git.
 
 ## Asset notice
 

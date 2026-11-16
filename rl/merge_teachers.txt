@@ -1,0 +1,8 @@
+# opponent | checkpoint | stage. Written by rl/pick_teachers.py.
+chars/thanos/thanos.def | rl/checkpoints/scratch_vs_thanos_history/scratch_vs_thanos_000101580800.pt | stages/gotham.def
+chars/doomsdayCG/doomsdayCG.def | rl/checkpoints/scratch_vs_doomsday_history/scratch_vs_doomsday_000042598400.pt | stages/gotham.def
+chars/captainamerica/captainamerica.def | rl/checkpoints/scratch_vs_cap.pt | stages/gotham.def
+chars/GALACTUS/GALACTUS.def | rl/checkpoints/scratch_vs_galactus.pt | stages/GalactusOutpost.def
+chars/Superman/Superman.def | rl/checkpoints/scratch_vs_superman_history/scratch_vs_superman_000078643200.pt | stages/gotham.def
+chars/darkseid/darkseid.def | rl/checkpoints/scratch_vs_darkseid_history/scratch_vs_darkseid_000062259200.pt | stages/gotham.def
+* | rl/checkpoints/cap_scratch_league/snap_000491520000.pt

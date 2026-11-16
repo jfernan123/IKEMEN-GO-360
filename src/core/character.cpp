@@ -40,9 +40,10 @@ Value number(const std::string &s)
 
 // --- Loading ---------------------------------------------------------------------------------------------------------
 
-bool Character::load(const std::string &defPath, int paletteNo, std::string &error)
+bool Character::load(const std::string &defPath, int paletteNo, std::string &error, bool simulationOnly)
 {
 	defPath_ = defPath;
+	paletteNo_ = std::max(1, paletteNo);
 	if (!root_)
 		root_ = this;
 	std::vector<uint8_t> bytes;
@@ -75,24 +76,34 @@ bool Character::load(const std::string &defPath, int paletteNo, std::string &err
 		error = defPath + " has no [Files] section";
 		return false;
 	}
-	if (!source_->sff_.load(findFile(dir, files->text("sprite")), error, true))
-		return false;
-	// pal1 .. pal12: .act palette files, the character's palettes 1,n (an SFF v1's only ones; in an SFF v2 they replace
-	// the file's own) (Ikemen's loadPalettes).
-	for (int n = 1; n <= 12; n++) {
-		const std::string act(text::trim(files->text("pal" + std::to_string(n))));
-		Palette pal;
-		if (!act.empty() && readActPalette(findFile(dir, act), pal))
-			source_->sff_.setPalette(1, (uint16_t)n, pal);
+	const std::string movelistFile(text::trim(files->text("movelist")));
+	movelist = movelistFile.empty() ? std::string() : findFile(dir, movelistFile);
+	if (!simulationOnly) {
+		bool actPalettes = false;
+		for (int n = 1; n <= 12 && !actPalettes; n++)
+			actPalettes = !text::trim(files->text("pal" + std::to_string(n))).empty();
+		source_->sff_.setActPalettes(actPalettes);
+		if (!source_->sff_.load(findFile(dir, files->text("sprite")), error, true))
+			return false;
+		// pal1 .. pal12: .act palette files, the character's palettes 1,n (an SFF v1's only ones; in an SFF v2 they replace
+		// the file's own) (Ikemen's loadPalettes).
+		for (int n = 1; n <= 12; n++) {
+			const std::string act(text::trim(files->text("pal" + std::to_string(n))));
+			Palette pal;
+			if (!act.empty() && readActPalette(findFile(dir, act), pal))
+				source_->sff_.setPalette(1, (uint16_t)n, pal);
+		}
 	}
 	if (!source_->anims_.load(findFile(dir, files->text("anim")), error))
 		return false;
-	source_->renderer_ = std::make_unique<SpriteRenderer>(source_->sff_);
-	// Palette n is 1,n in an SFF v2; a missing one falls back to the sprites' own.
-	palette_ = source_->sff_.paletteIndex(1, (uint16_t)paletteNo);
-	source_->renderer_->setPalette(palette_);
+	if (!simulationOnly) {
+		source_->renderer_ = std::make_unique<SpriteRenderer>(source_->sff_);
+		// Palette n is 1,n in an SFF v2; a missing one falls back to the sprites' own.
+		palette_ = source_->sff_.paletteIndex(1, (uint16_t)paletteNo);
+		source_->renderer_->setPalette(palette_);
+	}
 	const std::string soundFile = files->text("sound");
-	if (!soundFile.empty() && !source_->sound_.load(findFile(dir, soundFile), error))
+	if (!simulationOnly && !soundFile.empty() && !source_->sound_.load(findFile(dir, soundFile), error))
 		return false;
 
 	const std::string cmd = files->text("cmd");
@@ -121,16 +132,28 @@ bool Character::load(const std::string &defPath, int paletteNo, std::string &err
 	if (!common.empty() && !source_->states_.load(findFile(dir, common), error))
 		return false;
 	emptyState_.type = emptyState_.moveType = emptyState_.physics = 'U';
+	findAiSwitches();
 
-	logf("char: %s: \"%s\", palette %d, %zu states, life %d", defPath.c_str(), name.c_str(), paletteNo,
-		source_->states_.all().size(), (int)constF("data.life", 1000));
+	logf("char: %s: \"%s\", palette %d, %zu states, life %d, %zu AI switch commands", defPath.c_str(), name.c_str(),
+		paletteNo, source_->states_.all().size(), (int)constF("data.life", 1000), aiSwitches_.size());
 	for (const std::string &p : source_->states_.stats().problems)
 		logf("char: %s", p.c_str());
 	startRound(0, 0, 1, true);
 	return true;
 }
 
-void Character::shareLoadedData(Character &from)
+void Character::loadFrom(const Character &loaded, int paletteNo)
+{
+	root_ = this;
+	shareLoadedData(loaded);
+	paletteNo_ = std::max(1, paletteNo);
+	localcoordWidth_ = loaded.localcoordWidth_;
+	movelist = loaded.movelist;
+	commands = loaded.commands;
+	aiSwitches_ = loaded.aiSwitches_;
+}
+
+void Character::shareLoadedData(const Character &from)
 {
 	source_ = from.source_;
 	defPath_ = from.defPath_;
@@ -140,6 +163,7 @@ void Character::shareLoadedData(Character &from)
 	localScale = from.localScale;
 	mugen1_ = from.mugen1_;
 	palette_ = from.palette_;
+	paletteNo_ = from.paletteNo_;
 	yaccel_ = from.yaccel_;
 	standFriction_ = from.standFriction_;
 	crouchFriction_ = from.crouchFriction_;
@@ -151,6 +175,8 @@ void Character::shareLoadedData(Character &from)
 	attackDist_[0] = from.attackDist_[0];
 	attackDist_[1] = from.attackDist_[1];
 	liedownTime_ = from.liedownTime_;
+	airJumpNum_ = from.airJumpNum_;
+	airJumpHeight_ = from.airJumpHeight_;
 	airJuggle_ = from.airJuggle_;
 	fallDefenceMul_ = from.fallDefenceMul_;
 	emptyState_.type = emptyState_.moveType = emptyState_.physics = 'U';
@@ -278,6 +304,8 @@ void Character::loadConstants(const std::string &cnsPath)
 	height_ = constF("size.height", 60);
 	attackDist_[0] = constF("size.attack.dist", constF("size.attack.dist.x", 160));
 	attackDist_[1] = constF("size.attack.dist.y", 0);
+	airJumpNum_ = (int32_t)constF("movement.airjump.num", 0);
+	airJumpHeight_ = constF("movement.airjump.height", 35);
 	liedownTime_ = (int32_t)constF("data.liedown.time", 60);
 	airJuggle_ = (int32_t)constF("data.airjuggle", 15);
 	fallDefenceMul_ = (constF("data.fall.defence_up", 50) + 100) / 100;
@@ -535,7 +563,7 @@ void Character::initStateDef(const StateDef &def)
 	if (!def.ctrl.empty())
 		ctrl = def.ctrl.eval(*this).toB();
 	if (!def.poweradd.empty())
-		power = std::clamp(power + def.poweradd.eval(*this).toI(), 0, (int32_t)constF("data.power", 3000));
+		powerOwner().power = std::clamp(powerOwner().power + def.poweradd.eval(*this).toI(), 0, (int32_t)constF("data.power", 3000));
 }
 
 // Controllers in order, each gated by its persistent counter and triggers (Ikemen's StateBlock.Run).
@@ -765,9 +793,16 @@ bool Character::runController(const StateController &sc)
 		}
 		return false;
 	case CtrlType::ScreenBound:
-		i = 1;
+		// Ikemen's screenBound: every parameter left out is 0 (as in MUGEN), and one movecamera value turns y off.
+		i = 0;
 		paramI(sc, "value", 0, i);
 		screenBound_ = i != 0;
+		i = 0;
+		paramI(sc, "movecamera", 0, i);
+		moveCameraX_ = i != 0;
+		i = 0;
+		paramI(sc, "movecamera", 1, i);
+		moveCameraY_ = i != 0;
 		return false;
 	case CtrlType::PlayerPush:
 		i = 1;
@@ -801,6 +836,9 @@ bool Character::runController(const StateController &sc)
 		paramI(sc, "time", 0, afterImage_.time);
 		if (afterImage_.time == 1)
 			afterImage_.time = 0;
+		// Time 0 stops the trail at once: Ikemen draws no afterimage that isn't active (AfterImage.isActive).
+		if (afterImage_.time == 0)
+			afterImage_.frames.clear();
 		return false;
 	case CtrlType::Pause: runPause(sc, false); return false;
 	case CtrlType::SuperPause: runPause(sc, true); return false;
@@ -941,7 +979,9 @@ void Character::runModifyExplod(const StateController &sc)
 		change.bindY *= localScale;
 	}
 	change.hasRemoveTime = paramI(sc, "removetime", 0, change.removeTime);
-	change.hasPriority = paramI(sc, "sprpriority", 0, change.priority);
+	// MUGEN 1.0 keeps an Explod's sprpriority when no postype is given (seen with Galactus's floor in the real game,
+	// which stays behind the fighters; Ikemen moves it in front).
+	change.hasPriority = sc.param("postype") && paramI(sc, "sprpriority", 0, change.priority);
 	change.hasBindTime = paramI(sc, "bindtime", 0, change.bindTime);
 	if (const std::string *t = sc.param("trans")) {
 		const std::string type = text::toLower(text::trim(*t));
@@ -998,11 +1038,11 @@ bool Character::runMiscController(const StateController &sc)
 		return true;
 	case CtrlType::PowerAdd:
 		if (paramI(sc, "value", 0, i))
-			power = std::clamp(power + i, 0, powerMax());
+			powerOwner().power = std::clamp(powerOwner().power + i, 0, powerMax());
 		return true;
 	case CtrlType::PowerSet:
 		if (paramI(sc, "value", 0, i))
-			power = std::clamp(i, 0, powerMax());
+			powerOwner().power = std::clamp(i, 0, powerMax());
 		return true;
 	case CtrlType::AttackMulSet:
 		if (paramF(sc, "value", 0, f))
@@ -1250,6 +1290,7 @@ void Character::runMakeDust(const StateController &sc)
 		paramF(sc, parameter, 1, py);
 		FightEffects::Spawn spawn;
 		spawn.animNo = 120;
+		spawn.ownPal = true;
 		spawn.shared = true;
 		spawn.owner = playerNo;
 		spawn.x = (x + px * facing) * localScale;
@@ -1276,6 +1317,9 @@ void Character::runPalFX(const StateController &sc)
 	}
 	paramI(sc, "sinadd", 3, palfx_.cycle);
 	palfx_.cycle = std::abs(palfx_.cycle);
+	paramI(sc, "color", 0, palfx_.colour);
+	int32_t inverted = 0;
+	palfx_.invert = paramI(sc, "invertall", 0, inverted) && inverted != 0;
 	if (!traceLabel.empty())
 		logf("%s frame %u: palfx %d ticks", traceLabel.c_str(), world_ ? world_->gameTime : 0, palfx_.time);
 }
@@ -1288,6 +1332,9 @@ void Character::runGlobalPalFX(const StateController &sc, bool all)
 	effect.time = 1;
 	paramI(sc, "time", 0, effect.time);
 	effect.startTime = effect.time;
+	paramI(sc, "color", 0, effect.colour);
+	int32_t inverted = 0;
+	effect.invert = paramI(sc, "invertall", 0, inverted) && inverted != 0;
 	for (int k = 0; k < 3; k++) {
 		paramI(sc, "add", k, effect.add[k]);
 		paramI(sc, "mul", k, effect.mul[k]);
@@ -1303,12 +1350,7 @@ void Character::runGlobalPalFX(const StateController &sc, bool all)
 		effect.cycle[k] = std::abs(period);
 	}
 	if (all) {
-		// MUGEN's AllPalFX also changes both root players; the shared effect supplies the stage and Explods.
-		runPalFX(sc);
-		for (Character *c : enemies())
-			c->palfx_ = palfx_;
-		for (Character *c : (root_ ? root_ : this)->partners_)
-			c->palfx_ = palfx_;
+		// Every sprite takes it on top of its own PalFX when drawn (Ikemen's getFinalPalFx).
 		world_->effects->setAllPalFX(effect);
 	} else {
 		world_->effects->setBgPalFX(effect);
@@ -1336,15 +1378,27 @@ void Character::runAfterImage(const StateController &sc)
 	afterImage_.length = std::clamp(afterImage_.length, 0, 60);
 	afterImage_.timeGap = std::max(1, afterImage_.timeGap);
 	afterImage_.frameGap = std::max(1, afterImage_.frameGap);
+	int32_t inverted = 0;
+	afterImage_.invert = paramI(sc, "palinvertall", 0, inverted) && inverted != 0;
+	paramI(sc, "palcolor", 0, afterImage_.colour);
+	afterImage_.colour = std::clamp(afterImage_.colour, 0, 256);
 	for (int k = 0; k < 3; k++) {
 		paramI(sc, "palbright", k, afterImage_.bright[k]);
 		paramI(sc, "palcontrast", k, afterImage_.contrast[k]);
 		paramI(sc, "paladd", k, afterImage_.add[k]);
 		paramF(sc, "palmul", k, afterImage_.mul[k]);
+		paramI(sc, "palpostbright", k, afterImage_.postBright[k]);
 	}
 	if (const std::string *value = sc.param("trans")) {
+		// Each type's default alpha, then "alpha = src, dst" if given (Ikemen's paramTrans).
 		const std::string trans = text::toLower(text::trim(*value));
 		afterImage_.trans = trans == "sub" ? Trans::Sub : Trans::Add;
+		afterImage_.alpha[0] = 255;
+		afterImage_.alpha[1] = trans == "add" || trans == "sub" ? 255 : trans == "add1" ? 128 : 0;
+		paramI(sc, "alpha", 0, afterImage_.alpha[0]);
+		paramI(sc, "alpha", 1, afterImage_.alpha[1]);
+		afterImage_.alpha[0] = std::clamp(afterImage_.alpha[0], 0, 255);
+		afterImage_.alpha[1] = std::clamp(afterImage_.alpha[1], 0, 255);
 	}
 	if (!traceLabel.empty())
 		logf("%s frame %u: afterimage length %d", traceLabel.c_str(), world_ ? world_->gameTime : 0, afterImage_.length);
@@ -1374,7 +1428,7 @@ void Character::runPause(const StateController &sc, bool superPause)
 		return;
 	int32_t powerAdd = 0;
 	paramI(sc, "poweradd", 0, powerAdd);
-	power = std::clamp(power + powerAdd, 0, powerMax());
+	powerOwner().power = std::clamp(powerOwner().power + powerAdd, 0, powerMax());
 	const Param *animParam = sc.find("anim");
 	int32_t effectAnim = 100;
 	if (animParam)
@@ -1382,7 +1436,14 @@ void Character::runPause(const StateController &sc, bool superPause)
 	FightEffects::Spawn spawn;
 	spawn.animNo = effectAnim;
 	spawn.shared = !animParam || animParam->prefix != 'S';
+	if (!spawn.shared) {
+		spawn.animations = &source_->anims_;
+		spawn.renderer = source_->renderer_.get();
+	}
 	spawn.owner = playerNo;
+	// The flash plays through the freeze it starts, then goes when its animation ends (Ikemen's superPause).
+	spawn.superMoveTime = -1;
+	spawn.pauseMoveTime = -1;
 	float px = 0, py = 0;
 	paramF(sc, "pos", 0, px);
 	paramF(sc, "pos", 1, py);
@@ -1422,8 +1483,21 @@ void Character::runExplod(const StateController &sc)
 	spawn.animations = &source_->anims_;
 	spawn.renderer = source_->renderer_.get();
 	spawn.owner = playerNo;
-	paramF(sc, "velocity", 0, spawn.velocityX);
-	paramF(sc, "velocity", 1, spawn.velocityY);
+	// "vel" is MUGEN's short name for it (Ikemen reads both).
+	const char *const velocity = sc.find("velocity") ? "velocity" : "vel";
+	paramF(sc, velocity, 0, spawn.velocityX);
+	paramF(sc, velocity, 1, spawn.velocityY);
+	// The older supermove: any true value moves for the whole SuperPause (Ikemen's explod_supermove).
+	int32_t superMove = 0;
+	if (paramI(sc, "supermove", 0, superMove))
+		spawn.superMoveTime = superMove != 0 ? -1 : 0;
+	paramI(sc, "supermovetime", 0, spawn.superMoveTime);
+	paramI(sc, "pausemovetime", 0, spawn.pauseMoveTime);
+	int32_t ownPalette = 0;
+	paramI(sc, "ownpal", 0, ownPalette);
+	spawn.ownPal = ownPalette != 0;
+	for (int k = 0; k < 3; k++)
+		paramI(sc, "shadow", k, spawn.shadow[k]);
 	paramF(sc, "accel", 0, spawn.accelX);
 	paramF(sc, "accel", 1, spawn.accelY);
 	spawn.velocityX *= localScale;
@@ -1484,14 +1558,19 @@ void Character::runExplod(const StateController &sc)
 	} else {
 		spawn.screen = true;
 		spawn.y = py;
+		// Ikemen's Explod.setPos: a screen explod measures from sys.gameWidth / 2, which the camera's zoom doesn't
+		// change (halfWidth is the zoomed play area, width / scale / zoom).
+		const float screenHalf = world_->halfWidth * world_->cameraZoom;
 		if (postype == "left")
-			spawn.x = -world_->halfWidth + px;
+			spawn.x = -screenHalf + px;
 		else if (postype == "right")
-			spawn.x = world_->halfWidth + px;
+			spawn.x = screenHalf + px;
 		else if (postype == "back")
-			spawn.x = -facing * world_->halfWidth - px;
+			// The edge behind the player; pos.x is mirrored only when that's the right edge (Ikemen's Explod
+			// setPos turns back into left with pos as is, or right with pos.x negated).
+			spawn.x = facing * (px - screenHalf);
 		else
-			spawn.x = facing * world_->halfWidth + px; // front, and MUGEN's fallback
+			spawn.x = facing * screenHalf + px; // front, and MUGEN's fallback
 		spawn.moveFacing = postype == "back" ? facing : 1;
 		const int baseFacing = postype == "back" ? facing : 1;
 		spawn.facing = baseFacing * (relativeFacing < 0 ? -1 : 1);
@@ -1510,6 +1589,63 @@ void Character::runExplod(const StateController &sc)
 	}
 }
 
+namespace {
+
+// The command names a trigger tests with "command = "name"" (not "!="), as written.
+void commandsIn(const std::string &source, std::vector<std::string> &out)
+{
+	const std::string lower = text::toLower(source);
+	for (size_t at = lower.find("command"); at != std::string::npos; at = lower.find("command", at + 7)) {
+		size_t i = at + 7;
+		while (i < lower.size() && lower[i] == ' ')
+			i++;
+		if (i >= lower.size() || lower[i] != '=')
+			continue;
+		i++;
+		while (i < lower.size() && lower[i] == ' ')
+			i++;
+		if (i >= lower.size() || lower[i] != '"')
+			continue;
+		const size_t end = source.find('"', i + 1);
+		if (end != std::string::npos)
+			out.push_back(source.substr(i + 1, end - i - 1));
+	}
+}
+
+} // namespace
+
+// mugen360's own (not from Ikemen): the commands that switch on a character's own AI. Many characters set an "AI on"
+// variable when a command no person could enter comes true, which only the command cheat does; real moves' commands
+// start a state instead. So: in states -1, -2 and -3, the commands found only in triggers of controllers that set
+// variables, which the cheat could complete.
+void Character::findAiSwitches()
+{
+	aiSwitches_.clear();
+	std::vector<std::string> setsVariable, other;
+	for (int32_t no : { -3, -2, -1 }) {
+		const StateDef *state = source_->states_.find(no);
+		if (!state)
+			continue;
+		for (const StateController &sc : state->ctrls) {
+			const bool variable = sc.type == CtrlType::VarSet || sc.type == CtrlType::VarAdd ||
+				sc.type == CtrlType::VarRangeSet || sc.type == CtrlType::VarRandom;
+			std::vector<std::string> &into = variable ? setsVariable : other;
+			for (const Expr &e : sc.triggerAll)
+				commandsIn(e.source(), into);
+			for (const std::vector<Expr> &group : sc.triggers)
+				for (const Expr &e : group)
+					commandsIn(e.source(), into);
+		}
+	}
+	for (const std::string &command : setsVariable) {
+		if (std::find(other.begin(), other.end(), command) != other.end())
+			continue;
+		const int32_t index = commands.nameIndex(command);
+		if (commands.cheatable(index) && std::find(aiSwitches_.begin(), aiSwitches_.end(), index) == aiSwitches_.end())
+			aiSwitches_.push_back(index);
+	}
+}
+
 // --- A frame ---------------------------------------------------------------------------------------------------------
 
 void Character::turnAndInput(const InputState &in)
@@ -1518,11 +1654,33 @@ void Character::turnAndInput(const InputState &in)
 	if (ctrl && (stateNo == 0 || stateNo == 11 || stateNo == 20 || (stateNo == 52 && anim.animTime() == 0)))
 		autoTurn();
 	// At time over and before the win poses the controller is ignored.
+	const bool ai = aiLevel > 0;
 	if (world_ && world_->inputWait) {
 		commands.reset();
-		commands.update(InputState{}, facing);
+		commands.update(InputState{}, facing, ai);
 	} else {
-		commands.update(in, facing);
+		commands.update(in, facing, ai);
+	}
+	// The computer's cheat (Ikemen's commandUpdate): during the fight, now and then one command picked at random
+	// counts as done this tick, more often at higher levels (about 1 tick in 9 at level 8). This is what turns on
+	// the AI that many characters hide behind commands no one could enter. Helpers share their root's pick.
+	cpuCommand_ = -1;
+	cheatLogged_ = false;
+	if (parent_) {
+		if (root_)
+			cpuCommand_ = root_->cpuCommand_;
+	} else if (ai && aiCheat != AiCheat::None && world_ && world_->roundState == 2) {
+		const bool switches = aiCheat == AiCheat::Switches;
+		const size_t choices = switches ? aiSwitches_.size() : commands.nameCount();
+		if (choices > 0) {
+			cheatRandom_ = cheatRandom_ * 1103515245u + 12345u;
+			const float roll = (float)((cheatRandom_ >> 8) & 0xFFFFFF) / 16777216.0f * ((float)aiLevel / 2 + 32);
+			if (roll > 32) {
+				cheatRandom_ = cheatRandom_ * 1103515245u + 12345u;
+				const size_t pick = (cheatRandom_ >> 16) % (uint32_t)choices;
+				cpuCommand_ = switches ? aiSwitches_[pick] : (int32_t)pick;
+			}
+		}
 	}
 	for (auto &helper : helpers_)
 		helper->turnAndInput(InputState{});
@@ -1541,6 +1699,14 @@ void Character::actionPrepare()
 		} else if (stateType == 'S' && held(Key::U)) {
 			if (stateNo != 40)
 				changeState(40, -1, -1);
+		} else if (!(special_ & Special::NoAirJump) && stateType == 'A' && b.state(Key::U, false, false, true) == 1 &&
+			y <= -airJumpHeight_ && airJumpCount_ < airJumpNum_) {
+			// The air jump: up pressed this very tick, high enough above the ground, with air jumps left (the
+			// character's [Movement] airjump.num). Not again while state 45 is just starting.
+			if (stateNo != 45 || stateTime > 0) {
+				airJumpCount_++;
+				changeState(45, -1, -1);
+			}
 		} else if (stateType == 'S' && held(Key::D)) {
 			if (stateNo != 10) {
 				if (stateNo != 100)
@@ -1575,6 +1741,9 @@ void Character::actionPrepare()
 		posFreeze_ = false;
 		screenBound_ = true;
 		playerPush_ = true;
+		// The camera follows a player again unless ScreenBound says otherwise this tick (Ikemen: players only, not
+		// helpers, and not a KO'd one lying in 5150 with partners left).
+		moveCameraX_ = moveCameraY_ = !parent_;
 		widthFront_ = widthBack_ = 0;
 		for (HitBySlot &s : hitBy_) {
 			if (s.time > 0 && --s.time == 0)
@@ -1709,7 +1878,7 @@ void Character::actionRun()
 
 	// Power from this frame's hits.
 	if (powerGain_ != 0) {
-		power = std::clamp(power + powerGain_, 0, powerMax());
+		powerOwner().power = std::clamp(powerOwner().power + powerGain_, 0, powerMax());
 		powerGain_ = 0;
 	}
 
@@ -1800,6 +1969,8 @@ void Character::tick()
 			palfx_.time--;
 		palfx_.elapsed++;
 	}
+	if (world_ && world_->effects)
+		world_->effects->setOwnerColour(this, paletteColour());
 	if (afterImage_.time != 0) {
 		if (afterImage_.recordGap <= 0) {
 			afterImage_.frames.insert(afterImage_.frames.begin(), AfterImageFrame{ anim, x, y, facing });
@@ -1902,8 +2073,6 @@ void Character::body(float &left, float &right, float &top) const
 
 void Character::draw(const View &view, float groundY, const GroundDraw &ground)
 {
-	for (auto &helper : helpers_)
-		helper->draw(view, groundY, ground);
 	const int shadowIntensity = ground.shadowIntensity, reflection = ground.reflection;
 	auto drawProjectiles = [&](bool foreground) {
 	for (const Projectile &projectile : projectiles_) {
@@ -1913,16 +2082,40 @@ void Character::draw(const View &view, float groundY, const GroundDraw &ground)
 			continue;
 		const float sx = view.screenX(projectile.x * projectile.localScale - view.camX);
 		const float sy = view.screenY(groundY + projectile.y * projectile.localScale - view.camY);
+		auto drawProjectile = [&](float px, float py, const SpriteDraw &how) {
+			if (projectile.shared) {
+				if (world_ && world_->effects)
+					world_->effects->drawSharedAnimation(projectile.anim, px, py, view.drawScaleX(), projectile.facing, how);
+			} else if (source_->renderer_) {
+				source_->renderer_->drawAnimation(projectile.anim, px, py, view.drawScaleX() * projectile.localScale,
+					projectile.facing, how);
+			}
+		};
+		// projshadow: on the ground below it, as a character's (Ikemen's Projectile shadow sprite).
+		if (projectile.shadow[0] != 0 || projectile.shadow[1] != 0 || projectile.shadow[2] != 0) {
+			const uint32_t colour = projectile.shadow[0] < 0 ? ground.shadowColour
+				: (uint32_t)(projectile.shadow[0] & 0xFF) << 16 | (uint32_t)(projectile.shadow[1] & 0xFF) << 8 |
+					(uint32_t)(projectile.shadow[2] & 0xFF);
+			const float shx = view.screenX(projectile.x * projectile.localScale + ground.shadowOffsetX - view.camX);
+			const float shy = view.screenY(groundY + ground.shadowOffsetY - view.camY);
+			SpriteDraw shadow;
+			shadow.scaleX = projectile.scaleX;
+			shadow.scaleY = -ground.shadowYScale * projectile.scaleY;
+			if (ground.shadowIntensity > 0) {
+				shadow.shadow = ground.shadowIntensity;
+				drawProjectile(shx, shy, shadow);
+			}
+			if (colour != 0) {
+				shadow.shadow = -1;
+				shadow.trans = Trans::Sub;
+				shadow.tint = 0xFF000000u | colour;
+				drawProjectile(shx, shy, shadow);
+			}
+		}
 		SpriteDraw how;
 		how.scaleX = projectile.scaleX;
 		how.scaleY = projectile.scaleY;
-		if (projectile.shared) {
-			if (world_ && world_->effects)
-				world_->effects->drawSharedAnimation(projectile.anim, sx, sy, view.drawScaleX(), projectile.facing, how);
-		} else if (source_->renderer_) {
-			source_->renderer_->drawAnimation(projectile.anim, sx, sy, view.drawScaleX() * projectile.localScale,
-				projectile.facing, how);
-		}
+		drawProjectile(sx, sy, how);
 	}
 	};
 	drawProjectiles(false);
@@ -1984,7 +2177,10 @@ void Character::draw(const View &view, float groundY, const GroundDraw &ground)
 			const AfterImageFrame &old = afterImage_.frames[n];
 			SpriteDraw how;
 			how.trans = afterImage_.trans;
-			how.srcAlpha = 255;
+			how.srcAlpha = (uint8_t)afterImage_.alpha[0];
+			how.dstAlpha = (uint8_t)afterImage_.alpha[1];
+			how.invert = afterImage_.invert;
+			how.saturation = (uint16_t)afterImage_.colour;
 			for (int k = 0; k < 3; k++) {
 				int add = afterImage_.bright[k];
 				float mul = (float)afterImage_.contrast[k];
@@ -1992,6 +2188,8 @@ void Character::draw(const View &view, float groundY, const GroundDraw &ground)
 					add += afterImage_.add[k];
 					mul *= afterImage_.mul[k];
 				}
+				if (visible > 0)
+					add += afterImage_.postBright[k];
 				(&how.addR)[k] = (int16_t)std::clamp(add, -255, 255);
 				(&how.mulR)[k] = (uint16_t)std::clamp((int)mul, 0, 1024);
 			}
@@ -2001,16 +2199,9 @@ void Character::draw(const View &view, float groundY, const GroundDraw &ground)
 			visible++;
 		}
 	}
-	SpriteDraw colour;
-	if (palfx_.enabled) {
-		const float wave = palfx_.cycle > 0
-			? std::sin(6.28318530718f * palfx_.elapsed / palfx_.cycle)
-			: 0;
-		for (int k = 0; k < 3; k++) {
-			(&colour.addR)[k] = (int16_t)std::clamp(palfx_.add[k] + (int)std::lround(palfx_.sinAdd[k] * wave), -255, 255);
-			(&colour.mulR)[k] = (uint16_t)std::clamp(palfx_.mul[k], 0, 1024);
-		}
-	}
+	SpriteDraw colour = paletteColour();
+	if (world_ && world_->effects)
+		world_->effects->allPalFX().stack(colour);
 	// Offset, Trans and the angle (AngleDraw) for this frame.
 	if (transSet_) {
 		colour.trans = trans_;
@@ -2025,6 +2216,24 @@ void Character::draw(const View &view, float groundY, const GroundDraw &ground)
 	drawAnim(sx + drawOffsetX_ * localScale * view.drawScaleX(),
 		view.screenY(groundY + worldY() + drawOffsetY_ * localScale - view.camY), colour);
 	drawProjectiles(true);
+}
+
+SpriteDraw Character::paletteColour() const
+{
+	SpriteDraw colour;
+	if (!palfx_.enabled)
+		return colour;
+	const float wave = palfx_.cycle > 0 ? std::sin(6.28318530718f * palfx_.elapsed / palfx_.cycle) : 0;
+	// Steps of 8, as the stage's (PalFX::apply): a flash's sine wave would otherwise make new textures every tick.
+	const auto steps = [](int32_t v) { return (v >= 0 ? v + 4 : v - 4) / 8 * 8; };
+	for (int k = 0; k < 3; k++) {
+		(&colour.addR)[k] =
+			(int16_t)std::clamp(steps(palfx_.add[k] + (int)std::lround(palfx_.sinAdd[k] * wave)), -255, 255);
+		(&colour.mulR)[k] = (uint16_t)std::clamp(steps(palfx_.mul[k]), 0, 1024);
+	}
+	colour.saturation = (uint16_t)std::clamp(steps(palfx_.colour), 0, 256);
+	colour.invert = palfx_.invert;
+	return colour;
 }
 
 void Character::drawBoxes(const View &view, float groundY) const
@@ -2289,6 +2498,15 @@ void Character::runHitDef(const StateController &sc)
 	setF("envshake.phase", hd.envShakePhase);
 	setF("envshake.mul", hd.envShakeMul);
 	setF("envshake.dir", hd.envShakeDir);
+	setI("palfx.time", hd.palfxTime);
+	for (int k = 0; k < 3; k++) {
+		paramI(sc, "palfx.add", k, hd.palfxAdd[k]);
+		paramI(sc, "palfx.mul", k, hd.palfxMul[k]);
+		paramI(sc, "palfx.sinadd", k, hd.palfxSinAdd[k]);
+	}
+	paramI(sc, "palfx.sinadd", 3, hd.palfxCycle);
+	setI("palfx.color", hd.palfxColour);
+	setB("palfx.invertall", hd.palfxInvert);
 	setF2("sparkxy", hd.sparkxy);
 	setI("down.hittime", hd.downHittime);
 	setI("p1facing", hd.p1facing);
@@ -2461,6 +2679,8 @@ void Character::runHelper(const StateController &sc)
 	paramI(sc, "keyctrl", 0, keyctrl);
 	helper->keyCtrl_ = keyctrl != 0;
 	helper->helperId_ = id;
+	if (const std::string *type = sc.param("helpertype"))
+		helper->playerHelper_ = text::toLower(text::trim(*type)) == "player";
 	helper->playerNo = playerNo;
 	helper->aiLevel = aiLevel;
 	helper->world_ = world_;
@@ -2479,9 +2699,17 @@ void Character::runHelper(const StateController &sc)
 		helper->facing = face < 0 ? -1 : 1;
 	} else {
 		const float halfWidth = world_ ? world_->halfWidth / helper->localScale : 160 / helper->localScale;
-		helper->x = (postype == "left" ? -halfWidth : halfWidth) + px;
+		// The screen's edges are where the camera is (Ikemen's leftEdge / rightEdge).
+		const float centre = world_ ? world_->camX / helper->localScale : 0;
 		helper->y = py;
 		helper->facing = face < 0 ? -1 : 1;
+		if (postype == "front" || postype == "back") {
+			// The edge in front of or behind the player, pos.x along its facing, facing it (Ikemen's helperPos).
+			helper->x = centre + ((facing > 0) == (postype == "front") ? halfWidth : -halfWidth) + px * facing;
+			helper->facing *= facing;
+		} else {
+			helper->x = centre + (postype == "left" ? -halfWidth : halfWidth) + px;
+		}
 	}
 	if (const std::string *helperName = sc.param("name")) {
 		std::string display(text::trim(*helperName));
@@ -2520,6 +2748,14 @@ int32_t Character::helperCount(int32_t id) const
 		count += helper->helperCount(id);
 	}
 	return count;
+}
+
+void Character::collectHelpers(std::vector<Character *> &out) const
+{
+	for (const auto &helper : helpers_) {
+		out.push_back(helper.get());
+		helper->collectHelpers(out);
+	}
 }
 
 bool Character::setProjectileAnimation(Projectile &projectile, int32_t number, char prefix)
@@ -2571,6 +2807,8 @@ void Character::runProjectile(const StateController &sc)
 	paramF(sc, "velmul", 1, projectile.velmulY);
 	paramF(sc, "projscale", 0, projectile.scaleX);
 	paramF(sc, "projscale", 1, projectile.scaleY);
+	for (int k = 0; k < 3; k++)
+		paramI(sc, "projshadow", k, projectile.shadow[k]);
 	paramF(sc, "projedgebound", 0, projectile.edgeBound);
 	paramF(sc, "projheightbound", 0, projectile.heightLow);
 	paramF(sc, "projheightbound", 1, projectile.heightHigh);
@@ -2598,7 +2836,13 @@ void Character::runProjectile(const StateController &sc)
 		projectile.y = py;
 	} else {
 		const float halfWidth = world_ ? world_->halfWidth / localScale : 160 / localScale;
-		projectile.x = (postype == "left" ? -halfWidth : halfWidth) + px;
+		// The screen's edges are where the camera is (Ikemen's leftEdge / rightEdge).
+		const float centre = world_ ? world_->camX / localScale : 0;
+		if (postype == "front" || postype == "back")
+			// The edge in front of or behind the player, offset.x along its facing (Ikemen's helperPos).
+			projectile.x = centre + ((facing > 0) == (postype == "front") ? halfWidth : -halfWidth) + px * facing;
+		else
+			projectile.x = centre + (postype == "left" ? -halfWidth : halfWidth) + px;
 		projectile.y = py;
 	}
 
@@ -3169,10 +3413,26 @@ int Character::hitResultCheck(Character &g)
 	// Power for both, on hit or guard.
 	if (result > 0) {
 		powerGain_ += std::abs(result) == 1 ? hd.hitGetPower : hd.guardGetPower;
-		g.powerGain_ += std::abs(result) == 1 ? hd.hitGivePower : hd.guardGivePower;
+		// Only a player earns power from being hit, not a normal helper (Ikemen's isPlayerType).
+		if (!g.root_ || g.playerHelper_)
+			g.powerGain_ += std::abs(result) == 1 ? hd.hitGivePower : hd.guardGivePower;
 		if (world_ && world_->effects && hd.envShakeTime > 0)
 			world_->effects->startShake(hd.envShakeTime, hd.envShakeFreq, hd.envShakeAmpl * localScale,
 				hd.envShakePhase, hd.envShakeMul, hd.envShakeDir);
+	}
+	// The HitDef's palfx flashes the getter (Ikemen's hitResultCheck: after the get-hit values are set).
+	if (result > 0 && ghvset && hd.palfxTime > 0) {
+		g.palfx_ = PaletteEffect{};
+		g.palfx_.time = hd.palfxTime;
+		g.palfx_.enabled = true;
+		for (int k = 0; k < 3; k++) {
+			g.palfx_.add[k] = hd.palfxAdd[k];
+			g.palfx_.mul[k] = hd.palfxMul[k];
+			g.palfx_.sinAdd[k] = hd.palfxSinAdd[k];
+		}
+		g.palfx_.cycle = std::abs(hd.palfxCycle);
+		g.palfx_.colour = hd.palfxColour;
+		g.palfx_.invert = hd.palfxInvert;
 	}
 	// Each is now on the other's list: the getter is this character's target, with juggle points against it.
 	addTarget(g);
@@ -3442,7 +3702,8 @@ void Character::runAssertSpecial(const StateController &sc)
 		{ "noko", Special::NoKo }, { "intro", Special::Intro }, { "roundnotover", Special::RoundNotOver },
 		{ "nobardisplay", Special::NoBarDisplay }, { "nofallhitflag", Special::NoFallHitFlag },
 		{ "timerfreeze", Special::TimerFreeze }, { "nocornerpush", Special::NoCornerPush }, { "nobg", Special::NoBg },
-		{ "nofg", Special::NoFg }, { "nokosnd", Special::NoKoSnd } };
+		{ "nofg", Special::NoFg }, { "nokosnd", Special::NoKoSnd }, { "noaicheat", Special::NoAiCheat },
+		{ "noairjump", Special::NoAirJump } };
 	for (const char *param : { "flag", "flag2", "flag3" }) {
 		const std::string *v = sc.param(param);
 		if (!v)
@@ -3634,7 +3895,7 @@ void Character::runTargetControllerOn(const StateController &sc, Character &targ
 		break;
 	case CtrlType::TargetPowerAdd:
 		if (paramI(sc, "value", 0, i))
-			t->power = std::clamp(t->power + i, 0, (int32_t)t->constF("data.power", 3000));
+			t->powerOwner().power = std::clamp(t->powerOwner().power + i, 0, (int32_t)t->constF("data.power", 3000));
 		break;
 	default: break;
 	}
@@ -3658,7 +3919,7 @@ Value Character::trigger(Trig t, Value arg)
 	case Trig::PrevStateNo: return Value::I(prevStateNo);
 	case Trig::Ctrl: return Value::B(ctrl);
 	case Trig::Facing: return Value::I(facing);
-	case Trig::Power: return Value::I(power);
+	case Trig::Power: return Value::I(powerOwner().power);
 	case Trig::PowerMax: return Value::I((int32_t)constF("data.power", 3000));
 	case Trig::Life: return Value::I(life);
 	case Trig::LifeMax: return Value::I((int32_t)constF("data.life", 1000));
@@ -3735,7 +3996,8 @@ Value Character::trigger(Trig t, Value arg)
 			count += projectile.active;
 		return Value::I(count);
 	}
-	case Trig::PalNo: return Value::I(palette_ >= 0 ? palette_ + 1 : 1);
+	// The picked palette number, with or without sprites loaded, and unchanged by RemapPal (Ikemen's gi().palno).
+	case Trig::PalNo: return Value::I(paletteNo_);
 	case Trig::GameTime: return Value::I(world_ ? (int32_t)world_->gameTime : 0);
 	case Trig::TeamSide: return Value::I(playerNo + 1);
 	case Trig::Random:
@@ -3909,9 +4171,19 @@ char Character::flag(Flag f)
 bool Character::command(const std::string &n)
 {
 	// A helper reads its root's controller, and only with keyctrl.
-	if (parent_)
-		return keyCtrl_ && root_ && root_->commands.active(n);
-	return commands.active(n);
+	const CommandList *list = parent_ ? (keyCtrl_ && root_ ? &root_->commands : nullptr) : &commands;
+	if (!list)
+		return false;
+	if (list->active(n))
+		return true;
+	// The computer's cheated command (Ikemen's Char.command).
+	if (aiLevel <= 0 || (special_ & Special::NoAiCheat) || !list->cheated(n, cpuCommand_, parent_ != nullptr))
+		return false;
+	if (!traceLabel.empty() && !cheatLogged_) {
+		logf("%s frame %u: ai cheat %s", traceLabel.c_str(), world_ ? world_->gameTime : 0, n.c_str());
+		cheatLogged_ = true;
+	}
+	return true;
 }
 
 bool Character::constant(const std::string &n, Value &out)

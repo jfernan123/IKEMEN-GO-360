@@ -12,7 +12,7 @@
 namespace m360 {
 
 // What the title menu chose.
-enum class TitleChoice : uint8_t { None, Arcade, TeamArcade, Versus, TeamVersus, QuickMatch, Training, Survival, Watch, Options, Exit };
+enum class TitleChoice : uint8_t { None, Arcade, TeamArcade, Versus, TeamVersus, QuickMatch, Training, Survival, Watch, Options, NeuralVs, Exit };
 
 // The title screen and main menu, from a screenpack's [Title Info] and TitleBG (Ikemen's main.lua: f_createMenu,
 // f_menuCommonCalc, f_menuCommonDraw, f_menuWindow). The menu comes from the "menu.itemname." keys in file order;
@@ -24,11 +24,27 @@ public:
 	struct Item {
 		std::string name, display;
 		std::vector<Item> children;
+		// A mode mugen360 can't run yet, kept as a row that says so: a screenpack that paints its labels needs
+		// every row in place, or each painted label below starts the next one's mode.
+		bool placeholder = false;
+		// mugen360 draws this row's label itself, over the screenpack's painted one (claimPlaceholder).
+		bool ownLabel = false;
 	};
 
 	bool load(Motif &motif, std::string &error);
 	// Back to the top menu with the fade in.
 	void reset();
+	// One more top-level item, before the one named before (or last): mugen360's own modes, such as "neuralvs" (VS
+	// NEURAL CAP), which no screenpack lists.
+	void addItem(const std::string &name, const std::string &display, const std::string &before);
+	// Whether the menu draws its items' text: some screenpacks paint the labels into their art (font -1 or missing),
+	// so an added item would be invisible there and shift every painted label below it.
+	bool itemsShowText() const;
+	// On a screenpack whose labels are painted: takes the first top-level row of a mode mugen360 can't run (a
+	// placeholder) for this item, with its own label drawn over the painted one. False if there's no such row.
+	bool claimPlaceholder(const std::string &name, const std::string &display);
+	// A mode on a button instead (LB): its hint is drawn at the top of the screen. For screenpacks whose menu is art.
+	void addShortcut(const std::string &hint, TitleChoice choice);
 	void update(const platform::Pad &pad1, const platform::Pad &pad2);
 	void draw();
 	// The mode picked, once the fade-out has finished; None until then.
@@ -56,6 +72,8 @@ private:
 	void choose(const Item &item, const std::string &path);
 	void notice(const std::string &text, int32_t ticks);
 	bool pressed(bool now, bool &before) const;
+	// The labels of rows mugen360 claimed in a painted menu (claimPlaceholder).
+	void drawOwnLabels(const ScreenSpace &space) const;
 
 	Motif *motif_ = nullptr;
 	BgDef bg_;
@@ -85,8 +103,10 @@ private:
 	int32_t noticeTime_ = 0;
 	// The choice waits for its notice before the fade-out starts.
 	bool fadeAfterNotice_ = false;
-	// Buttons last frame, for presses: up, down, done, cancel.
-	bool held_[4] = { false, false, false, false };
+	// Buttons last frame, for presses: up, down, done, cancel, the shortcut.
+	bool held_[5] = { false, false, false, false, false };
+	std::string shortcutHint_;
+	TitleChoice shortcut_ = TitleChoice::None;
 };
 
 } // namespace m360

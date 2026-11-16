@@ -425,7 +425,10 @@ bool StateTable::load(const std::string &path, std::string &error)
 						sc.type = ctrlType(sc.typeName);
 					}
 				} else if (name == "persistent") {
-					sc.persistent = text::atoi(value);
+					// Ikemen's compiler reads persistent only in states 0 and up: in -1/-2/-3 every controller runs
+					// each tick whatever it says (compiler.go, "persistent").
+					if (no >= 0)
+						sc.persistent = text::atoi(value);
 				} else if (name == "ignorehitpause") {
 					sc.ignoreHitPause = text::atoi(value) != 0;
 				} else {

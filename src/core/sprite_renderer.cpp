@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <cmath>
 
 #include "core/log.h"
@@ -10,9 +11,15 @@ namespace m360 {
 
 namespace {
 
-// Every renderer's textures together, as the 360 would hold them: padded to 32x32 tiles, at least 64 KB each.
+// Every renderer's textures together, as the 360 holds them: padded to 32x32 tiles, in 4 KB pages (a big one in 64 KB
+// pages of its own; see platform_x360's texture blocks).
 size_t textureCount = 0, textureBytes = 0, textureLogged = 0;
 uint64_t useClock = 0;
+// The textures' limit: the budget, lowered when the 360 runs short of memory (the heap never gives memory back, so
+// the limit stays lowered).
+size_t textureLimit = SpriteRenderer::TEXTURE_BUDGET;
+// When the limit last came down: once a second at most, as freed textures come back to the 360 a few frames later.
+std::chrono::steady_clock::time_point limitLowered;
 std::vector<SpriteRenderer *> &renderers()
 {
 	static std::vector<SpriteRenderer *> all;
@@ -22,8 +29,8 @@ std::vector<SpriteRenderer *> &renderers()
 size_t consoleBytes(int width, int height)
 {
 	const size_t w = ((size_t)width + 31) / 32 * 32, h = ((size_t)height + 31) / 32 * 32;
-	const size_t bytes = (w * h * 4 + 65535) / 65536 * 65536;
-	return bytes;
+	const size_t bytes = w * h * 4;
+	return bytes > 512 * 1024 ? (bytes + 65535) / 65536 * 65536 : (bytes + 4095) / 4096 * 4096;
 }
 
 } // namespace
@@ -36,7 +43,28 @@ size_t SpriteRenderer::totalTextureBytes()
 namespace {
 size_t createdCount = 0;
 uint64_t createdMicroseconds = 0;
+// Pixels converted into new colour variants of already-made sprites this frame (newFrame resets it). A super's
+// flashes and darkening ask for a variant of nearly every sprite at once; making them all in one frame is what
+// stalls the 360, so past this many the rest wait a frame or two, drawn meanwhile with a variant already made.
+size_t variantPixels = 0;
+constexpr size_t VARIANT_PIXELS_PER_FRAME = 640 * 480;
+
+// Palette effects in steps of 8 (of 256): a flash that changes a little every frame reuses its textures instead of
+// making new ones each frame. Too small a difference to see.
+int16_t step8(int16_t v)
+{
+	return (int16_t)((v >= 0 ? v + 4 : v - 4) / 8 * 8);
+}
+uint16_t step8(uint16_t v)
+{
+	return (uint16_t)((v + 4) / 8 * 8);
+}
 } // namespace
+
+void SpriteRenderer::newFrame()
+{
+	variantPixels = 0;
+}
 
 void SpriteRenderer::takeCreationStats(size_t &count, uint64_t &microseconds)
 {
@@ -70,7 +98,28 @@ void SpriteRenderer::clear()
 	cache_.clear();
 }
 
-void SpriteRenderer::trim()
+void SpriteRenderer::freeAll()
+{
+	for (SpriteRenderer *r : renderers())
+		r->clear();
+	platform::freeDestroyedTextures();
+}
+
+// Short of memory on the 360 (below MEMORY_RESERVE free, or a texture that couldn't be made): the limit drops to
+// three quarters of what the textures hold now.
+static void lowerTextureLimit(const char *why)
+{
+	const auto now = std::chrono::steady_clock::now();
+	if (now - limitLowered < std::chrono::seconds(1))
+		return;
+	limitLowered = now;
+	textureLimit = std::max<size_t>(32u * 1024 * 1024, std::min(textureLimit, textureBytes / 4 * 3));
+	size_t free = 0;
+	platform::freeMemory(free);
+	logf("textures: %s (%zu MB free): limit now %zu MB", why, free >> 20, textureLimit >> 20);
+}
+
+void SpriteRenderer::trim(size_t target)
 {
 	struct Entry {
 		uint64_t lastUse;
@@ -85,10 +134,9 @@ void SpriteRenderer::trim()
 		}
 	}
 	std::sort(entries.begin(), entries.end(), [](const Entry &a, const Entry &b) { return a.lastUse < b.lastUse; });
-	// Down to three quarters, so this runs now and then rather than every draw.
 	size_t freed = 0, count = 0;
 	for (const Entry &e : entries) {
-		if (textureBytes <= TEXTURE_BUDGET / 4 * 3)
+		if (textureBytes <= target)
 			break;
 		const auto it = e.renderer->cache_.find(e.key);
 		textureCount--;
@@ -101,20 +149,41 @@ void SpriteRenderer::trim()
 	logf("textures: freed %zu (%zu MB), %zu left (%zu MB)", count, freed >> 20, textureCount, textureBytes >> 20);
 }
 
-platform::Texture *SpriteRenderer::texture(const Sprite &sprite, int palette, const SpriteDraw &how)
+platform::Texture *SpriteRenderer::texture(const Sprite &sprite, int palette, const SpriteDraw &asked)
 {
 	const size_t index = (size_t)(&sprite - sff_.sprites().data());
+	SpriteDraw how = asked;
+	how.addR = step8(how.addR), how.addG = step8(how.addG), how.addB = step8(how.addB);
+	how.mulR = step8(how.mulR), how.mulG = step8(how.mulG), how.mulB = step8(how.mulB);
+	if (how.saturation < 256)
+		how.saturation = step8(how.saturation);
 	// Only what changes the pixels goes in the key.
 	const Key key{ index, sprite.isTrueColor() ? -1 : palette, how.mask, how.shadow >= 0 ? Trans::None : how.trans,
 		how.trans == Trans::None ? (uint8_t)255 : how.srcAlpha, how.trans == Trans::None ? (uint8_t)0 : how.dstAlpha,
-		how.shadow, how.addR, how.addG, how.addB, how.mulR, how.mulG, how.mulB, how.tint };
+		how.shadow, how.addR, how.addG, how.addB, how.mulR, how.mulG, how.mulB, how.tint, how.saturation, how.invert };
 	const auto it = cache_.find(key);
 	if (it != cache_.end()) {
 		it->second.lastUse = ++useClock;
 		return it->second.texture;
 	}
+	// Over this frame's share: another colour of the same sprite, drawn the same way, stands in until there's room.
+	const size_t pixels = (size_t)sprite.width * sprite.height;
+	if (variantPixels + pixels > VARIANT_PIXELS_PER_FRAME) {
+		const Key first{ std::get<0>(key), std::get<1>(key), std::get<2>(key), std::get<3>(key), std::get<4>(key),
+			std::get<5>(key), std::get<6>(key), INT16_MIN, INT16_MIN, INT16_MIN, 0, 0, 0, 0, 0, false };
+		const auto near = cache_.lower_bound(first);
+		if (near != cache_.end() && std::get<0>(near->first) == std::get<0>(key) &&
+			std::get<1>(near->first) == std::get<1>(key) && std::get<2>(near->first) == std::get<2>(key) &&
+			std::get<3>(near->first) == std::get<3>(key) && std::get<4>(near->first) == std::get<4>(key) &&
+			std::get<5>(near->first) == std::get<5>(key) && std::get<6>(near->first) == std::get<6>(key)) {
+			near->second.lastUse = ++useClock;
+			return near->second.texture;
+		}
+	}
+	variantPixels += pixels;
 
 	platform::Texture *tex = nullptr;
+	bool createFailed = false;
 	const auto started = std::chrono::steady_clock::now();
 	if (!sprite.isBlank() && sff_.decode(sprite)) {
 		std::vector<Argb> pixels = sprite.toArgb(sff_.palette(palette), how.mask);
@@ -126,7 +195,9 @@ platform::Texture *SpriteRenderer::texture(const Sprite &sprite, int palette, co
 		const uint32_t s = how.trans == Trans::None ? 255 : how.srcAlpha;
 		const uint32_t keep = how.trans == Trans::None ? 0 : how.dstAlpha;
 		const bool plain = how.shadow < 0 && how.trans == Trans::None && how.addR == 0 && how.addG == 0 &&
-			how.addB == 0 && how.mulR == 256 && how.mulG == 256 && how.mulB == 256 && how.tint == 0;
+			how.addB == 0 && how.mulR == 256 && how.mulG == 256 && how.mulB == 256 && how.tint == 0 &&
+			how.saturation >= 256 && !how.invert;
+		const uint32_t saturation = how.saturation < 256 ? how.saturation : 256;
 		const uint32_t tintA = how.tint >> 24, tintR = how.tint >> 16 & 0xFF, tintG = how.tint >> 8 & 0xFF,
 					   tintB = how.tint & 0xFF;
 		// The sprite shader's mix(c, tint, tint.a), on straight colour.
@@ -143,6 +214,15 @@ platform::Texture *SpriteRenderer::texture(const Sprite &sprite, int palette, co
 			}
 			uint32_t r = p >> 16 & 0xFF, g = p >> 8 & 0xFF, b = p & 0xFF, outA = a;
 			if (!plain) {
+				// Ikemen's getFxPal: inverted, then mixed toward grey, then the add and multiply.
+				if (how.invert)
+					r = 255 - r, g = 255 - g, b = 255 - b;
+				if (saturation < 256) {
+					const uint32_t grey = (r + g + b) / 3;
+					r = (grey * (256 - saturation) + r * saturation) >> 8;
+					g = (grey * (256 - saturation) + g * saturation) >> 8;
+					b = (grey * (256 - saturation) + b * saturation) >> 8;
+				}
 				r = channel(r, how.addR, how.mulR);
 				g = channel(g, how.addG, how.mulG);
 				b = channel(b, how.addB, how.mulB);
@@ -171,10 +251,20 @@ platform::Texture *SpriteRenderer::texture(const Sprite &sprite, int palette, co
 			p = outA << 24 | r << 16 | g << 8 | b;
 		}
 		tex = platform::createTexture(sprite.width, sprite.height, pixels.data());
+		createFailed = !tex;
 	}
 	createdCount++;
 	createdMicroseconds += (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(
 		std::chrono::steady_clock::now() - started).count();
+	size_t free = 0;
+	if (createFailed) {
+		// Out of texture memory: free some, and leave this one out of the cache so it's tried again next draw.
+		lowerTextureLimit("a texture couldn't be made");
+		trim(textureLimit);
+		return nullptr;
+	}
+	if (platform::freeMemory(free) && free < MEMORY_RESERVE)
+		lowerTextureLimit("memory is short");
 	Cached cached;
 	cached.texture = tex;
 	cached.lastUse = ++useClock;
@@ -189,8 +279,9 @@ platform::Texture *SpriteRenderer::texture(const Sprite &sprite, int palette, co
 		}
 	}
 	cache_[key] = cached;
-	if (textureBytes > TEXTURE_BUDGET) {
-		trim();
+	if (textureBytes > textureLimit) {
+		// Down to three quarters, so this runs now and then rather than every draw.
+		trim(textureLimit / 4 * 3);
 		textureLogged = 0;
 		// The one just made may have been among the oldest only if everything else was drawn since; keep it.
 		const auto made = cache_.find(key);
@@ -207,7 +298,7 @@ void SpriteRenderer::drawSpriteTrapezoid(int32_t group, int32_t number, float to
 	const Sprite *sprite = sff_.get((uint16_t)group, (uint16_t)number);
 	if (!sprite || sprite->isBlank())
 		return;
-	const bool chosen = palette_ >= 0 && (!sff_.isV1() || sprite->palette == 0);
+	const bool chosen = palette_ >= 0 && sff_.takesChosenPalette(sprite->palette);
 	const int palette = how.palette >= 0 ? how.palette : chosen ? palette_ : sprite->palette;
 	platform::Texture *tex = texture(*sprite, palette, how);
 	if (!tex)
@@ -244,9 +335,9 @@ void SpriteRenderer::drawSprite(int32_t group, int32_t number, float x, float y,
 	const Sprite *sprite = sff_.get((uint16_t)group, (uint16_t)number);
 	if (!sprite || sprite->isBlank())
 		return;
-	// The renderer's palette (a character's chosen one) replaces the sprite's own, except in an SFF v1, where only the
-	// sprites sharing palette 0 take it.
-	const bool chosen = palette_ >= 0 && (!sff_.isV1() || sprite->palette == 0);
+	// The renderer's palette (a character's chosen one) replaces the sprite's own where the sprite is drawn with the
+	// character's base palette (Sff::takesChosenPalette); effects with palettes of their own keep them.
+	const bool chosen = palette_ >= 0 && sff_.takesChosenPalette(sprite->palette);
 	const int palette = how.palette >= 0 ? how.palette : chosen ? palette_ : sprite->palette;
 	platform::Texture *tex = texture(*sprite, palette, how);
 	if (!tex)

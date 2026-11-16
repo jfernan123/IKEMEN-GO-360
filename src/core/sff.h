@@ -27,11 +27,14 @@ struct Sprite {
 	mutable std::vector<uint8_t> indices;
 	// 0xAARRGGBB pixels for a true-colour sprite (PNG24/32 in SFF v2).
 	mutable std::vector<Argb> argb;
-	// An SFF v2 sprite's compressed pixels, where they are in the file: decoded only while a texture is made from
-	// them, as a screenpack's full-colour sprites take hundreds of MB decoded and the 360 has about 450.
+	// A sprite's compressed pixels, where they are in the file: decoded only while a texture is made from them, as
+	// a screenpack's full-colour sprites take hundreds of MB decoded and the 360 has about 450. SFF v1 sprites too
+	// (their PCX run-length pixels): a big roster's characters are mostly v1, tens of MB each decoded.
 	bool packed = false, trueColor = false;
 	uint8_t format = 0, depth = 0;
 	uint32_t packedOffset = 0, packedSize = 0;
+	// An SFF v1 sprite's PCX bytes per line (0: stored raw).
+	uint16_t lineBytes = 0;
 
 	bool isTrueColor() const { return trueColor || !argb.empty(); }
 	bool isBlank() const { return width == 0 || height == 0 || (!packed && indices.empty() && argb.empty()); }
@@ -47,6 +50,9 @@ class Sff {
 public:
 	// character: a character's SFF v1, whose first sprite (0,0) is read the old way and holds the shared palette.
 	bool load(const std::string &path, std::string &error, bool character = false);
+	// Set before loading a character that has .act palettes: its SFF v1's 0,0 and the sprites sharing its palette
+	// take the chosen .act one (Ikemen's isActPal).
+	void setActPalettes(bool act) { actPalettes_ = act; }
 	// Only these sprites (group, number) and the palettes, read from the file in pieces: a select screen's portraits
 	// without reading or keeping a character's whole sprite file. An SFF v1 is read whole, then trimmed.
 	bool loadSome(const std::string &path, const std::vector<std::pair<uint16_t, uint16_t>> &keys, std::string &error,
@@ -64,8 +70,8 @@ public:
 	void keepOnly(const std::vector<std::pair<uint16_t, uint16_t>> &keys);
 
 	const Sprite *get(uint16_t group, uint16_t number) const;
-	// A packed sprite's pixels, decoded into it (false if they won't decode); release() drops a full-colour one's
-	// again (a palette sprite's stay, being small).
+	// A packed sprite's pixels, decoded into it (false if they won't decode); release() drops them again once a
+	// texture holds the picture.
 	bool decode(const Sprite &sprite) const;
 	void release(const Sprite &sprite) const;
 	const std::vector<Sprite> &sprites() const { return sprites_; }
@@ -73,20 +79,31 @@ public:
 	const std::vector<Palette> &palettes() const { return palettes_; }
 	// The palette list index for palette group,number (a character's palette 1 is 1,1), or -1.
 	int paletteIndex(uint16_t group, uint16_t number) const;
+	// Whether sprites drawn with this palette take a character's chosen palette: in an SFF v1 those sharing palette 0
+	// or with a copy of it (Ikemen remaps palette 0; sffv1BasePal); in an SFF v2 those on palette 1,1 or a copy of it
+	// (Ikemen remaps 1,1 and its duplicates), every one when the file has no 1,1. Effects and helpers with palettes
+	// of their own keep them.
+	bool takesChosenPalette(int palette) const;
 	const Palette &palette(int index) const;
 
 private:
 	std::vector<Sprite> sprites_;
-	// The SFF v2 file, which packed sprites decode from.
+	// The file, which packed sprites decode from.
 	std::shared_ptr<const std::vector<uint8_t>> file_;
 	std::string path_;
 	std::map<uint32_t, size_t> byKey_;
 	std::vector<Palette> palettes_;
 	std::map<uint32_t, int> paletteByKey_;
 	bool v1_ = false;
-	// loadSome on an SFF v1: only these sprites' pixels are decoded (the rest only set the palette chain).
-	const std::vector<uint32_t> *onlyKeys_ = nullptr;
+	bool actPalettes_ = false;
+	// 1 for the base palette (v2: 1,1; v1: 0) and the palettes the file holds as copies of it, found as it loads
+	// (before .act files replace any).
+	std::vector<uint8_t> baseCopies_;
 
+	void markBaseCopies();
+	// The file's bytes, kept as they are (no copy: on the 360 the heap never shrinks, so a copy's peak stays).
+	bool loadShared(std::shared_ptr<const std::vector<uint8_t>> file, const std::string &name, std::string &error,
+		bool character);
 	bool loadV1(const std::vector<uint8_t> &file, const std::string &name, std::string &error, bool character);
 };
 

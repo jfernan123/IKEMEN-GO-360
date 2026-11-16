@@ -118,6 +118,8 @@ private:
 		int32_t moveSnd[2] = { -1, 0 }, doneSnd[2] = { -1, 0 };
 		Layout face, face2;
 		int32_t faceAnim = -1, faceDoneAnim = -1, face2Spr[2] = { -1, 0 };
+		// The big portrait's sprite when there's no face.anim (a MUGEN screenpack's 9000,1), and the picked one's.
+		int32_t faceSpr[2] = { 9000, 1 }, faceDoneSpr[2] = { -1, 0 };
 		float facePos[2] = { 0, 0 };
 		TextLayout name;
 		// The palette menu.
@@ -237,7 +239,7 @@ private:
 	};
 	std::vector<StagePortrait> stagePortraits_;
 	Layout stagePortrait_;
-	int32_t stagePortraitSpr_[2] = { 9000, 1 };
+	int32_t stagePortraitSpr_[2] = { -1, 0 };
 	Side sides_[2];
 	VersusScreen versus_;
 	VictoryScreen victory_;

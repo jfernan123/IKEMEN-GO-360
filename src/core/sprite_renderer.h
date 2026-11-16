@@ -30,6 +30,9 @@ struct SpriteDraw {
 	// Palette effects, applied to straight RGB before premultiplication.
 	int16_t addR = 0, addG = 0, addB = 0;
 	uint16_t mulR = 256, mulG = 256, mulB = 256;
+	// PalFX color and invertall, before the add and multiply: 256 full colour, 0 grey; the colours turned inside out.
+	uint16_t saturation = 256;
+	bool invert = false;
 	// Ikemen's tint (0xAARRGGBB): each colour mixed toward RGB by A / 255 after the palette effects; a shadow takes
 	// its colour from it. 0: none.
 	uint32_t tint = 0;
@@ -47,13 +50,16 @@ struct SpriteDraw {
 // Draws an SFF's sprites, turning each sprite into a texture the first time it's drawn a given way. MUGEN's
 // transparency is baked into the texture as premultiplied colour (see platform::Blend), so the GPU needs no special
 // shaders: a pixel of alpha a drawn "src * s + dst * d" becomes colour * a * s with alpha a * (1 - d).
-// One texture per sprite costs at least 64 KB of GPU memory each on the 360 (xsdk allocates in pages), and the CPU
+// One texture per sprite costs at least 4 KB of GPU memory each on the 360 (a page of a shared block), and the CPU
 // heap shares the same ~450 MB: all renderers' textures together are kept under TEXTURE_BUDGET, the ones drawn least
 // recently freed first (and made again if they're drawn again).
 class SpriteRenderer {
 public:
 	// The most all renderers' textures may take, counted as on a 360.
 	static constexpr size_t TEXTURE_BUDGET = 224u * 1024 * 1024;
+	// Free memory the textures leave for the heap on the 360: below it, the least recently drawn ones go, whatever
+	// the budget says (a big game's files leave less than the budget for textures).
+	static constexpr size_t MEMORY_RESERVE = 48u * 1024 * 1024;
 
 	explicit SpriteRenderer(const Sff &sff);
 	~SpriteRenderer();
@@ -81,8 +87,12 @@ public:
 
 	// Frees every texture, for after a palette change.
 	void clear();
-	// What every renderer's textures would take on a 360 (each padded to 32x32 tiles, at least 64 KB).
+	// What every renderer's textures would take on a 360 (each padded to 32x32 tiles, in 4 KB pages).
 	static size_t totalTextureBytes();
+	// Frees every renderer's textures now (they're made again when drawn): room before a fight loads its files.
+	static void freeAll();
+	// Once a frame: new colour variants of sprites get a fresh share of the frame (see texture()).
+	static void newFrame();
 	// Textures made since the last call, and the microseconds spent making them (decoding, converting, uploading).
 	static void takeCreationStats(size_t &count, uint64_t &microseconds);
 
@@ -92,8 +102,8 @@ public:
 
 private:
 	using Key = std::tuple<size_t, int, bool, Trans, uint8_t, uint8_t, int, int16_t, int16_t, int16_t,
-		uint16_t, uint16_t, uint16_t, uint32_t>;
-	platform::Texture *texture(const Sprite &sprite, int palette, const SpriteDraw &how);
+		uint16_t, uint16_t, uint16_t, uint32_t, uint16_t, bool>;
+	platform::Texture *texture(const Sprite &sprite, int palette, const SpriteDraw &asked);
 
 	struct Cached {
 		platform::Texture *texture = nullptr;
@@ -101,8 +111,8 @@ private:
 		size_t bytes = 0;
 		uint64_t lastUse = 0;
 	};
-	// Frees the least recently drawn textures of all renderers until the total is well under the budget.
-	static void trim();
+	// Frees the least recently drawn textures of all renderers until the total is at most target.
+	static void trim(size_t target);
 
 	const Sff &sff_;
 	int palette_ = -1;

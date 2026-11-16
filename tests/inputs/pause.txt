@@ -1,0 +1,51 @@
+# The pause menu (13): the title menu's route into a fight (as title.txt, but player 1 stays on Kung Fu Man, whose
+# movelist.dat the command list shows), then Back (m) opens the pause menu over the frozen fight; down to Command List
+# and in, out again, up to Continue and back to the fight; Back again, up (wrapping round) to Exit, and the title.
+#   build\pc\mugen360.exe --title --cpu --input tests\inputs\pause.txt --quit 760 --shot 535 tests\out\pause_menu.bmp --shot 570 tests\out\pause_commands.bmp --trace
+# Expect in m360.log: "pause: open", "pause: Command List", "pause: Continue", "pause: open" again and "pause: Exit".
+30 -
+2 D
+10 -
+2 a
+10 -
+2 a
+30 -
+2 -
+10 -
+2 a
+10 -
+2 a
+10 -
+2 a
+10 -
+2 U
+10 -
+2 a
+20 -
+2 R
+10 -
+2 a
+200 -
+2 s
+100 -
+# The fight: pause, Command List, back, Continue.
+30 -
+2 m
+10 -
+2 D
+10 -
+2 a
+40 -
+2 a
+10 -
+2 U
+10 -
+2 a
+40 -
+# Pause again, up to Exit.
+2 m
+10 -
+2 U
+10 -
+2 a
+80 -

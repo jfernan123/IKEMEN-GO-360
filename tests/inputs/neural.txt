@@ -1,0 +1,8 @@
+# VS NEURAL CAP: the select screen, pick the first opponent (Thanos), then player 2 (this script) stands still while
+# the trained policy plays Captain America as player 1. Needs the DC vs MARVEL game (not in the repo).
+#   build\pc_test\mugen360.exe --game "DC vs MARVEL 2025" --mode neural --input tests\inputs\neural.txt --quit 4000 --trace
+# Expect in m360.log: "neural: VS NEURAL CAP ready, 5 opponents", Cap (p1) changing states and hitting p2, and the
+# match ending with p1 winning.
+30 -
+5 a
+5000 -

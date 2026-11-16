@@ -29,6 +29,7 @@ int run8fTests();
 int run9Tests();
 int run11Tests();
 int run13Tests();
+int runNeuralTests();
 int run10aTests();
 
 // The tests have no platform: the log goes to the console.
@@ -265,6 +266,10 @@ int main()
 	check("animelem != 2", me, 0);
 	check("animelem = 1, 6", me, 1);
 	check("animelem = 3, -4", me, 1);
+	// Without the comma the comparison still applies to the time (Rogue's "AnimElem = 20 = 2").
+	check("animelem = 1 = 6", me, 1);
+	check("animelem = 1 = 5", me, 0);
+	check("animelem = 1 >= 5", me, 1);
 	// Unbracketed, ", 5" would read as the shorthand above, in Ikemen too.
 	check("ifelse((animelem = 2), 5, 9)", me, 5);
 
@@ -311,6 +316,7 @@ int main()
 	failures += run10aTests();
 	failures += run11Tests();
 	failures += run13Tests();
+	failures += runNeuralTests();
 
 	std::printf("\n%d passed, %d failed\n", passes, failures);
 	return failures ? 1 : 0;

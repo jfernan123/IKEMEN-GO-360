@@ -119,6 +119,10 @@ int run7eTests()
 	const Sprite *a = sff.get(0, 0), *b = sff.get(1, 0), *c = sff.get(2, 0), *d = sff.get(3, 0);
 	expect(a && b && c && d, "all four sprites are found");
 	if (a && b && c && d) {
+		// v1 sprites stay packed until drawn, as v2 ones do.
+		expect(a->packed && a->indices.empty(), "SFF v1 sprites load packed");
+		for (const Sprite *s : { a, b, c, d })
+			sff.decode(*s);
 		expect(a->width == 2 && a->height == 2 && a->axisX == 1 && a->axisY == 2, "size and axis");
 		expect(a->indices == std::vector<uint8_t>({ 1, 2, 5, 5 }), "PCX run-length decoding");
 		expect(sff.palette(a->palette)[1] == 0xFF0A141Eu, "first sprite's palette");
@@ -127,6 +131,8 @@ int run7eTests()
 		expect(c->palette != a->palette && sff.palette(c->palette)[1] == 0xFFC80000u, "own palette after 0x0C");
 		expect(c->indices == std::vector<uint8_t>(4, 3), "own palette sprite pixels");
 		expect(d->indices == a->indices && d->palette == a->palette, "linked sprite");
+		sff.release(*a);
+		expect(a->indices.empty() && sff.decode(*a) && a->indices == d->indices, "released and decoded again");
 	}
 
 	// A .act file: colours stored last to first.

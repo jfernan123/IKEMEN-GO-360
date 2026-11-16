@@ -23,11 +23,16 @@
 5 -
 2 R
 5 -
+# Past AI Style to Time Limit.
+2 D
+5 -
 2 D
 5 -
 2 L
 5 -
-# Up from Difficulty wraps to Back.
+# Up past AI Style to Difficulty, which wraps to Back.
+2 U
+5 -
 2 U
 5 -
 2 U

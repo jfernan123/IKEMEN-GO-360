@@ -65,6 +65,10 @@ void fillRect(float x, float y, float width, float height, uint32_t argb);
 // A screenpack's bars fill by clipping their sprite (Ikemen's DrawAnim window).
 void setClip(int x, int y, int width, int height);
 void clearClip();
+// An outer clip: until clearClipArea, every setClip stays inside it and clearClip returns to it, not to the whole
+// screen. The fight screen's 4:3 area on the wide screen (Ikemen's window is that area, so nothing shows past it).
+void setClipArea(int x, int y, int width, int height);
+void clearClipArea();
 
 // Player 0 or 1's controller; the keyboard plays player 0 on PC.
 Pad pad(int player);
@@ -91,5 +95,12 @@ bool writeWholeFile(const char *path, const std::string &data);
 
 // Writes a line to the platform's log.
 void logLine(const char *line);
+
+// Memory the game can still take: on the 360 its free pages, which the heap (it grows, never shrinks) and the
+// textures share. False where the platform doesn't say (the PC).
+bool freeMemory(size_t &bytes);
+// Frees the textures destroyed before this frame at once, waiting for the GPU to finish with them (otherwise they go
+// a few frames later): room before a big load. Textures destroyed this frame still wait.
+void freeDestroyedTextures();
 
 } // namespace m360::platform

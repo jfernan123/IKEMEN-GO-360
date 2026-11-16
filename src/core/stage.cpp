@@ -9,7 +9,7 @@
 
 namespace m360 {
 
-bool Stage::load(const std::string &defPath, std::string &error)
+bool Stage::load(const std::string &defPath, std::string &error, bool simulationOnly)
 {
 	// Ikemen's defaults for the settings without in-class values (see stage.h). The 1.0 values are set apart, between
 	// calls: stored side by side, GCC builds them as one 64-bit constant with an instruction Xenia skips.
@@ -150,6 +150,10 @@ bool Stage::load(const std::string &defPath, std::string &error)
 	// The sprites: [BGdef] spr, as Ikemen's LoadFile finds it (next to the .def, the game's root, data/).
 	const IniSection *bgdef = findSection(sections, "bgdef");
 	const std::string spr = bgdef ? bgdef->text("spr") : std::string();
+	if (simulationOnly) {
+		logf("stage: %s: \"%s\" (simulation only)", defPath.c_str(), name.c_str());
+		return true;
+	}
 	if (spr.empty()) {
 		error = defPath + " names no sprite file ([BGdef] spr)";
 		return false;
