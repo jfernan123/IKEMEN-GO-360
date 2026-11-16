@@ -14,7 +14,7 @@ own CMD and CNS files decide what each press does.
 | `scripts/` | The launchers (below). Each one changes to the repository root first, so run it from anywhere. |
 | `train_pool.py` | The trainer: recurrent PPO on `mugen360 --rl-pool`, self-play league, curriculum, distillation from teachers, checks against SmartAI. |
 | `model.py` | The network, and checkpoint surgery (`add_skills`, `add_buttons`, `widen_observation`, ReDo). |
-| `pool_env.py` | Talks to `mugen360 --rl-pool N` (N headless fights in one process, binary protocol described above `runRlPool` in `src/main.cpp`). |
+| `pool_env.py` | Talks to `mugen360 --rl-pool N` (N headless fights in one process, binary protocol described above `runRlPool` in `src/app/rl_server.cpp`). |
 | `mugen_env.py` | Talks to the single-fight RL server (`--rl-server`); used by the tools that show or record one match. |
 | `roster.py` | Finds a game's playable characters and stages. |
 | `eval_pool.py` | Win rates against SmartAI opponents, with a random-input baseline. |

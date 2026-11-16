@@ -20,7 +20,7 @@ set(ENGINE_SOURCES
 )
 
 set(CORE_SOURCES
-	src/main.cpp
+	src/main.cpp src/app/rl_server.cpp src/app/soak.cpp
 	${ENGINE_SOURCES}
 	third_party/lodepng/lodepng.cpp
 	third_party/audio_decoders.c

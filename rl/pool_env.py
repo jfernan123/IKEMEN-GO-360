@@ -2,7 +2,7 @@
 
 One MugenPool is one process and one matchup. Fights reset themselves when a match ends: step() reports the finished
 match (done, winner, final reward) and returns the next match's first observation for that fight.
-See runRlPool in src/main.cpp for the protocol.
+See runRlPool in src/app/rl_server.cpp for the protocol.
 """
 
 from __future__ import annotations

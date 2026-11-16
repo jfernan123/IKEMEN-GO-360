@@ -69,16 +69,30 @@ keyboard or mouse input to the desktop.
 
 ## Project layout
 
-- `src/core/` contains platform-independent engine code translated from Ikemen-GO.
-- `src/platform/platform.h` defines the platform boundary.
-- `src/platform/pc/` implements Windows video, input, and audio with SDL3.
-- `src/platform/x360/` implements the same interface with xsdk.
-- `data/` contains the current KFM character, stage, common states, effects, and sounds.
-- `data/mugen360.ini` chooses the two character definitions and stage loaded at startup.
-- `tests/` contains unit tests and scripted fight regressions.
-- `data/ikemen1/` is Ikemen's default screenpack (system.def), `data/fight.def` its fight screen; songs go in
-  `data/ikemen1/sound/` (none ship with Ikemen).
-- `third_party/` contains lodepng, dr_mp3 and stb_vorbis.
+| Path | What |
+|---|---|
+| `src/main.cpp` | The entry point: command line, settings, and the screens one frame at a time. |
+| `src/app/` | What runs the engine: the fight (`stage_demo.h`, StageDemo), shared fight assets, test input scripts, the debug viewers, `--soak`, and the RL bridge (`rl_server`, PC only). |
+| `src/core/` | The engine, translated from Ikemen-GO, with no platform code. By folder: |
+| `src/core/fight/` | characters and their state machine (`character`), hits, projectiles, effects, rounds (`match`), camera, stages and backgrounds |
+| `src/core/script/` | CNS/CMD state loading, the trigger expression language, input buffers and command matching |
+| `src/core/formats/` | MUGEN file formats: SFF sprites, AIR animations, SND sounds, fonts |
+| `src/core/screens/` | screenpacks (`motif`, `layout`) and every screen: title, select, VS, fight screen, options, pause, victory, continue, storyboards |
+| `src/core/game/` | game folders and select.def (`game_config`), arcade routes, settings, music, the compatibility report |
+| `src/core/ai/` | MUGEN's random AI, SmartAI, the neural policy and the observation it sees |
+| `src/core/render/` | the sprite renderer and the debug font |
+| `src/core/util/` | files, INI, text, logging, the byte reader, the build version |
+| `src/platform/` | `platform.h`, the platform boundary; `pc/` implements it with SDL3, `x360/` with xsdk |
+| `tests/` | unit tests (`*_test.cpp`), scripted fights (`inputs/`), fixtures and a test game folder; `run_all.bat` runs it all |
+| `data/` | KFM, his stage, the common states, effects and sounds; `ikemen1/` (Ikemen's screenpack) and `fight.def`; `neural/` (exported policies); `mugen360.ini` (what loads at startup) |
+| `rl/` | reinforcement learning for neural fighters (PC only): see `rl/README.md` |
+| `packaging/` | `package_pc.py` and `package_neural_360.py` zip a game with the engine, for private sharing |
+| `xbox_updater/` | the tool beside a friend's console that installs new GitHub releases |
+| `third_party/` | lodepng, dr_mp3, stb_vorbis, stb_truetype |
+
+The batch files in this folder build and run: `build_pc.bat` (optimized), `build_pc_test.bat` (a debug copy for tests
+while the game is open), `build_rl.bat` (the headless engine for training), `build_360.bat`, `run_pc.bat`,
+`run_xenia.bat` and `publish_360.bat`.
 
 MUGEN files are little-endian while Xbox 360 is big-endian. Binary data is read through `core/util/bytes.h`, and runtime
 paths use forward slashes.
@@ -438,11 +452,10 @@ paths use forward slashes.
      default.log gets "memory:" lines. DC vs MARVEL's peak memory over five fights went from 332 MB to 197 MB on PC.
      Textures on the 360 share 1 MB blocks in 4 KB pages instead of a 64 KB page each (`platform_x360` texture
      blocks), the first step of milestone 12.
-   - A PC-only reinforcement-learning pipeline lives in `rl/`. The hidden `--rl-server` interface advances fights
-     through normal controller inputs and exposes both players' state and current collision boxes. Recurrent PPO
-     trains one character-conditioned policy over random DC vs MARVEL roster matchups, first against SmartAI and
-     later against a pool of frozen policy snapshots. See `rl/README.md`; generated environments and weights stay
-     outside git.
+   - A PC-only reinforcement-learning pipeline lives in `rl/`. `--rl-pool N` runs N headless fights in one process
+     (`src/app/rl_server.cpp`), played through normal controller inputs. Recurrent PPO trains a policy per
+     character, with self-play leagues, life curricula and specialists distilled into one network; exported policies
+     play in the game's VS NEURAL CAP mode. See `rl/README.md`; generated environments and weights stay outside git.
 
 ## Asset notice
 
