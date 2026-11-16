@@ -21,7 +21,7 @@ own CMD and CNS files decide what each press does.
 | `eval_versus.py` | Two checkpoints head to head, each as player 1 for half the matches. |
 | `pick_teachers.py` | Picks each opponent's best specialist copy for the merge, into `merge_teachers.txt`. |
 | `scratch_queue.py` | Trains a specialist against every character, three at a time (`scripts/train_scratch_all.bat`). |
-| `export_policy.py` | Checkpoint → `.m3nn`, the format `src/core/neural_policy.cpp` runs in the game. |
+| `export_policy.py` | Checkpoint → `.m3nn`, the format `src/core/ai/neural_policy.cpp` runs in the game. |
 | `record_clip.py`, `watch_live.py` | An MP4 of one match, or matches live in the game window. |
 | `scan_toughest.py`, `scan_pool.py`, `scan_smartai.py` | Rank opponents by difficulty, and SmartAI's strength per character. |
 | `style_report.py` | How each style of a skill-trained policy plays. |

@@ -99,7 +99,7 @@ def add_skills(model: dict, skills: int) -> dict:
 
 def add_buttons(model: dict, size: str, buttons: int, old_scale: float = 0.3) -> dict:
     """A checkpoint with the original eight button choices (none, x, y, z, a, b, c, start), given the presses of two
-    or more attack buttons as choices 8 on (src/core/rl_observation: rlButtonMask). Each new choice's output starts
+    or more attack buttons as choices 8 on (src/core/ai/rl_observation: rlButtonMask). Each new choice's output starts
     as the average of its buttons' outputs, lowered so that all of them together get about old_scale of the
     probability: the policy plays as before, and a combination its single buttons favour is tried most."""
     key = "button.weight" if size == "small" else "button.2.weight"

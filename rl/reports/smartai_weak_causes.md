@@ -4,7 +4,7 @@ Investigation of 2026-10-24, following `rl/smartai_scan.md`. Nothing here is fix
 
 ## How SmartAI plays
 
-SmartAI (`src/core/smart_ai.cpp`) is two things:
+SmartAI (`src/core/ai/smart_ai.cpp`) is two things:
 
 1. **A button presser**: walks in, attacks when its moves reach, blocks, anti-airs.
 2. **The command cheat** (`Character::turnAndInput`): now and then a random command counts as entered. This is what
@@ -20,8 +20,8 @@ or turns off its moves.
 
 | # | Bug | Where | Effect |
 |---|---|---|---|
-| E1 | **No explods without graphics.** `FightEffects::spawnExplod` returns early when there's no renderer, so with `simulationOnly` (the RL server: training and the SmartAI scan) explods never exist and `NumExplod` is always 0. | `src/core/effects.cpp:105` | 146 of 150 characters test `NumExplod`. The headless fight differs from the real game. The scan itself was skewed: Luke Cage and Shuma-Gorath are fine with graphics (8/10 each); Spider-Man flips the other way (100% headless, 1/10 with graphics). |
-| E2 | **`persistent` honored in negative states.** Ikemen's compiler only reads `persistent` when `stateNo >= 0`, so in states -1/-2/-3 a controller runs every tick. mugen360 applies it everywhere. | `src/core/states.cpp:427`, `character.cpp:572`; Ikemen `compiler.go:7281` | 137 characters have such controllers. Wildcat's combo-damage reset runs once and never again, so his damage stays at x0.1 all match. |
+| E1 | **No explods without graphics.** `FightEffects::spawnExplod` returns early when there's no renderer, so with `simulationOnly` (the RL server: training and the SmartAI scan) explods never exist and `NumExplod` is always 0. | `src/core/fight/effects.cpp:105` | 146 of 150 characters test `NumExplod`. The headless fight differs from the real game. The scan itself was skewed: Luke Cage and Shuma-Gorath are fine with graphics (8/10 each); Spider-Man flips the other way (100% headless, 1/10 with graphics). |
+| E2 | **`persistent` honored in negative states.** Ikemen's compiler only reads `persistent` when `stateNo >= 0`, so in states -1/-2/-3 a controller runs every tick. mugen360 applies it everywhere. | `src/core/script/states.cpp:427`, `character.cpp:572`; Ikemen `compiler.go:7281` | 137 characters have such controllers. Wildcat's combo-damage reset runs once and never again, so his damage stays at x0.1 all match. |
 | E3 | **`AnimElem = 20 = 2`** (MUGEN reads it like `AnimElem = 20, = 2`) is always false in mugen360. | expression evaluation | Rogue's Rising Repeating Punch (state 1020) never switches to air physics: she rises forever (y = -36,000 after 6,700 ticks) and the match ends on time over. |
 | E4 | *(unverified)* A grab can be cancelled the tick it connects, before its own state runs. Beast's 1050 hits with `p1stateno = 1052, p2stateno = 1053`; on the next tick his CMD cancels into Jump Strong Kick (650), whose `trigger4 = MoveContact` has no state check, because the character still counts as airborne. 1052's `TargetState 1054` never runs and the opponent stays in 1053 (no exit) for the rest of the match. | state-type timing on a `p1stateno` change | Needs checking against Ikemen: when does the new state's `type` apply? |
 

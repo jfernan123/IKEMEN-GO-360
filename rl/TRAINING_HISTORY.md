@@ -36,7 +36,7 @@ The method: `rl/PIPELINE.md`. This file is the diary.
 
 ## The current setup
 
-### What the policy sees (217 numbers, `src/core/rl_observation.cpp`)
+### What the policy sees (217 numbers, `src/core/ai/rl_observation.cpp`)
 
 For each fighter, itself first and then the opponent (106 each):
 
@@ -102,7 +102,7 @@ current policy; otherwise a frozen snapshot picked by PFSP, weight (1 − win ra
 to come up most. A snapshot joins every 300 updates (~10M decisions); 16 are kept, snapshot 0 (the start) always.
 Only player 1 learns.
 
-### In the game (`src/core/neural_policy.cpp`)
+### In the game (`src/core/ai/neural_policy.cpp`)
 
 `rl/export_policy.py` writes the network to `.m3nn` (no PyTorch needed); the C++ copy runs on the CPU (PC and 360),
 reads the same observation code as training and **samples** its moves like training (so it varies). It always plays
@@ -658,7 +658,7 @@ TensorBoard `rl/runs/cap_mirror/`.
 
 
 **Setup fixes applied (2026-10-30, 12:05 AM).** The user said "change them". Stopped cap_mirror at 414M (log: as P1/P2 86%/74%, dealt/taken 0.92/0.45, SmartAI checks Thanos 0%, Venom 5%, Doom 42%, Darkseid 19%, Nightwing 41%); backup `cap_mirror_414M.pt`. Changes:
-1. Engine (`src/core/rl_observation.*`): `rlObservation(..., mirror)` reflects a view left to right (x, vx, facing, box left/right, objects, dx). The pool and the single-fight server give player 2 the mirrored view (`main.cpp` rlObservation(demo, side)), so P2's view at the start equals P1's (checked with a scratch script: all values within 0.02). The game's neural Cap plays P1, unchanged.
+1. Engine (`src/core/ai/rl_observation.*`): `rlObservation(..., mirror)` reflects a view left to right (x, vx, facing, box left/right, objects, dx). The pool and the single-fight server give player 2 the mirrored view (`main.cpp` rlObservation(demo, side)), so P2's view at the start equals P1's (checked with a scratch script: all values within 0.02). The game's neural Cap plays P1, unchanged.
 2. Engine (`StageDemo::trainingOver`): a training match also ends on a drawn round (`Match::draws() > 0`): done, winner -1, reward 0. Checked: 4 idle fights end at decision 1983 with winner -1 (before: round 2 with life refilled, never done).
 3. Trainer: `--time-over game|loss|draw` (default game). With `loss`, a match whose previous view had the clock at 0 (observation -3) gives outcome -1 to the learner whoever led on life, so only a KO earns +1. New `rollout/time_over_100` TensorBoard scalar and `timeover=` in the status line. `--lr-max` (default 3e-3).
 4. Recipe (`train_cap_mirror.bat`): `--gamma 0.9995`, `--time-over loss`, `--league 384` (128 of the 512 fights are the 5 SmartAI opponents again, learner as P1), `--lr-max 1e-3`, no fixed `--threads` (each pool gets threads in proportion to its fights), `--steps 600000000`. Step penalty 0.0005 kept; skills 8 kept (dropping them means surgery on the checkpoint; harmless).

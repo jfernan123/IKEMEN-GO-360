@@ -4,9 +4,9 @@
 #include <cstdio>
 #include <string>
 
-#include "core/font.h"
-#include "core/input.h"
-#include "core/settings.h"
+#include "core/formats/font.h"
+#include "core/script/input.h"
+#include "core/game/settings.h"
 
 using namespace m360;
 

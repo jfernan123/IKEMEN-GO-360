@@ -6,10 +6,10 @@
 #include <cstdio>
 #include <string>
 
-#include "core/camera.h"
-#include "core/character.h"
-#include "core/layout.h"
-#include "core/stage.h"
+#include "core/fight/camera.h"
+#include "core/fight/character.h"
+#include "core/screens/layout.h"
+#include "core/fight/stage.h"
 
 using namespace m360;
 

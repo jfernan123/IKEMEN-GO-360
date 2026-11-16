@@ -6,20 +6,20 @@
 #include <string>
 #include <vector>
 
-#include "core/air.h"
-#include "core/bgdef.h"
-#include "core/file.h"
-#include "core/font.h"
-#include "core/ini.h"
-#include "core/fight_screen.h"
-#include "core/layout.h"
-#include "core/game_config.h"
-#include "core/motif.h"
-#include "core/select_screen.h"
-#include "core/sprite_renderer.h"
-#include "core/title_screen.h"
-#include "core/versus_screen.h"
-#include "core/sff.h"
+#include "core/formats/air.h"
+#include "core/fight/bgdef.h"
+#include "core/util/file.h"
+#include "core/formats/font.h"
+#include "core/util/ini.h"
+#include "core/screens/fight_screen.h"
+#include "core/screens/layout.h"
+#include "core/game/game_config.h"
+#include "core/screens/motif.h"
+#include "core/screens/select_screen.h"
+#include "core/render/sprite_renderer.h"
+#include "core/screens/title_screen.h"
+#include "core/screens/versus_screen.h"
+#include "core/formats/sff.h"
 
 using namespace m360;
 

@@ -5,11 +5,11 @@
 #include <cstdio>
 #include <string>
 
-#include "core/hitdef.h"
-#include "core/game_config.h"
-#include "core/coords.h"
-#include "core/states.h"
-#include "core/projectile.h"
+#include "core/fight/hitdef.h"
+#include "core/game/game_config.h"
+#include "core/fight/coords.h"
+#include "core/script/states.h"
+#include "core/fight/projectile.h"
 
 using namespace m360;
 

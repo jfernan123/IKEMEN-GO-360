@@ -4,7 +4,7 @@
 #include <cstdio>
 #include <string>
 
-#include "core/states.h"
+#include "core/script/states.h"
 
 using namespace m360;
 
