@@ -517,10 +517,13 @@ private:
 			Node n = make(NodeKind::AnimElem);
 			n->negate = equality();
 			n->a = integer();
-			if (isSym(",") && peek(1).kind == Token::Sym &&
-				(peek(1).text == "=" || peek(1).text == "!=" || peek(1).text == "<" || peek(1).text == ">" ||
-					peek(1).text == "<=" || peek(1).text == ">=")) {
-				pos_++;
+			// The comma before the time's comparison is optional: "AnimElem = 20 = 2" reads as "AnimElem = 20, = 2"
+			// (Ikemen's evaluateComparison).
+			const size_t opAt = isSym(",") ? 1 : 0;
+			if (peek(opAt).kind == Token::Sym &&
+				(peek(opAt).text == "=" || peek(opAt).text == "!=" || peek(opAt).text == "<" || peek(opAt).text == ">" ||
+					peek(opAt).text == "<=" || peek(opAt).text == ">=")) {
+				pos_ += opAt;
 				const std::string op = t_[pos_++].text;
 				n->op = op == "=" ? Op::Eq : op == "!=" ? Op::Ne : op == "<" ? Op::Lt : op == ">" ? Op::Gt
 					: op == "<=" ? Op::Le : Op::Ge;
@@ -817,6 +820,8 @@ Value evalNode(const ExprNode *n, ExprContext &ctx)
 	}
 	case NodeKind::FlagValue: return Value::I(ctx.flag(n->flag));
 	case NodeKind::AnimElem: {
+		if (!ctx.hasAnimElem(n->a))
+			return Value::B(false);
 		const int32_t t = ctx.trigger(Trig::AnimElemTime, Value::I(n->a)).toI();
 		bool r;
 		if (n->isRange) {

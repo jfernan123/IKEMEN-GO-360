@@ -33,9 +33,82 @@ namespace m360::platform {
 
 struct Texture {
 	XsdkTexture texture;
+	// Where its texels are: pages of a shared block (block >= 0), or an allocation of its own (-1). Set by
+	// createTexture (no default values, see xenia_scan).
+	int32_t block;
+	uint32_t firstPage, pages;
 };
 
 namespace {
+
+// Textures share 1 MB blocks of GPU memory in 4 KB pages (a texture's alignment): xsdk gives every allocation 64 KB
+// pages, and most of a fight's sprites are small, so each took a 64 KB page. A block goes back once it's empty;
+// textures over half a block get memory of their own.
+constexpr uint32_t TEXTURE_PAGE = 0x1000, BLOCK_PAGES = 256;
+struct TextureBlock {
+	volatile uint32_t *memory;
+	uint32_t usedPages;
+	uint8_t used[BLOCK_PAGES];
+};
+std::vector<TextureBlock> blocks;
+
+volatile uint32_t *allocateTexels(Texture &t, uint32_t bytes)
+{
+	t.pages = (bytes + TEXTURE_PAGE - 1) / TEXTURE_PAGE;
+	t.block = -1;
+	t.firstPage = 0;
+	if (t.pages > BLOCK_PAGES / 2)
+		return xsdk_gpu_alloc(t.pages * TEXTURE_PAGE);
+	// First fit: a run of free pages in a block in use, else a new block.
+	for (size_t b = 0; b < blocks.size(); b++) {
+		TextureBlock &block = blocks[b];
+		if (!block.memory || BLOCK_PAGES - block.usedPages < t.pages)
+			continue;
+		uint32_t run = 0;
+		for (uint32_t p = 0; p < BLOCK_PAGES; p++) {
+			run = block.used[p] ? 0 : run + 1;
+			if (run == t.pages) {
+				const uint32_t first = p + 1 - t.pages;
+				std::memset(block.used + first, 1, t.pages);
+				block.usedPages += t.pages;
+				t.block = (int32_t)b;
+				t.firstPage = first;
+				return block.memory + first * (TEXTURE_PAGE / 4);
+			}
+		}
+	}
+	size_t slot = blocks.size();
+	for (size_t b = 0; b < blocks.size(); b++)
+		if (!blocks[b].memory)
+			slot = b;
+	volatile uint32_t *const memory = xsdk_gpu_alloc(BLOCK_PAGES * TEXTURE_PAGE);
+	if (!memory)
+		return nullptr;
+	if (slot == blocks.size())
+		blocks.push_back(TextureBlock{});
+	TextureBlock &block = blocks[slot];
+	block.memory = memory;
+	std::memset(block.used, 0, sizeof block.used);
+	std::memset(block.used, 1, t.pages);
+	block.usedPages = t.pages;
+	t.block = (int32_t)slot;
+	return memory;
+}
+
+void freeTexels(Texture &t)
+{
+	if (t.block < 0) {
+		xsdk_gpu_free(t.texture.texels);
+		return;
+	}
+	TextureBlock &block = blocks[(size_t)t.block];
+	std::memset(block.used + t.firstPage, 0, t.pages);
+	block.usedPages -= t.pages;
+	if (block.usedPages == 0) {
+		xsdk_gpu_free(block.memory);
+		block.memory = nullptr;
+	}
+}
 
 constexpr uint32_t BUFFERS = 3;
 constexpr uint32_t BEGIN_TIMEOUT_MS = 1000;
@@ -127,6 +200,8 @@ struct Retired {
 std::vector<Retired> retired;
 // The clip rectangle draws are recorded with (setClip).
 Clip current_clip = { 0, 0, -1, -1 };
+// setClipArea's rectangle, which every setClip stays inside (width < 0: none).
+Clip clip_area = { 0, 0, -1, -1 };
 
 bool same_clip(const Clip &a, const Clip &b)
 {
@@ -344,7 +419,7 @@ bool beginFrame(uint32_t clear_argb)
 	size_t kept = 0;
 	for (const Retired &r : retired) {
 		if (frame - r.frame >= BUFFERS) {
-			xsdk_texture_free(&r.texture->texture);
+			freeTexels(*r.texture);
 			delete r.texture;
 		} else {
 			retired[kept++] = r;
@@ -352,6 +427,7 @@ bool beginFrame(uint32_t clear_argb)
 	}
 	retired.resize(kept);
 	current_clip = Clip{ 0, 0, -1, -1 };
+	clip_area.width = -1;
 	clear_color = clear_argb;
 	// eDRAM still holds whatever the last resolve cleared it to; a full-screen rectangle sets this frame's colour.
 	fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, clear_argb | 0xFF000000);
@@ -412,11 +488,15 @@ void endFrame()
 Texture *createTexture(int width, int height, const uint32_t *argb)
 {
 	Texture *t = new Texture{};
-	if (!NT_SUCCESS(xsdk_texture_create(&t->texture, XSDK_FORMAT_A8R8G8B8, (uint32_t)width, (uint32_t)height, 1, false))) {
+	volatile uint32_t *texels = nullptr;
+	if (NT_SUCCESS(xsdk_texture_init(&t->texture, XSDK_FORMAT_A8R8G8B8, (uint32_t)width, (uint32_t)height, 1, false)))
+		texels = allocateTexels(*t, t->texture.size_bytes);
+	if (!texels) {
 		xsdk_log_write("platform: texture %dx%d failed", width, height);
 		delete t;
 		return nullptr;
 	}
+	xsdk_texture_attach(&t->texture, texels);
 	xsdk_texture_upload(&t->texture, 0, argb, (uint32_t)width * 4);
 	xsdk_gpu_invalidate(t->texture.address, t->texture.size_bytes);
 	return t;
@@ -428,6 +508,35 @@ void destroyTexture(Texture *texture)
 		return;
 	// This frame's draws and the frames still in flight may use it: freed BUFFERS frames from now (beginFrame).
 	retired.push_back(Retired{ texture, frame });
+}
+
+bool freeMemory(size_t &bytes)
+{
+	MM_QUERY_STATISTICS_RESULT statistics{};
+	statistics.size = sizeof statistics;
+	if (!NT_SUCCESS(MmQueryStatistics(&statistics)))
+		return false;
+	// 4 KB pages (xsdk sbrk.c).
+	bytes = (size_t)statistics.title.available_pages * 4096;
+	return true;
+}
+
+void freeDestroyedTextures()
+{
+	// Every frame sent is done once this fence passes; this frame's draws are still only recorded (endFrame sends
+	// them), so only the textures destroyed during it may be in its list.
+	if (!NT_SUCCESS(xsdk_gpu_wait(xsdk_gpu_fence(), BEGIN_TIMEOUT_MS)))
+		return;
+	size_t kept = 0;
+	for (const Retired &r : retired) {
+		if (r.frame != frame) {
+			freeTexels(*r.texture);
+			delete r.texture;
+		} else {
+			retired[kept++] = r;
+		}
+	}
+	retired.resize(kept);
 }
 
 void drawQuad(Texture *texture, const Vertex c[4], Blend blend)
@@ -460,12 +569,38 @@ void drawTexture(Texture *texture, float x, float y, float width, float height, 
 
 void setClip(int x, int y, int width, int height)
 {
-	current_clip = Clip{ x, y, width > 0 ? width : 0, height > 0 ? height : 0 };
+	int left = x, top = y, right = x + (width > 0 ? width : 0), bottom = y + (height > 0 ? height : 0);
+	if (clip_area.width >= 0) {
+		left = left > clip_area.x ? left : clip_area.x;
+		top = top > clip_area.y ? top : clip_area.y;
+		right = right < clip_area.x + clip_area.width ? right : clip_area.x + clip_area.width;
+		bottom = bottom < clip_area.y + clip_area.height ? bottom : clip_area.y + clip_area.height;
+	}
+	// One field at a time: GCC builds a constant struct store with rldic, which Xenia skips (see xenia_scan).
+	current_clip.x = left;
+	current_clip.y = top;
+	current_clip.width = right > left ? right - left : 0;
+	current_clip.height = bottom > top ? bottom - top : 0;
 }
 
 void clearClip()
 {
-	current_clip = Clip{ 0, 0, -1, -1 };
+	current_clip = clip_area;
+}
+
+void setClipArea(int x, int y, int width, int height)
+{
+	clip_area.x = x;
+	clip_area.y = y;
+	clip_area.width = width > 0 ? width : 0;
+	clip_area.height = height > 0 ? height : 0;
+	current_clip = clip_area;
+}
+
+void clearClipArea()
+{
+	clip_area.width = -1;
+	current_clip.width = -1;
 }
 
 void fillRect(float x, float y, float width, float height, uint32_t argb)

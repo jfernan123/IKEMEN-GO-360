@@ -28,8 +28,20 @@
 #include <memory>
 #include <string>
 #include <vector>
+#ifndef M360_X360
+#include <condition_variable>
+#include <cstdio>
+#include <fcntl.h>
+#include <io.h>
+#include <iomanip>
+#include <iostream>
+#include <mutex>
+#include <sstream>
+#include <thread>
+#endif
 
 #include "core/ai.h"
+#include "core/smart_ai.h"
 #include "core/air.h"
 #include "core/camera.h"
 #include "core/character.h"
@@ -43,6 +55,7 @@
 #include "core/hud.h"
 #include "core/motif.h"
 #include "core/options_screen.h"
+#include "core/pause_menu.h"
 #include "core/music.h"
 #include "core/select_screen.h"
 #include "core/settings.h"
@@ -52,6 +65,9 @@
 #include "core/select.h"
 #include "core/text.h"
 #include "core/sff.h"
+#include "core/neural_policy.h"
+#include "core/neural_select.h"
+#include "core/rl_observation.h"
 #include "core/sound.h"
 #include "core/sprite_renderer.h"
 #include "core/stage.h"
@@ -62,6 +78,10 @@
 using namespace m360;
 
 namespace {
+
+// Frames played since the program started, the seed for real matches: when a player reaches a fight varies. Test and
+// training runs leave it at 0 unless --charseed sets it.
+uint32_t playedFrames = 0;
 
 const char *const FIGHTFX_SFF = "data/fightfx.sff";
 const char *const FIGHTFX_AIR = "data/fightfx.air";
@@ -74,6 +94,35 @@ constexpr uint32_t BACKGROUND = 0xFF203048;
 constexpr uint32_t TEXT = 0xFFFFFFFF;
 constexpr uint32_t DIM = 0xFF90A0B8;
 constexpr uint32_t ERROR_TEXT = 0xFFFF6060;
+
+// Put a frame on screen before the external game's large SFFs and screenpack start loading. Drawing it once for
+// each 360 front buffer also makes the message visible immediately through Xenia's VdSwap path.
+void showLoadingScreen(const std::string &game)
+{
+	std::string name = game.empty() ? std::string("MUGEN360") : game;
+	const size_t slash = name.find_last_of("/\\");
+	if (slash != std::string::npos)
+		name = name.substr(slash + 1);
+	const char *heading = "MUGEN360";
+	const char *message = "LOADING GAME...";
+	for (int frame = 0; frame < 3; frame++) {
+		if (!platform::beginFrame(0xFF080C18))
+			return;
+		platform::fillRect(0, 0, platform::SCREEN_WIDTH, 10, 0xFF3058A0);
+		platform::fillRect(0, platform::SCREEN_HEIGHT - 10, platform::SCREEN_WIDTH, 10, 0xFFC03038);
+		const float headingScale = 9.0f, nameScale = 4.0f, messageScale = 3.0f;
+		drawText(heading, (platform::SCREEN_WIDTH - std::strlen(heading) * 6.0f * headingScale) / 2.0f, 220,
+			headingScale, 0xFFFFFFFF);
+		drawText(name.c_str(),
+			(platform::SCREEN_WIDTH - name.size() * 6.0f * nameScale) / 2.0f, 340, nameScale, 0xFFFFD050);
+		drawText(message, (platform::SCREEN_WIDTH - std::strlen(message) * 6.0f * messageScale) / 2.0f, 430,
+			messageScale, 0xFFB8C8E8);
+		platform::fillRect(380, 500, 520, 6, 0xFF283850);
+		platform::fillRect(380, 500, 130, 6, 0xFF60A0E8);
+		platform::endFrame();
+		SpriteRenderer::newFrame();
+	}
+}
 
 // A button that fires once when pressed, then repeats while held.
 class Repeat {
@@ -112,7 +161,8 @@ struct Buttons {
 // saves frame N as a .bmp, "--quit N" stops after frame N, "--quickstart" skips the intros so the fight begins at
 // frame 0, "--cpu" makes player 2 the computer, "--trace" logs every state change and hit, "--show" keeps the window on
 // screen during a test run so it can be watched. A script line is "frames keys...": hold those keys for that
-// many frames, keys being U D L R (directions) x y z a b c s (buttons), or "-" for nothing; '#' starts a comment.
+// many frames, keys being U D L R (directions) x y z a b c s (buttons), m (Back, Ikemen's menu key), or "-" for
+// nothing; '#' starts a comment.
 class InputScript {
 public:
 	bool load(const std::string &path)
@@ -140,6 +190,9 @@ public:
 				case 'b': held |= B; break;
 				case 'c': held |= C; break;
 				case 's': held |= Start; break;
+				case 'm': held |= Back; break;
+				case 'i': held |= Lb; break;
+				case 't': held |= Menu; break;
 				default: break;
 				}
 			}
@@ -165,13 +218,18 @@ public:
 		pad.b = (held & B) != 0;
 		pad.rt = (held & C) != 0;
 		pad.start = (held & Start) != 0;
+		pad.back = (held & Back) != 0;
+		pad.lb = (held & Lb) != 0;
+		pad.menu = (held & Menu) != 0;
 		return pad;
 	}
 
 private:
 	enum : uint16_t {
 		Up = 1 << 0, Down = 1 << 1, Left = 1 << 2, Right = 1 << 3, X = 1 << 4, Y = 1 << 5,
-		Z = 1 << 6, A = 1 << 7, B = 1 << 8, C = 1 << 9, Start = 1 << 10
+		Z = 1 << 6, A = 1 << 7, B = 1 << 8, C = 1 << 9, Start = 1 << 10, Back = 1 << 11,
+		// i: LB (the info and hitbox view), t: the debug screen switch (Tab).
+		Lb = 1 << 12, Menu = 1 << 13
 	};
 	// A compact mask avoids GCC combining the Pad's individual bytes with instructions Xenia does not implement.
 	std::vector<uint16_t> frames_;
@@ -235,10 +293,17 @@ struct FightAssets {
 	// The player's options (main owns them; the options screen changes them between fights).
 	const Settings *settings = nullptr;
 
-	bool load(const GameConfig &config, std::string &error)
+	bool load(const GameConfig &config, std::string &error, bool simulationOnly = false)
 	{
 		if (loaded)
 			return true;
+		if (simulationOnly) {
+			fightError = "simulation only";
+			if (!effects.load(FIGHTFX_SFF, FIGHTFX_AIR, error, true))
+				return false;
+			loaded = true;
+			return true;
+		}
 		// The screenpack's localcoord, for a fight.def that gives none.
 		int32_t motifW = 320, motifH = 240;
 		std::vector<uint8_t> motifBytes;
@@ -273,11 +338,12 @@ public:
 	{
 	}
 
-	bool load(const GameConfig &config, std::string &error, bool trace, bool quickStart, bool cpu)
+	bool load(const GameConfig &config, std::string &error, bool trace, bool quickStart, bool cpu,
+		bool simulationOnly = false)
 	{
-		if (!stage_.load(config.stage, error))
+		if (!stage_.load(config.stage, error, simulationOnly))
 			return false;
-		if (!assets_.load(config, error))
+		if (!assets_.load(config, error, simulationOnly))
 			return false;
 		effects_.clear();
 		// The screenpack's fight screen sets the round's timings; without one, the plain HUD and default timings.
@@ -293,6 +359,7 @@ public:
 		match_.setTimings(timings);
 		match_.setRoundTime(settings.roundTicks(assets_.fightScreenLoaded ? fightScreen_.framesPerCount() : 60));
 		aiLevel_ = settings.difficulty;
+		smartAi_ = settings.aiStyle != 0;
 		ticksPerSecond_ = settings.ticksPerSecond();
 		if (assets_.fightScreenLoaded) {
 			const View area = stage_.view(0, 0);
@@ -326,7 +393,9 @@ public:
 		for (int i = 0; i < count_; i++) {
 			if (trace)
 				players_[i].traceLabel = "p" + std::to_string(i + 1);
-			if (!players_[i].load(characterDefs[i], palettes[i], error))
+			if (const Character *shared = sharedCharacters_ ? sharedCharacters_(characterDefs[i]) : nullptr)
+				players_[i].loadFrom(*shared, palettes[i]);
+			else if (!players_[i].load(characterDefs[i], palettes[i], error, simulationOnly))
 				return false;
 			players_[i].setGameWidth(stage_.gameWidth);
 			players_[i].setLifeScale((float)settings.life / 100.0f);
@@ -351,6 +420,8 @@ public:
 		// Each computer partner jams its own buttons.
 		for (int i = 2; i < 4; i++)
 			ai_[i].seed(0x9E3779B9u * (uint32_t)(i + 1));
+		for (int i = 0; i < 4; i++)
+			smart_[i].seed(0x2545F491u * (uint32_t)(i + 1));
 		if (config.mode == "simul") {
 			std::string teams[2];
 			for (int i = 0; i < count_; i++)
@@ -373,12 +444,30 @@ public:
 	void newMatch()
 	{
 		matchCount_++;
+		// Each real match rolls differently (Ikemen seeds from the clock); test and training runs stay repeatable.
+		if (playedFrames != 0) {
+			const uint32_t seed = (playedFrames ^ matchCount_ * 0x9E3779B9u) * 2654435761u;
+			seedAi(seed);
+			for (int i = 0; i < count_; i++)
+				players_[i].seedRandom(seed ^ (0x85EBCA6Bu * (uint32_t)(i + 1)));
+		}
+		neuralMemory_.clear();
+		neuralFrame_ = neuralDirection_ = neuralButton_ = 0;
 		match_.newMatch();
 		fightScreen_.newMatch();
 		startRound(true);
 	}
 	uint32_t matchCount() const { return matchCount_; }
 	const MusicTrack &music() const { return stage_.music; }
+	// RL training's handicap: a side's life bar at a fraction of its usual size, every round. Set it on a freshly
+	// loaded fight before the match starts.
+	void setLifeHandicap(int side, float fraction)
+	{
+		for (int i = 0; i < count_; i++) {
+			if (side_[i] == side)
+				players_[i].setLifeScale(players_[i].lifeScale() * fraction);
+		}
+	}
 	void setTestPower(int32_t value)
 	{
 		for (int i = 0; i < count_; i++)
@@ -460,6 +549,32 @@ public:
 		// After a KO the game slows down: some frames run no game tick.
 		// Game speed: more or fewer ticks a frame (Ikemen's 60 + GameSpeed * GameSpeedStep ticks a second).
 		speed_ += match_.speed() * (float)ticksPerSecond_ / 60.0f;
+		if (neural_) {
+			// VS NEURAL CAP: the policy plays player 1 as in training (a decision held for RL_FRAMES frames, whatever
+			// the game speed), and the person's controller plays player 2.
+			// Training skipped the intros and round calls (every round started at once), so the policy waits them out:
+			// no decisions and no memory until the fight starts, then its first decision on the fight's first frame.
+			if (match_.roundState() < 2) {
+				neuralPad_ = platform::Pad{};
+				neuralPad_.connected = true;
+				neuralFrame_ = 0;
+			} else if (neuralFrame_ % RL_FRAMES == 0) {
+				if (neuralMemory_.empty())
+					neuralMemory_ = neural_->freshMemory();
+				const std::vector<float> seen = rlObservation(players_[0], players_[1], match_.roundState(), match_.timeLeft(),
+					neuralDirection_, neuralButton_);
+				neural_->decide(seen, neuralSelf_, neuralOpponent_, neuralMemory_, neuralRandom_, neuralDirection_,
+					neuralButton_);
+				neuralPad_ = rlPad(neuralDirection_, neuralButton_, players_[0].facing);
+			}
+			if (match_.roundState() >= 2)
+				neuralFrame_++;
+			while (speed_ >= 1) {
+				speed_ -= 1;
+				tick(neuralPad_, pad1);
+			}
+			return;
+		}
 		while (speed_ >= 1) {
 			speed_ -= 1;
 			tick(pad1, pad2);
@@ -470,6 +585,7 @@ public:
 	void tick(const platform::Pad &pad1, const platform::Pad &pad2)
 	{
 		world_.globalSpecial = 0;
+		effects_.tickEnvColor();
 		const bool globallyPaused = effects_.paused();
 		Character *const fighters[4] = { &players_[0], &players_[1], &players_[2], &players_[3] };
 		const Match::Event event =
@@ -491,13 +607,13 @@ public:
 		camera_.resetTracking();
 		const float edge = world_.screenEdge;
 		// Player 2 is the computer unless a second controller is plugged in.
-		const bool cpu = forceCpu_ || (!training_ && !pad2.connected);
+		const bool cpu = neural_ ? neuralCpu_ : forceCpu_ || (!training_ && !pad2.connected);
 		players_[1].aiLevel = cpu ? aiLevel_ : 0;
-		ai_[1].update((float)aiLevel_, cpu && match_.roundState() == 2);
+		updateAi(1, cpu && match_.roundState() == 2);
 		// Simul partners are the computer's (Ikemen: a team member without a controller of its own).
 		for (int i = 2; i < count_; i++) {
 			players_[i].aiLevel = aiLevel_;
-			ai_[i].update((float)aiLevel_, match_.roundState() == 2);
+			updateAi(i, match_.roundState() == 2);
 		}
 		// Each one faces and targets its nearest enemy still in the fight.
 		if (count_ > 2)
@@ -508,20 +624,23 @@ public:
 			run[i] = !effects_.pausedFor(i);
 		players_[0].aiLevel = watch_ ? aiLevel_ : 0;
 		if (watch_)
-			ai_[0].update((float)aiLevel_, match_.roundState() == 2);
+			updateAi(0, match_.roundState() == 2);
 		if (run[0]) {
 			InputState input1;
-			assets_.settings->toInput(0, pad1, input1);
-			players_[0].turnAndInput(watch_ ? ai_[0].state() : input1);
+			// The policy's buttons as in training, with the default button config.
+			static const Settings defaults;
+			(neural_ ? defaults : *assets_.settings).toInput(0, pad1, input1);
+			players_[0].turnAndInput(watch_ ? aiState(0) : input1);
 			recordCommands(players_[0]);
 		}
 		if (run[1]) {
 			InputState input2;
-			assets_.settings->toInput(1, pad2, input2);
-			players_[1].turnAndInput(cpu ? ai_[1].state() : input2);
+			// Against the neural CPU the person plays player 2 with player 1's controller and button config.
+			assets_.settings->toInput(neural_ ? 0 : 1, pad2, input2);
+			players_[1].turnAndInput(cpu ? aiState(1) : input2);
 		}
 		for (int i = 2; i < count_; i++)
-			if (run[i]) players_[i].turnAndInput(ai_[i].state());
+			if (run[i]) players_[i].turnAndInput(aiState(i));
 		for (int i = 0; i < count_; i++)
 			if (run[i]) players_[i].actionPrepare();
 		for (int i = 0; i < count_; i++)
@@ -538,8 +657,12 @@ public:
 		// velocity unless paused.
 		for (int i = 0; i < count_; i++) {
 			const Character &c = players_[i];
-			const float velocity = run[i] && !c.hitPause() ? c.vx * c.localScale * (float)c.facing : 0.0f;
-			camera_.track(c.worldX(), c.worldX(), velocity, c.worldY());
+			if (c.moveCameraX()) {
+				const float velocity = run[i] && !c.hitPause() ? c.vx * c.localScale * (float)c.facing : 0.0f;
+				camera_.trackX(c.worldX(), c.worldX(), velocity);
+			}
+			if (c.moveCameraY() && std::isfinite(c.worldY()))
+				camera_.trackY(c.worldY());
 		}
 		// Only where their hurt boxes touch, as MUGEN does: a thrown player (no hurt box) isn't pushed off. Each pair of
 		// opponents pushes; teammates pass through each other.
@@ -574,7 +697,8 @@ public:
 		world_.gameTime++;
 	}
 
-	void draw()
+	// bars false leaves out the fight screen (lifebars, timer...): the pause menu's hidebars.
+	void draw(bool bars = true)
 	{
 		const View view = fightView(effects_.shakeX(), effects_.shakeY());
 		const PalFX *stagePalFX = effects_.stagePalFX();
@@ -582,32 +706,52 @@ public:
 		// Ikemen's order: the fight screen's layer -1 and 0 behind the characters, 1 and 2 in front.
 		// nobg: black behind the fighters instead of the stage; nofg: no stage in front (Ikemen's GSF_nobg / nofg).
 		const bool noBg = (world_.globalSpecial & Special::NoBg) != 0, noFg = (world_.globalSpecial & Special::NoFg) != 0;
-		if (noBg)
-			platform::fillRect(0, 0, platform::SCREEN_WIDTH, platform::SCREEN_HEIGHT, 0xFF000000);
-		if (stage_.ikemen && !noBg)
-			stage_.draw(-1, view, stagePalFX, stageBrightness);
-		if (!noBg)
-			stage_.draw(0, view, stagePalFX, stageBrightness);
-		fightScreen_.draw(-1, match_, players_[0], players_[1]);
-		effects_.draw(view, (float)stage_.zoffset * stage_.localScale, -1);
-		fightScreen_.draw(0, match_, players_[0], players_[1]);
+		// EnvColor replaces everything behind the characters, and them too unless it is under them (Ikemen's System.draw).
+		const bool envColor = effects_.envColorOn(), showFighters = !envColor || effects_.envColorUnder();
+		if (envColor) {
+			effects_.drawEnvColor();
+		} else {
+			if (noBg)
+				platform::fillRect(0, 0, platform::SCREEN_WIDTH, platform::SCREEN_HEIGHT, 0xFF000000);
+			if (stage_.ikemen && !noBg)
+				stage_.draw(-1, view, stagePalFX, stageBrightness);
+			// Effects with layerno -1, under the stage's layer 0 (Ikemen's spriteList.draw(-1)).
+			effects_.draw(view, (float)stage_.zoffset * stage_.localScale, -2);
+			if (!noBg)
+				stage_.draw(0, view, stagePalFX, stageBrightness);
+			if (bars)
+				fightScreen_.draw(-1, match_, players_[0], players_[1]);
+			{
+				FightEffects::GroundShadow ground;
+				ground.intensity = stage_.shadow.intensity;
+				ground.yscale = stage_.shadow.yscale;
+				ground.colour = stage_.shadow.colour;
+				ground.offsetX = stage_.shadow.offsetX * stage_.localScale;
+				ground.offsetY = stage_.shadow.offsetY * stage_.localScale;
+				effects_.drawShadows(view, (float)stage_.zoffset * stage_.localScale, ground);
+			}
+			if (bars)
+				fightScreen_.draw(0, match_, players_[0], players_[1]);
+		}
 		// Player 1 in front.
-		for (int i = count_ - 1; i >= 0; i--)
-			players_[i].draw(view, (float)stage_.zoffset * stage_.localScale, groundFor(players_[i]));
-		effects_.draw(view, (float)stage_.zoffset * stage_.localScale, 0);
-		if (!noFg)
+		if (showFighters) {
+			drawFighters(view);
+		}
+		if (!noFg && !envColor)
 			stage_.draw(1, view, stagePalFX, stageBrightness);
-		fightScreen_.draw(1, match_, players_[0], players_[1]);
+		if (bars)
+			fightScreen_.draw(1, match_, players_[0], players_[1]);
 		effects_.draw(view, (float)stage_.zoffset * stage_.localScale, 1);
 		// A pillarboxed stage: black at the sides, over whatever of the stage and the fighters reached past it.
 		if (view.originX > 0) {
 			platform::fillRect(0, 0, view.originX, platform::SCREEN_HEIGHT, 0xFF000000);
 			platform::fillRect(view.originX + view.width, 0, view.originX, platform::SCREEN_HEIGHT, 0xFF000000);
 		}
-		fightScreen_.draw(2, match_, players_[0], players_[1]);
+		if (bars)
+			fightScreen_.draw(2, match_, players_[0], players_[1]);
 		if (fightScreen_.loaded())
 			fightScreen_.drawFade();
-		else
+		else if (bars)
 			hud_.draw(match_, players_[0], players_[1], fightScreen_.roundCalled(), fightScreen_.fightCalled());
 		if (players_[1].aiLevel > 0)
 			drawTextf(platform::SCREEN_WIDTH - 40 - 6 * 2 * 9, 176, 2, 0xFFFFD040, "CPU LV %d", players_[1].aiLevel);
@@ -765,6 +909,36 @@ private:
 
 	// The stage's shadow and reflection for a character: the shadow faded as it rises through fade.range, offsets
 	// in game units.
+	// Every fighter and helper by sprpriority, highest in front; equals keep the list's order, first in front
+	// (Ikemen's DrawList.draw).
+	void drawFighters(const View &view)
+	{
+		fighterDraws_.clear();
+		for (int i = 0; i < count_; i++)
+			fighterDraws_.push_back({ &players_[i], i });
+		for (int i = 0; i < count_; i++) {
+			helperDraws_.clear();
+			players_[i].collectHelpers(helperDraws_);
+			for (Character *helper : helperDraws_)
+				fighterDraws_.push_back({ helper, i });
+		}
+		std::stable_sort(fighterDraws_.begin(), fighterDraws_.end(), [](const FighterDraw &a, const FighterDraw &b) {
+			return a.fighter->sprPriority > b.fighter->sprPriority;
+		});
+		const float groundY = (float)stage_.zoffset * stage_.localScale;
+		// An Explod draws in front of a fighter with the same sprpriority: Galactus's head rises behind his floor.
+		int32_t effectsDrawn = INT32_MIN;
+		for (int i = (int)fighterDraws_.size() - 1; i >= 0; i--) {
+			const FighterDraw &entry = fighterDraws_[i];
+			if (entry.fighter->sprPriority > effectsDrawn) {
+				effects_.draw(view, groundY, 0, effectsDrawn, entry.fighter->sprPriority);
+				effectsDrawn = entry.fighter->sprPriority;
+			}
+			entry.fighter->draw(view, groundY, groundFor(players_[entry.player]));
+		}
+		effects_.draw(view, groundY, 0, effectsDrawn);
+	}
+
 	GroundDraw groundFor(const Character &c) const
 	{
 		const float k = shadowFade(c);
@@ -806,6 +980,14 @@ private:
 	uint32_t matchCount_ = 0;
 	// Players 1 and 2, and in Simul their partners 3 and 4.
 	Character players_[4];
+	// The fight's draw order, kept between frames.
+	struct FighterDraw {
+		Character *fighter;
+		int player;
+	};
+	std::vector<FighterDraw> fighterDraws_;
+	std::vector<Character *> helperDraws_;
+	std::function<const Character *(const std::string &)> sharedCharacters_;
 	int count_ = 2;
 	// Each fighter's side: 0 with player 1, 1 with player 2.
 	int side_[4] = { 0, 1, 0, 1 };
@@ -819,14 +1001,38 @@ private:
 	FightAssets &assets_;
 	float speed_ = 0;
 	bool quickStart_ = false;
-	// The computer players (MUGEN's button jamming), at the options' Difficulty.
+	// The computer players, at the options' Difficulty: SmartAi, or MUGEN's button jamming (AI Style Classic).
 	int aiLevel_ = 5;
 	int32_t ticksPerSecond_ = 60;
 	AiInput ai_[4];
+	SmartAi smart_[4];
+	bool smartAi_ = true;
+	// One tick of fighter i's computer player; active is false outside the fight, when it lets go of everything.
+	void updateAi(int i, bool active)
+	{
+		if (smartAi_ && players_[i].p2()) {
+			smart_[i].update(players_[i], *players_[i].p2(), aiLevel_, active);
+			players_[i].aiCheat = smart_[i].cheatAny() ? Character::AiCheat::Any
+				: smart_[i].roundStart()               ? Character::AiCheat::Switches
+													   : Character::AiCheat::None;
+		} else {
+			ai_[i].update((float)aiLevel_, active);
+			players_[i].aiCheat = Character::AiCheat::Any;
+		}
+	}
+	InputState aiState(int i) const { return smartAi_ && players_[i].p2() ? smart_[i].state() : ai_[i].state(); }
 	bool forceCpu_ = false;
 	bool training_ = false;
 	// Watch mode: the computer plays player 1 as well (Ikemen's cpuSide[1]).
 	bool watch_ = false;
+	// VS NEURAL CAP: a trained policy plays player 1 (setNeural).
+	const NeuralPolicy *neural_ = nullptr;
+	int neuralSelf_ = 0, neuralOpponent_ = 0, neuralFrame_ = 0, neuralDirection_ = 0, neuralButton_ = 0;
+	uint32_t neuralRandom_ = 1;
+	// Tests (--cpu): the stock AI plays player 2 instead of the person, as in training.
+	bool neuralCpu_ = false;
+	std::vector<float> neuralMemory_;
+	platform::Pad neuralPad_;
 	bool selectAfterMatch_ = false, finished_ = false;
 
 public:
@@ -838,21 +1044,478 @@ public:
 	int32_t roundState() const { return match_.roundState(); }
 	int32_t roundNo() const { return match_.roundNo(); }
 	int matchesStarted() const { return (int)matchCount_; }
+	// The policy plays player 1 from now on, the person player 2. self and opponent are the characters' ids in its
+	// roster; seed varies its sampled play from match to match.
+	void setNeural(const NeuralPolicy *policy, int self, int opponent, uint32_t seed, bool cpuOpponent)
+	{
+		neural_ = policy;
+		neuralCpu_ = cpuOpponent;
+		neuralSelf_ = self;
+		neuralOpponent_ = opponent;
+		neuralRandom_ = seed ? seed : 1;
+		neuralMemory_.clear();
+		neuralFrame_ = neuralDirection_ = neuralButton_ = 0;
+	}
 	void setWatch(bool watch)
 	{
 		watch_ = watch;
 		ai_[0].seed(0x2545F491u);
+		smart_[0].seed(0x9E3779B9u);
 	}
 	bool finished() const { return finished_; }
 	// Each side's matches won in a row, to carry into the next fight.
 	int winCount(int side) const { return fightScreen_.winCount(side); }
 	int winner() const { return match_.winner(); }
+	bool matchOver() const { return match_.matchOver(); }
+	// A training match ends on a drawn round too (a double KO, equal life at time over): the game would play
+	// another round with life refilled, which a policy could stall its way into for free.
+	bool trainingOver() const { return match_.matchOver() || match_.draws() > 0; }
+	int32_t matchTimeLeft() const { return match_.timeLeft(); }
+	void seedAi(uint32_t seed)
+	{
+		for (int i = 0; i < count_; i++) {
+			ai_[i].update((float)aiLevel_, false);
+			smart_[i].update(players_[i], players_[i == 0 ? 1 : 0], aiLevel_, false);
+			ai_[i].seed(seed ^ (0x9E3779B9u * (uint32_t)(i + 1)));
+			smart_[i].seed(seed ^ (0x2545F491u * (uint32_t)(i + 1)));
+		}
+	}
+	// A training client reuses the loaded stage and characters for thousands of episodes.
+	void resetTraining(uint32_t seed, bool cpuOpponent)
+	{
+		forceCpu_ = cpuOpponent;
+		finished_ = false;
+		speed_ = 0;
+		lastActive_.clear();
+		history_.clear();
+		seedAi(seed);
+		// The characters' own random numbers too, or a reused fight carries them over from its last match and the same
+		// seed plays out differently than in a fresh process.
+		for (int i = 0; i < count_; i++)
+			players_[i].seedRandom(seed ^ (0x85EBCA6Bu * (uint32_t)(i + 1)));
+		newMatch();
+	}
+	// An RL pool loads each character once; a fight given this takes its characters from there instead of the files.
+	void useSharedCharacters(std::function<const Character *(const std::string &)> find) { sharedCharacters_ = find; }
 	// The debug text and hitboxes (Q / LB); off, as Ikemen shows none.
 	bool showInfo_ = false;
 	Press lbPress_, ltPress_;
 	std::vector<std::string> lastActive_;
 	std::vector<std::pair<std::string, int>> history_;
 };
+
+#ifndef M360_X360
+// The PC-only RL bridge deliberately exposes controller inputs rather than state changes. A learned policy must play
+// through the same CMD parser as a person, and can therefore train on any mounted MUGEN game without character code.
+// The observation and controller code is shared with the neural CPU (core/rl_observation).
+// Player 2's view is mirrored, so it looks like player 1's and one policy plays both sides alike.
+std::vector<float> rlObservation(const StageDemo &demo, int side, int previousDirection, int previousButton)
+{
+	return m360::rlObservation(demo.fighter(side), demo.fighter(1 - side), demo.roundState(), demo.matchTimeLeft(),
+		previousDirection, previousButton, side == 1);
+}
+
+void writeRlState(const StageDemo &demo, float reward, bool done, const int previousDirection[2], const int previousButton[2])
+{
+	const std::vector<float> observation1 = rlObservation(demo, 0, previousDirection[0], previousButton[0]);
+	const std::vector<float> observation2 = rlObservation(demo, 1, previousDirection[1], previousButton[1]);
+	std::cout << "RL_OBS " << std::setprecision(7) << reward << ' ' << (done ? 1 : 0) << ' ' << demo.winner();
+	for (float value : observation1)
+		std::cout << ' ' << value;
+	for (float value : observation2)
+		std::cout << ' ' << value;
+	std::cout << std::endl;
+}
+
+// recordDir: when set, the fight loads its graphics and saves one .bmp there after each reset and step, so a clip
+// shows exactly what the policy played (a scripted replay can drift from the training run).
+// show: the fight plays in the window with its graphics and sound, every tick drawn at 60 a second, so a policy
+// can be watched live (--show with --rl-server; closing the window ends the server).
+int runRlServer(const GameConfig &config, Settings &settings, const std::string &recordDir, bool show, bool trace)
+{
+	// Each match plays in a fight built afresh, as in the RL pool: a reused one carries state from the last match
+	// (animations, game time, input buffers), so a seed wouldn't replay the same match (BUGFIX_LIST 9b, 9).
+	std::unique_ptr<FightAssets> assets;
+	std::unique_ptr<StageDemo> demoHolder;
+	std::string error;
+	const auto build = [&]() {
+		demoHolder.reset();
+		assets = std::make_unique<FightAssets>();
+		assets->settings = &settings;
+		demoHolder = std::make_unique<StageDemo>(*assets);
+		if (!demoHolder->load(config, error, trace, true, true, recordDir.empty() && !show))
+			return false;
+		demoHolder->returnToSelectAfterMatch();
+		return true;
+	};
+	uint32_t recorded = 0;
+	const auto record = [&]() {
+		if (recordDir.empty() || !platform::beginFrame(BACKGROUND))
+			return;
+		demoHolder->draw();
+		char path[32];
+		std::snprintf(path, sizeof path, "/%06u.bmp", recorded++);
+		platform::requestScreenshot((recordDir + path).c_str());
+		platform::endFrame();
+		SpriteRenderer::newFrame();
+	};
+	if (!build()) {
+		std::cout << "RL_ERROR " << error << std::endl;
+		return 1;
+	}
+	bool fresh = true;
+	int previousDirection[2] = { 0, 0 }, previousButton[2] = { 0, 0 };
+	std::cout << "RL_READY " << rlObservation(*demoHolder, 0, 0, 0).size() << ' ' << RL_DIRECTIONS << ' ' << RL_BUTTONS
+		<< std::endl;
+	std::string line;
+	while (std::getline(std::cin, line)) {
+		std::istringstream input(line);
+		std::string command;
+		input >> command;
+		if (command == "quit")
+			break;
+		if (command == "reset") {
+			uint32_t seed = 1;
+			std::string opponent = "smart";
+			// Optionally player 2's life bar as a fraction (a training curriculum's handicap, for clips of it).
+			float opponentLife = 1;
+			input >> seed >> opponent >> opponentLife;
+			if (!fresh && !build()) {
+				std::cout << "RL_ERROR " << error << std::endl;
+				return 1;
+			}
+			fresh = false;
+			if (opponentLife > 0 && opponentLife < 1)
+				demoHolder->setLifeHandicap(1, std::max(opponentLife, 0.01f));
+			demoHolder->resetTraining(seed, opponent != "external");
+			previousDirection[0] = previousDirection[1] = previousButton[0] = previousButton[1] = 0;
+			record();
+			writeRlState(*demoHolder, 0, false, previousDirection, previousButton);
+			continue;
+		}
+		if (command != "step") {
+			std::cout << "RL_ERROR expected reset, step, or quit" << std::endl;
+			continue;
+		}
+		int direction1 = 0, button1 = 0, direction2 = 0, button2 = 0, frames = 3;
+		input >> direction1 >> button1 >> direction2 >> button2 >> frames;
+		direction1 = std::clamp(direction1, 0, RL_DIRECTIONS - 1);
+		button1 = std::clamp(button1, 0, RL_BUTTONS - 1);
+		direction2 = std::clamp(direction2, 0, RL_DIRECTIONS - 1);
+		button2 = std::clamp(button2, 0, RL_BUTTONS - 1);
+		frames = std::clamp(frames, 1, 30);
+		float reward = 0;
+		for (int frame = 0; frame < frames && !demoHolder->trainingOver(); frame++) {
+			const int32_t oldSelf = demoHolder->fighter(0).life, oldOther = demoHolder->fighter(1).life;
+			Buttons buttons;
+			const platform::Pad p1 = rlPad(direction1, button1, demoHolder->fighter(0).facing);
+			const platform::Pad p2 = rlPad(direction2, button2, demoHolder->fighter(1).facing);
+			demoHolder->update(buttons, p1, p2);
+			if (show) {
+				if (!platform::beginFrame(BACKGROUND))
+					return 0;
+				demoHolder->draw();
+				platform::endFrame();
+				SpriteRenderer::newFrame();
+				// One tick per 60th of a second, however fast the drawing went.
+				static auto nextFrame = std::chrono::steady_clock::now();
+				nextFrame += std::chrono::microseconds(16667);
+				const auto now = std::chrono::steady_clock::now();
+				if (nextFrame > now)
+					std::this_thread::sleep_until(nextFrame);
+				else
+					nextFrame = now;
+			}
+			reward += (float)std::max(0, oldOther - demoHolder->fighter(1).life) /
+				(float)std::max(1, demoHolder->fighter(1).lifeMax());
+			reward -= (float)std::max(0, oldSelf - demoHolder->fighter(0).life) /
+				(float)std::max(1, demoHolder->fighter(0).lifeMax());
+		}
+		const bool done = demoHolder->trainingOver();
+		if (done)
+			reward += demoHolder->winner() == 0 ? 1.0f : demoHolder->winner() == 1 ? -1.0f : 0.0f;
+		previousDirection[0] = direction1;
+		previousDirection[1] = direction2;
+		previousButton[0] = button1;
+		previousButton[1] = button2;
+		record();
+		writeRlState(*demoHolder, reward, done, previousDirection, previousButton);
+	}
+	return 0;
+}
+
+// --rl-pool N: N headless fights of one matchup in one process, for RL training at scale. Each character loads once
+// and every fight shares it (Character::loadFrom); each fight has its own FightAssets, since effects and the fight
+// screen change as it plays. Steps run on a pool of threads, and the protocol is binary on the original stdout (log
+// lines go to stderr instead), all fights at once:
+//   start:  "RLPL", int32 fights, int32 observation size, int32 directions, int32 buttons
+//   'R' uint32 seed, uint8 external   reset every fight (fight i uses seed + i); answers the observations
+//   'S' uint8 frames, then per fight uint8 direction1, button1, direction2, button2
+//       answers float32 reward[N], uint8 done[N], int8 winner[N], then the observations
+//   'L' float32 fraction              player 2's life bar from each fight's next match on (no answer)
+//   'Q'                               quit
+// Observations are float32 [N][2][size]: each fight's player 1 view, then player 2's (mirrored). A fight whose match
+// ended (won, or a drawn round: winner -1) reports it (done, winner, final reward) and is reset at once, so its
+// observation is the next match's first one.
+namespace {
+
+struct RlFight {
+	std::unique_ptr<FightAssets> assets;
+	std::unique_ptr<StageDemo> demo;
+	int previousDirection[2] = { 0, 0 }, previousButton[2] = { 0, 0 };
+	uint32_t seed = 0, episodes = 0;
+	bool external = false;
+	// Player 2's life bar as a fraction of its usual size, from the next match on (a training curriculum's handicap).
+	float opponentLife = 1;
+
+	// A new fight from the shared characters: a match left behind more than its random numbers (animations, the
+	// game time, input buffers), so each match starts from a fight built afresh. That makes a seed play out the same
+	// in any fight, as in a fresh process, which replays rely on.
+	bool build(const GameConfig &config, Settings &settings, const std::function<const Character *(const std::string &)> &find,
+		std::string &error)
+	{
+		demo.reset();
+		assets = std::make_unique<FightAssets>();
+		assets->settings = &settings;
+		demo = std::make_unique<StageDemo>(*assets);
+		demo->useSharedCharacters(find);
+		if (!demo->load(config, error, false, true, true, true))
+			return false;
+		demo->returnToSelectAfterMatch();
+		return true;
+	}
+
+	void reset(uint32_t count, uint32_t index, const GameConfig &config, Settings &settings,
+		const std::function<const Character *(const std::string &)> &find)
+	{
+		std::string error;
+		{
+			// Loading reads files through the platform's file cache, which isn't thread-safe: one build at a time.
+			static std::mutex building;
+			std::lock_guard<std::mutex> lock(building);
+			if (!build(config, settings, find, error))
+				logf("rl pool: %s", error.c_str());
+		}
+		if (opponentLife != 1)
+			demo->setLifeHandicap(1, opponentLife);
+		demo->resetTraining(seed + index + count * episodes, !external);
+		episodes++;
+		previousDirection[0] = previousDirection[1] = previousButton[0] = previousButton[1] = 0;
+	}
+
+	void observe(float *out, size_t size) const
+	{
+		for (int side = 0; side < 2; side++) {
+			const std::vector<float> o = rlObservation(*demo, side, previousDirection[side], previousButton[side]);
+			std::memcpy(out + side * size, o.data(), std::min(o.size(), size) * sizeof(float));
+		}
+	}
+
+	// One decision: the same frames and reward as runRlServer's step.
+	void step(const uint8_t action[4], int frames, float &reward, uint8_t &done, int8_t &winner)
+	{
+		const int direction1 = std::min<int>(action[0], RL_DIRECTIONS - 1);
+		const int button1 = std::min<int>(action[1], RL_BUTTONS - 1);
+		const int direction2 = std::min<int>(action[2], RL_DIRECTIONS - 1);
+		const int button2 = std::min<int>(action[3], RL_BUTTONS - 1);
+		reward = 0;
+		for (int frame = 0; frame < frames && !demo->trainingOver(); frame++) {
+			const int32_t oldSelf = demo->fighter(0).life, oldOther = demo->fighter(1).life;
+			Buttons buttons;
+			const platform::Pad p1 = rlPad(direction1, button1, demo->fighter(0).facing);
+			const platform::Pad p2 = rlPad(direction2, button2, demo->fighter(1).facing);
+			demo->update(buttons, p1, p2);
+			reward += (float)std::max(0, oldOther - demo->fighter(1).life) / (float)std::max(1, demo->fighter(1).lifeMax());
+			reward -= (float)std::max(0, oldSelf - demo->fighter(0).life) / (float)std::max(1, demo->fighter(0).lifeMax());
+		}
+		done = demo->trainingOver() ? 1 : 0;
+		winner = (int8_t)(done ? demo->winner() : -1);
+		if (done)
+			reward += winner == 0 ? 1.0f : winner == 1 ? -1.0f : 0.0f;
+		previousDirection[0] = direction1;
+		previousDirection[1] = direction2;
+		previousButton[0] = button1;
+		previousButton[1] = button2;
+	}
+};
+
+// Runs job(worker) on every worker thread and waits for all of them; the threads stay up between calls.
+class RlWorkers {
+public:
+	explicit RlWorkers(int count) : count_(count)
+	{
+		for (int t = 0; t < count; t++)
+			threads_.emplace_back([this, t]() { loop(t); });
+	}
+	~RlWorkers()
+	{
+		{
+			std::lock_guard<std::mutex> lock(mutex_);
+			stop_ = true;
+		}
+		start_.notify_all();
+		for (std::thread &thread : threads_)
+			thread.join();
+	}
+	int count() const { return count_; }
+	void run(const std::function<void(int)> &job)
+	{
+		std::unique_lock<std::mutex> lock(mutex_);
+		job_ = &job;
+		remaining_ = count_;
+		generation_++;
+		start_.notify_all();
+		finished_.wait(lock, [this]() { return remaining_ == 0; });
+		job_ = nullptr;
+	}
+
+private:
+	void loop(int t)
+	{
+		uint64_t seen = 0;
+		for (;;) {
+			const std::function<void(int)> *job;
+			{
+				std::unique_lock<std::mutex> lock(mutex_);
+				start_.wait(lock, [&]() { return stop_ || generation_ != seen; });
+				if (stop_)
+					return;
+				seen = generation_;
+				job = job_;
+			}
+			(*job)(t);
+			std::lock_guard<std::mutex> lock(mutex_);
+			if (--remaining_ == 0)
+				finished_.notify_one();
+		}
+	}
+	int count_;
+	std::vector<std::thread> threads_;
+	std::mutex mutex_;
+	std::condition_variable start_, finished_;
+	const std::function<void(int)> *job_ = nullptr;
+	uint64_t generation_ = 0;
+	int remaining_ = 0;
+	bool stop_ = false;
+};
+
+bool readExact(void *data, size_t size)
+{
+	return std::fread(data, 1, size, stdin) == size;
+}
+
+} // namespace
+
+int runRlPool(const GameConfig &config, Settings &settings, int count, int threads)
+{
+	// The protocol keeps the real stdout; everything printf'd (log lines) goes to stderr from here on.
+	std::fflush(stdout);
+	const int protocolFd = _dup(_fileno(stdout));
+	_dup2(_fileno(stderr), _fileno(stdout));
+	_setmode(protocolFd, _O_BINARY);
+	_setmode(_fileno(stdin), _O_BINARY);
+	std::FILE *out = _fdopen(protocolFd, "wb");
+	if (!out)
+		return 1;
+	std::setvbuf(out, nullptr, _IOFBF, 1 << 20);
+
+	// Each character's files load once, the first time a fight asks for them; fights share them after that. Once the
+	// fights are built the map only gets read, so the worker threads can rebuild fights from it.
+	std::map<std::string, std::unique_ptr<Character>> loaded;
+	bool loading = true;
+	std::function<const Character *(const std::string &)> find = [&loaded, &loading](const std::string &def) -> const Character * {
+		auto it = loaded.find(def);
+		if (it == loaded.end()) {
+			if (!loading)
+				return nullptr;
+			auto character = std::make_unique<Character>();
+			std::string error;
+			if (!character->load(def, 1, error, true)) {
+				logf("rl pool: %s", error.c_str());
+				return nullptr;
+			}
+			it = loaded.emplace(def, std::move(character)).first;
+		}
+		return it->second.get();
+	};
+	std::vector<std::unique_ptr<RlFight>> fights;
+	for (int i = 0; i < count; i++) {
+		auto fight = std::make_unique<RlFight>();
+		std::string error;
+		if (!fight->build(config, settings, find, error)) {
+			logf("rl pool: %s", error.c_str());
+			return 1;
+		}
+		fights.push_back(std::move(fight));
+	}
+	loading = false;
+	const size_t size = rlObservation(*fights[0]->demo, 0, 0, 0).size();
+	const int32_t header[4] = { count, (int32_t)size, RL_DIRECTIONS, RL_BUTTONS };
+	std::fwrite("RLPL", 1, 4, out);
+	std::fwrite(header, sizeof header, 1, out);
+	std::fflush(out);
+
+	RlWorkers workers(std::max(1, std::min(threads, count)));
+	std::vector<float> observations((size_t)count * 2 * size), rewards((size_t)count);
+	std::vector<uint8_t> actions((size_t)count * 4), done((size_t)count);
+	std::vector<int8_t> winners((size_t)count);
+	auto writeObservations = [&]() {
+		std::fwrite(observations.data(), sizeof(float), observations.size(), out);
+		std::fflush(out);
+	};
+	for (;;) {
+		char command = 0;
+		if (!readExact(&command, 1) || command == 'Q')
+			break;
+		if (command == 'R') {
+			uint32_t seed = 1;
+			uint8_t external = 0;
+			if (!readExact(&seed, 4) || !readExact(&external, 1))
+				break;
+			workers.run([&](int t) {
+				for (int i = t; i < count; i += workers.count()) {
+					RlFight &fight = *fights[(size_t)i];
+					fight.seed = seed;
+					fight.episodes = 0;
+					fight.external = external != 0;
+					fight.reset((uint32_t)count, (uint32_t)i, config, settings, find);
+					fight.observe(&observations[(size_t)i * 2 * size], size);
+				}
+			});
+			writeObservations();
+		} else if (command == 'S') {
+			uint8_t frames = 3;
+			if (!readExact(&frames, 1) || !readExact(actions.data(), actions.size()))
+				break;
+			const int ticks = std::clamp<int>(frames, 1, 30);
+			workers.run([&](int t) {
+				for (int i = t; i < count; i += workers.count()) {
+					RlFight &fight = *fights[(size_t)i];
+					fight.step(&actions[(size_t)i * 4], ticks, rewards[(size_t)i], done[(size_t)i], winners[(size_t)i]);
+					if (done[(size_t)i])
+						fight.reset((uint32_t)count, (uint32_t)i, config, settings, find);
+					fight.observe(&observations[(size_t)i * 2 * size], size);
+				}
+			});
+			std::fwrite(rewards.data(), sizeof(float), rewards.size(), out);
+			std::fwrite(done.data(), 1, done.size(), out);
+			std::fwrite(winners.data(), 1, winners.size(), out);
+			writeObservations();
+		} else if (command == 'L') {
+			float fraction = 1;
+			if (!readExact(&fraction, 4))
+				break;
+			fraction = std::clamp(fraction, 0.01f, 1.0f);
+			for (auto &fight : fights)
+				fight->opponentLife = fraction;
+		} else {
+			logf("rl pool: unknown command %d", (int)command);
+			break;
+		}
+	}
+	return 0;
+}
+#endif
 
 class AnimationViewer {
 public:
@@ -1002,7 +1665,33 @@ private:
 	size_t current_ = 0;
 };
 
-enum class Screen { Title, Options, Select, Stage, Animations, Sprites, Storyboard, Victory, Continue };
+// The debug viewers and the character they show.
+struct Viewers {
+	Character kfm;
+	std::string error;
+	bool loaded;
+	SpriteRenderer renderer;
+	AnimationViewer animations;
+	SpriteViewer sprites;
+
+	explicit Viewers(const std::string &def)
+		: loaded(kfm.load(def, 1, error)), renderer(kfm.sff()), animations(kfm.anims(), renderer),
+		  sprites(kfm.sff(), renderer)
+	{
+		if (!loaded)
+			logf("mugen360: %s", error.c_str());
+	}
+};
+
+// What the 360 has free and what the textures hold, in the log: a big game ran a real console out of memory (13).
+void logMemory(const char *where)
+{
+	size_t free = 0;
+	if (platform::freeMemory(free))
+		logf("memory: %s: %zu MB free, %zu MB of textures", where, free >> 20, SpriteRenderer::totalTextureBytes() >> 20);
+}
+
+enum class Screen { Title, Options, Select, NeuralSelect, Stage, Animations, Sprites, Storyboard, Victory, Continue };
 
 // A storyboard a .def names under [section] key (a character's [Arcade] intro.storyboard, a screenpack's [Files]
 // logo.storyboard), found as Ikemen finds it (next to the .def, the game's root, data/); empty if there's none.
@@ -1078,6 +1767,7 @@ std::string runSoak(const GameConfig &config, const Settings &settings, uint32_t
 			if (f % 60 == 0 && platform::beginFrame(BACKGROUND)) {
 				demo.draw();
 				platform::endFrame();
+				SpriteRenderer::newFrame();
 			}
 			if (demo.roundNo() != lastRound || demo.matchesStarted() != lastMatch) {
 				rounds++;
@@ -1130,7 +1820,14 @@ int main(int argc, char **argv)
 	const bool configLoaded = config.load("data/mugen360.ini", configError);
 	// Test-run options (see InputScript).
 	std::string inputPath, input2Path, forcedMode, p1Arg, p2Arg, stageArg;
+	// --p1pal N / --p2pal N: the fighters' palettes in a test run.
+	int32_t p1Pal = 0, p2Pal = 0;
 	bool checkRun = false, soakRun = false;
+#ifndef M360_X360
+	bool rlServer = false;
+	std::string rlRecordDir;
+	int rlPoolCount = 0, rlThreads = (int)std::max(1u, std::thread::hardware_concurrency());
+#endif
 	// Test runs skip storyboards (logo, intro, arcade intros and endings) unless --storyboards.
 	bool storyboards = false;
 	uint32_t soakFrames = 3600;
@@ -1139,12 +1836,19 @@ int main(int argc, char **argv)
 	std::map<uint32_t, std::string> shots;
 	uint32_t quitFrame = UINT32_MAX;
 	int32_t testPower = -1, testP1Life = -1, testP2Life = -1, testWins = -1, testSelectTimer = -1;
+	uint32_t testAiSeed = 0;
 	// --noai: player 2 stays idle even in modes against the computer, so a test script's hits land the same way.
 	bool noAi = false;
+	// --ai classic / smart: the computer's AI Style, whatever the options say.
+	int32_t testAiStyle = -1;
 	bool trace = false, quickStart = false, cpu = false, show = false, forceSelect = false, forceTitle = false;
 	for (int i = 1; i < argc; i++) {
 		const std::string arg = argv[i];
-		if (arg == "--input" && i + 1 < argc)
+		if (arg == "--ai" && i + 1 < argc)
+			testAiStyle = std::string(argv[++i]) == "classic" ? 0 : 1;
+		else if (arg == "--aiseed" && i + 1 < argc)
+			testAiSeed = (uint32_t)text::atoi(argv[++i]);
+		else if (arg == "--input" && i + 1 < argc)
 			inputPath = argv[++i];
 		else if (arg == "--input2" && i + 1 < argc)
 			input2Path = argv[++i];
@@ -1156,6 +1860,8 @@ int main(int argc, char **argv)
 			quitFrame = (uint32_t)text::atoi(argv[++i]);
 		else if (arg == "--trace")
 			trace = true;
+		else if (arg == "--charseed" && i + 1 < argc)
+			playedFrames = (uint32_t)text::atoi(argv[++i]);
 		else if (arg == "--quickstart")
 			quickStart = true;
 		else if (arg == "--cpu")
@@ -1184,12 +1890,27 @@ int main(int argc, char **argv)
 			testWins = text::atoi(argv[++i]);
 		else if (arg == "--p1" && i + 1 < argc)
 			p1Arg = argv[++i];
+		else if (arg == "--p1pal" && i + 1 < argc)
+			p1Pal = text::atoi(argv[++i]);
+		else if (arg == "--p2pal" && i + 1 < argc)
+			p2Pal = text::atoi(argv[++i]);
 		else if (arg == "--p2" && i + 1 < argc)
 			p2Arg = argv[++i];
 		else if (arg == "--stage" && i + 1 < argc)
 			stageArg = argv[++i];
 		else if (arg == "--game" && i + 1 < argc)
 			config.game = argv[++i];
+#ifndef M360_X360
+		else if (arg == "--rl-server")
+			rlServer = true;
+		else if (arg == "--rl-record" && i + 1 < argc)
+			rlRecordDir = argv[++i];
+		else if (arg == "--rl-pool" && i + 1 < argc) {
+			rlServer = true;
+			rlPoolCount = std::max(1, text::atoi(argv[++i]));
+		} else if (arg == "--rl-threads" && i + 1 < argc)
+			rlThreads = std::max(1, text::atoi(argv[++i]));
+#endif
 		else if (arg == "--soak") {
 			// --soak [folder]: every character against the next, computer against computer (13d).
 			soakRun = true;
@@ -1206,20 +1927,34 @@ int main(int argc, char **argv)
 				config.game = argv[++i];
 		}
 	}
-	const bool testRun = !inputPath.empty() || !shots.empty() || quitFrame != UINT32_MAX || checkRun || soakRun;
-	if (!platform::init(testRun && !show, testRun ? "m360.log" : "m360_play.log"))
+	const bool testRun = !inputPath.empty() || !shots.empty() || quitFrame != UINT32_MAX || checkRun || soakRun
+#ifndef M360_X360
+		|| rlServer
+#endif
+		;
+	const char *logName = testRun ? "m360.log" : "m360_play.log";
+#ifndef M360_X360
+	if (rlServer)
+		logName = nullptr;
+#endif
+	if (!platform::init(testRun && !show, logName))
 		return 1;
-	logf("mugen360: milestone 13e, game screens, build %s", buildVersion());
+	if (!testRun)
+		showLoadingScreen(config.game);
+	logf("mugen360: milestone 13e.3, effects, pause menu, 4 KB texture pages, build %s", buildVersion());
 	// The options, saved in save/config.ini. Test runs keep Ikemen's defaults, so a player's saved options never
 	// change a test's result.
 	Settings settings;
 	if (testRun)
 		logf("settings: test run, defaults");
 	// --wins N: rounds to win a match in a test run (one ends it after a single round).
-	if (testRun && testWins > 0)
-		settings.matchWins = testWins;
-	else if (!settings.load(SETTINGS_PATH))
+	if (testRun) {
+		if (testWins > 0)
+			settings.matchWins = testWins;
+	} else if (!settings.load(SETTINGS_PATH))
 		logf("settings: no %s yet, defaults", SETTINGS_PATH);
+	if (testAiStyle >= 0)
+		settings.aiStyle = testAiStyle;
 	Music::setVolumes(settings.masterVolume, settings.bgmVolume);
 	SoundBank::setVolume(settings.soundGain());
 	if (!configLoaded)
@@ -1241,9 +1976,21 @@ int main(int argc, char **argv)
 		config.player1 = p1Arg;
 	if (!p2Arg.empty())
 		config.player2 = p2Arg;
+	if (p1Pal > 0)
+		config.p1Palette = p1Pal;
+	if (p2Pal > 0)
+		config.p2Palette = p2Pal;
 	if (!stageArg.empty())
 		config.stage = stageArg;
 	logf("game: p1=%s p2=%s stage=%s", config.player1.c_str(), config.player2.c_str(), config.stage.c_str());
+#ifndef M360_X360
+	if (rlServer) {
+		const int result = rlPoolCount > 0 ? runRlPool(config, settings, rlPoolCount, rlThreads)
+										   : runRlServer(config, settings, rlRecordDir, show, trace);
+		platform::shutdown();
+		return result;
+	}
+#endif
 	// --soak: fight every pair, write soak_<game>.txt next to the log, and stop.
 	if (soakRun) {
 		std::string name = config.game.empty() ? std::string("mugen360") : config.game;
@@ -1375,8 +2122,14 @@ int main(int argc, char **argv)
 			}
 			fight.winCount[0] = winCounts[0];
 			fight.winCount[1] = winCounts[1];
+			// The screens' textures go first, so the fight's files have the most room (they're made again when drawn).
+			SpriteRenderer::freeAll();
+			logMemory("before the fight loads");
 			stage = std::make_unique<StageDemo>(fightAssets);
 			stageLoaded = stage->load(fight, error, trace, quickStart, (cpu || modeCpu) && !noAi);
+			if (stageLoaded && testAiSeed != 0)
+				stage->seedAi(testAiSeed);
+			logMemory("fight loaded");
 			if (stageLoaded && mode == SelectMode::Watch && !noAi)
 				stage->setWatch(true);
 			// Turns winners and the Survival player keep their life and power (Ikemen's persistLife).
@@ -1395,8 +2148,75 @@ int main(int argc, char **argv)
 			if (selectLoaded)
 				stage->returnToSelectAfterMatch();
 		};
+		// VS NEURAL CAP (data/neural/neural.ini): a trained policy plays player 1, the person picks one of the opponents
+		// it trained against and plays player 2. Only when the game has the policy's character, stage and opponents.
+		NeuralPolicy neuralPolicy;
+		NeuralSelect neuralSelect;
+		std::string neuralCharacter, neuralStage;
+		bool neuralLoaded = false, neuralFight = false;
+		uint32_t neuralSeed = 0x2545F491u;
+		{
+			std::vector<uint8_t> bytes;
+			const std::vector<IniSection> sections = readFile("data/neural/neural.ini", bytes)
+				? parseIni(std::string(bytes.begin(), bytes.end()))
+				: std::vector<IniSection>{};
+			if (const IniSection *n = findSection(sections, "neural")) {
+				neuralCharacter = text::trim(n->text("character"));
+				neuralStage = text::trim(n->text("stage"));
+				std::vector<NeuralSelect::Opponent> opponents;
+				for (int i = 1; i <= 16; i++) {
+					const std::vector<std::string> parts = text::split(n->text("opponent" + std::to_string(i)), ',');
+					if (parts.empty() || text::trim(parts[0]).empty())
+						break;
+					NeuralSelect::Opponent o;
+					o.def = text::trim(parts[0]);
+					o.trainedWins = parts.size() > 1 ? (float)std::atof(std::string(text::trim(parts[1])).c_str()) : 0.0f;
+					if (fileExists(o.def))
+						opponents.push_back(o);
+				}
+				std::string why;
+				if (!fileExists(neuralCharacter) || !fileExists(neuralStage))
+					why = "this game hasn't got " + neuralCharacter + " and " + neuralStage;
+				else if (neuralPolicy.load(std::string(text::trim(n->text("policy"))), why))
+					neuralLoaded = neuralSelect.load(neuralCharacter, opponents, why);
+				if (neuralLoaded)
+					logf("neural: VS NEURAL CAP ready, %zu opponents", opponents.size());
+				else
+					logf("neural: no VS NEURAL CAP (%s)", why.c_str());
+			}
+		}
+		if (neuralLoaded && titleLoaded) {
+			// In the menu: a row of its own when the menu draws text; in a painted menu, the row of a mode mugen360
+			// can't run yet, with its own label; on LB if there's no such row.
+			if (title.itemsShowText())
+				title.addItem("neuralvs", "VS NEURAL CAP", "options");
+			else if (!title.claimPlaceholder("neuralvs", "NEURAL CAP"))
+				title.addShortcut("LB (Q ON PC): VS NEURAL CAP", TitleChoice::NeuralVs);
+		}
+		auto startNeuralFight = [&]() {
+			GameConfig fight = config;
+			fight.player1 = neuralCharacter;
+			fight.p1Palette = 1; // its palette in training (Cap's shield style goes by PalNo)
+			fight.player2 = neuralSelect.picked();
+			fight.p2Palette = 1;
+			fight.stage = neuralStage;
+			fight.team1.clear();
+			fight.team2.clear();
+			mode = SelectMode::Versus;
+			modeCpu = simul = turnsFight = false;
+			neuralFight = true;
+			startFight(fight);
+			if (stageLoaded) {
+				neuralSeed = neuralSeed * 1664525u + 1013904223u;
+				stage->setNeural(&neuralPolicy, neuralPolicy.characterId(fight.player1),
+					neuralPolicy.characterId(fight.player2), neuralSeed, cpu);
+			}
+		};
 		Screen screen = Screen::Stage;
-		if (titleLoaded) {
+		if (forcedMode == "neural" && neuralLoaded) {
+			neuralSelect.reset();
+			screen = Screen::NeuralSelect;
+		} else if (titleLoaded) {
 			screen = Screen::Title;
 		} else if (selectLoaded) {
 			resetSelect(inputPath.empty() ? platform::pad(1).connected : !input2Path.empty());
@@ -1404,14 +2224,9 @@ int main(int argc, char **argv)
 		} else {
 			startFight(config);
 		}
-		// The viewers get a Kung Fu Man of their own.
-		Character kfm;
-		const bool kfmLoaded = kfm.load(config.player1, 1, error);
-		if (!kfmLoaded)
-			logf("mugen360: %s", error.c_str());
-		SpriteRenderer renderer(kfm.sff());
-		AnimationViewer animViewer(kfm.anims(), renderer);
-		SpriteViewer spriteViewer(kfm.sff(), renderer);
+		// The viewers get a Kung Fu Man of their own, loaded the first time they're opened (a whole character kept for
+		// them would take memory a big game needs on the 360).
+		std::unique_ptr<Viewers> viewers;
 		Buttons buttons;
 		// Where the debug screens go back to.
 		Screen gameScreen = screen;
@@ -1429,6 +2244,11 @@ int main(int argc, char **argv)
 		if (motifLoaded)
 			continueScreen.load(motif);
 		std::shared_ptr<StageDemo> continueBackdrop;
+		// The pause menu: Back in a fight opens it over the frozen fight (Ikemen's menu.lua).
+		PauseMenu pauseMenu;
+		if (motifLoaded)
+			pauseMenu.load(motif);
+		bool paused = false;
 		// After the game ends (a "no" to continue, or the arcade route's ending and credits): the title, else the
 		// select screen.
 		auto toTitle = [&](bool secondController) {
@@ -1498,13 +2318,17 @@ int main(int argc, char **argv)
 					 "of textures",
 					frameSum / 600 / 1000.0, frameWorst / 1000.0, frameSlow, made, madeUs / 1000.0,
 					SpriteRenderer::totalTextureBytes() >> 20);
+				logMemory("now");
 				frameSum = frameWorst = 0;
 				frameCount = frameSlow = 0;
 			}
 			platform::endFrame();
+			SpriteRenderer::newFrame();
 			frameStart = Clock::now();
 		};
 		for (uint32_t frame = 0; frame <= quitFrame && platform::beginFrame(BACKGROUND); frame++) {
+			if (!testRun)
+				playedFrames++;
 			const platform::Pad pad = inputPath.empty() ? platform::pad(0) : script.at(frame);
 			// A missing --input2 is a connected, idle dummy during scripted fights. Selection separately uses the path's
 			// presence so player 1 still picks the opponent, matching the documented headless-test behavior.
@@ -1516,7 +2340,20 @@ int main(int argc, char **argv)
 			// The screenpack select screen handles Back itself (out of the palette menu, else back to the title).
 			const bool selectHandlesBack = (screen == Screen::Select && motifSelectLoaded) || screen == Screen::Storyboard ||
 				screen == Screen::Victory || screen == Screen::Continue;
-			if (back && screen == Screen::Stage && selectLoaded) {
+			if (back && screen == Screen::Stage && stage && stageLoaded && pauseMenu.loaded() && !paused) {
+				// Each human player's command list (Ikemen lists those with no AI).
+				std::vector<PauseMenu::Movelist> movelists;
+				for (int i = 0; i < stage->fighterCount(); i++) {
+					const Character &c = stage->fighter(i);
+					if (c.aiLevel == 0)
+						movelists.push_back(PauseMenu::Movelist{ c.name, c.movelist });
+				}
+				pauseMenu.open(std::move(movelists));
+				paused = true;
+				logf("pause: open");
+			} else if (back && screen == Screen::Stage && paused) {
+				// The pause menu takes Back itself.
+			} else if (back && screen == Screen::Stage && selectLoaded) {
 				stage.reset();
 				resetSelect(secondController);
 				screen = gameScreen = Screen::Select;
@@ -1570,6 +2407,8 @@ int main(int argc, char **argv)
 					screen = gameScreen;
 				else
 					screen = Screen::Animations;
+				if (screen == Screen::Animations && !viewers)
+					viewers = std::make_unique<Viewers>(config.player1);
 			}
 			platform::Pad gameplayPad = pad;
 			if (pad.menu) {
@@ -1634,9 +2473,14 @@ int main(int argc, char **argv)
 				const TitleChoice choice = title.result();
 				if (choice == TitleChoice::Exit)
 					break;
+				if (choice != TitleChoice::None)
+					neuralFight = false;
 				if (choice == TitleChoice::Options && optionsLoaded) {
 					options.reset();
 					screen = gameScreen = Screen::Options;
+				} else if (choice == TitleChoice::NeuralVs && neuralLoaded) {
+					neuralSelect.reset();
+					screen = gameScreen = Screen::NeuralSelect;
 				} else if (choice != TitleChoice::None) {
 					// Arcade and Quick Match force a CPU opponent. Training leaves player 2 as a stationary dummy.
 					modeCpu = choice == TitleChoice::Arcade || choice == TitleChoice::TeamArcade ||
@@ -1661,6 +2505,20 @@ int main(int argc, char **argv)
 				if (options.done()) {
 					title.reset();
 					screen = gameScreen = Screen::Title;
+				}
+				continue;
+			}
+			if (screen == Screen::NeuralSelect) {
+				neuralSelect.update(gameplayPad);
+				neuralSelect.draw();
+				finishFrame();
+				neuralSeed += 0x9E3779B9u; // how long the player takes varies the policy's play
+				if (neuralSelect.done()) {
+					startNeuralFight();
+					screen = gameScreen = Screen::Stage;
+				} else if (neuralSelect.cancelled()) {
+					neuralFight = false;
+					toTitle(secondController);
 				}
 				continue;
 			}
@@ -1706,16 +2564,44 @@ int main(int argc, char **argv)
 				finishFrame();
 				continue;
 			}
-			const bool loaded = screen == Screen::Stage ? stageLoaded : kfmLoaded;
+			const bool loaded = screen == Screen::Stage ? stageLoaded : viewers && viewers->loaded;
 			if (!loaded) {
 				drawText("COULDN'T LOAD:", 40, 40, 4, ERROR_TEXT);
 				drawText(error.c_str(), 40, 90, 2, TEXT);
 				drawText("TAB / LB+START: NEXT SCREEN   BACK: QUIT", 40, 680, 2, DIM);
+			} else if (screen == Screen::Stage && paused) {
+				// The fight holds still under the menu.
+				stage->draw(!pauseMenu.hideBars());
+				pauseMenu.update(gameplayPad, pad2);
+				pauseMenu.draw();
+				const PauseChoice choice = pauseMenu.result();
+				if (choice != PauseChoice::None) {
+					paused = false;
+					if (choice != PauseChoice::Continue) {
+						// Character Change: back to the select screen; Exit: to the title (Ikemen's endMatch).
+						stage.reset();
+						continueBackdrop.reset();
+						if (choice == PauseChoice::CharacterChange && neuralFight) {
+							neuralSelect.reset();
+							screen = gameScreen = Screen::NeuralSelect;
+						} else if (choice == PauseChoice::CharacterChange && selectLoaded) {
+							resetSelect(secondController);
+							screen = gameScreen = Screen::Select;
+						} else {
+							toTitle(secondController);
+						}
+					}
+				}
 			} else if (screen == Screen::Stage) {
 				stage->update(buttons, gameplayPad, pad2);
 				stage->draw();
 				// Match over: back to pick again.
-				if (stage->finished()) {
+				if (stage->finished() && neuralFight) {
+					// VS NEURAL CAP: pick again (or Back to the title).
+					stage.reset();
+					neuralSelect.reset();
+					screen = gameScreen = Screen::NeuralSelect;
+				} else if (stage->finished()) {
 					int winner = stage->winner();
 					winCounts[0] = stage->winCount(0);
 					winCounts[1] = stage->winCount(1);
@@ -1728,6 +2614,7 @@ int main(int argc, char **argv)
 					if ((mode == SelectMode::Arcade || mode == SelectMode::TeamArcade) && winner == 1)
 						continueBackdrop = std::move(stage);
 					stage.reset();
+					logMemory("fight over");
 					bool nextTurn = false;
 					// A Simul match is a normal best-of match; only Turns goes member by member.
 					if (teamMode() && turnsFight) {
@@ -1819,11 +2706,11 @@ int main(int argc, char **argv)
 					}
 				}
 			} else if (screen == Screen::Animations) {
-				animViewer.update(buttons, gameplayPad);
-				animViewer.draw();
+				viewers->animations.update(buttons, gameplayPad);
+				viewers->animations.draw();
 			} else {
-				spriteViewer.update(buttons, gameplayPad);
-				spriteViewer.draw();
+				viewers->sprites.update(buttons, gameplayPad);
+				viewers->sprites.draw();
 			}
 			finishFrame();
 		}

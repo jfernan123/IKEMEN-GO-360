@@ -75,6 +75,9 @@ struct PalFX {
 	int32_t time = -1, startTime = -1;
 	int32_t add[3] = { 0, 0, 0 }, mul[3] = { 256, 256, 256 };
 	int32_t sinAdd[3] = { 0, 0, 0 }, sinMul[3] = { 0, 0, 0 };
+	// color (256 full colour, 0 grey) and invertall.
+	int32_t colour = 256;
+	bool invert = false;
 	// The sine waves' periods and how far through them it is: [0] sinadd, [1] sinmul.
 	int32_t cycle[2] = { 0, 0 }, sinTime[2] = { 0, 0 };
 	// The values this tick (Ikemen's eAdd / eMul), and whether it's on.

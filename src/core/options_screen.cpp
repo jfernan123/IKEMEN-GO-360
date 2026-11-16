@@ -82,6 +82,7 @@ const char *const OPTION_DEFAULTS[][2] = {
 const char *const OPTION_ITEMS[][2] = {
 	{ "menugame", "Game Settings" },
 	{ "menugame.difficulty", "Difficulty Level" },
+	{ "menugame.aistyle", "AI Style" }, // mugen360's own: Classic (MUGEN's) or Smart
 	{ "menugame.roundtime", "Time Limit" },
 	{ "menugame.lifemul", "Life" },
 	{ "menugame.gamespeed", "Game Speed" },
@@ -315,6 +316,8 @@ std::string OptionsScreen::valueText(const std::string &name) const
 	const Settings &s = *settings_;
 	if (name == "difficulty")
 		return std::to_string(s.difficulty);
+	if (name == "aistyle")
+		return s.aiStyle ? "Smart" : "Classic";
 	if (name == "roundtime")
 		return s.time < 0 ? none_ : std::to_string(s.time);
 	if (name == "lifemul")
@@ -352,6 +355,8 @@ bool OptionsScreen::adjust(const std::string &name, int32_t direction)
 	bool changed = false;
 	if (name == "difficulty")
 		changed = step(s.difficulty, 1, 8, 1);
+	else if (name == "aistyle")
+		changed = step(s.aiStyle, 0, 1, 1);
 	else if (name == "roundtime")
 		changed = step(s.time, -1, 1000, 1);
 	else if (name == "lifemul")

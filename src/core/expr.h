@@ -79,6 +79,9 @@ public:
 	virtual std::string text(TextTrig) { return {}; }
 	// StageVar(key): a number, or for info.name / info.displayname / info.author the text. False when unknown.
 	virtual bool stageVar(const std::string &, Value &, std::string &) { return false; }
+	// Whether the current animation has element elem (1-based). AnimElem of one it doesn't have is undefined in Ikemen
+	// (Char.animElemTime), so the trigger is false, whichever way it compares.
+	virtual bool hasAnimElem(int32_t) { return true; }
 };
 
 struct ExprNode;

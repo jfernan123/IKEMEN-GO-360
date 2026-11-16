@@ -116,6 +116,9 @@ void PalFX::read(const std::string &prefix, const IniSection &section)
 	section.readInt(prefix + "time", time);
 	section.ints(prefix + "add", { &add[0], &add[1], &add[2] });
 	section.ints(prefix + "mul", { &mul[0], &mul[1], &mul[2] });
+	section.readInt(prefix + "color", colour);
+	int32_t inverted = 0;
+	invert = section.readInt(prefix + "invertall", inverted) && inverted != 0;
 	// "sinadd = r, g, b, period": a negative period swings the other way.
 	for (int k = 0; k < 2; k++) {
 		int32_t s[4] = { 0, 0, 0, 0 };
@@ -174,6 +177,8 @@ void PalFX::apply(SpriteDraw &how) const
 	how.mulR = (uint16_t)std::clamp(steps(effectMul[0]), 0, 1024);
 	how.mulG = (uint16_t)std::clamp(steps(effectMul[1]), 0, 1024);
 	how.mulB = (uint16_t)std::clamp(steps(effectMul[2]), 0, 1024);
+	how.saturation = (uint16_t)std::clamp(steps(colour), 0, 256);
+	how.invert = invert;
 }
 
 void PalFX::stack(SpriteDraw &how) const
@@ -184,6 +189,9 @@ void PalFX::stack(SpriteDraw &how) const
 	const int32_t oldMul[3] = { how.mulR, how.mulG, how.mulB };
 	PalFX combined;
 	combined.enabled = true;
+	// Ikemen's stacking: the colours multiply, the inverts cancel.
+	combined.colour = how.saturation * std::clamp(colour, 0, 256) / 256;
+	combined.invert = how.invert != invert;
 	for (int i = 0; i < 3; i++) {
 		combined.effectAdd[i] = oldAdd[i] * effectMul[i] / 256 + effectAdd[i];
 		combined.effectMul[i] = oldMul[i] * effectMul[i] / 256;
@@ -328,16 +336,14 @@ void resolveFontFile(TextLayout &text, FontTable &fonts, FontFiles &files, const
 		id++;
 	files[text.fontFile] = -1;
 	std::string error = "can't find " + text.fontFile;
-	for (const std::string &path : { directoryOf(defPath) + text.fontFile, "data/" + text.fontFile,
-			 "data/font/" + text.fontFile }) {
-		if (!fileExists(path))
-			continue;
+	// Ikemen's ensureFontIndex: SearchFile(name, {def, "", "data/"}, "font/"), so a game's own font/ folder counts.
+	const std::string path = searchFile(text.fontFile, { defPath, "", "data/" }, { "font/" });
+	if (fileExists(path)) {
 		auto font = std::make_unique<Font>();
 		if (font->load(path, error)) {
 			fonts[id] = std::move(font);
 			files[text.fontFile] = id;
 		}
-		break;
 	}
 	if (files[text.fontFile] < 0)
 		logf("fonts: %s: %s: %s", defPath.c_str(), text.fontFile.c_str(), error.c_str());

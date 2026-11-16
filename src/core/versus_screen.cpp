@@ -168,7 +168,7 @@ void VersusScreen::drawPortrait(Side &side)
 	const ScreenSpace &space = motif_->space();
 	const float x = paddedX(side.pos[0] + side.face.offsetX, side.spacing[0], side.num, 1, 1, side.padding);
 	const float y = side.pos[1] + side.face.offsetY;
-	const int base = f.sff->paletteIndex(1, 1), chosen = f.sff->paletteIndex(1, (uint16_t)f.palette);
+	const int chosen = f.sff->paletteIndex(1, (uint16_t)f.palette);
 	ClipRect window;
 	const bool clip = side.face.windowRect(space, window);
 	if (clip)
@@ -184,7 +184,7 @@ void VersusScreen::drawPortrait(Side &side)
 		// A sprite with its own palette keeps it; one drawn with the character's 1,1 takes the chosen one.
 		f.renderer->setPalette(-1);
 		const Sprite *sprite = f.sff->get((uint16_t)side.spr[0], (uint16_t)side.spr[1]);
-		if (side.applyPal && sprite && sprite->palette == base)
+		if (side.applyPal && sprite && f.sff->takesChosenPalette(sprite->palette))
 			how.palette = chosen;
 		how.scaleX = side.face.scaleX * f.resFix * space.scale;
 		how.scaleY = side.face.scaleY * f.resFix * space.scale;

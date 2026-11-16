@@ -1,5 +1,40 @@
-MUGEN360 - milestone 13a: game folders (homebrew test build)
-============================================================
+MUGEN360 - milestone 13e.3: effects, pause menu and memory
+==========================================================
+
+New in this build (2026-10-22):
+- Pause menu: Back during a fight pauses it. Continue, Command List (the
+  character's moves with button icons, when it has a movelist), Character
+  Change (back to the select screen) and Exit (to the title menu). Back again
+  closes it.
+- More special effects, as MUGEN shows them: hit flashes (white, grey and
+  inverted), effects that freeze during a super's pause and play out after
+  it, moving effects, effects flashing with their character, effect and
+  projectile shadows.
+- Memory: big games (like DC vs MARVEL) ran the console out of memory after a
+  fight. Fighters' sprites now stay packed until drawn, small sprites take a
+  fraction of the memory they did, and default.log has "memory:" lines (free
+  memory before and after each fight).
+- Select screen: the hovered character's big portrait shows on MUGEN-style
+  screens, and a yellow outline marks each player's cell.
+
+Earlier (2026-10-21):
+- A smarter computer opponent. It walks in, attacks when its moves reach,
+  blocks high and low, knocks you out of the air, follows a hit with a bigger
+  one and throws up close. Difficulty sets how fast it reacts. Characters with
+  an AI of their own now switch it on within a second or two of each round.
+  OPTIONS > Game Settings > AI Style switches back to MUGEN's classic random
+  AI.
+- Colour fixes: old (WinMUGEN-style) characters no longer turn black or wrong
+  colours, effects and minions keep their own colours, and the select, VS and
+  victory screens show every palette a character has.
+- Full-screen super effects (like a super's background) now show instead of
+  a black screen; super flashes play out instead of freezing.
+- A character stuck in a move forever after hitting (one animation looping
+  into another) is fixed.
+- Back on the PC version's keyboard is now Esc (it used to quit at once).
+
+At launch, MUGEN360 immediately shows the selected game's name and "LOADING
+GAME..." while its screenpack and sprite files load.
 
 New (experimental): play another MUGEN game. Copy its folder next to
 default.xex (e.g. games/mygame, with its data/, chars/ and stages/) and set
@@ -147,7 +182,8 @@ CONTROLS (stage)
   LT                 start a new match
   Start              taunt / character Start button
   LB + Start         next screen (animations, then sprites)
-  Back               leave the fight for the select screen
+  Back               pause menu (Continue, Command List, Character Change,
+                     Exit); Back again closes it
 
 CONTROLS (animation player)
   D-pad left/right   previous / next action      LB / RB   10 at a time

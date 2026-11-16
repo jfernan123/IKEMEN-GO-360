@@ -27,6 +27,8 @@ enum Format : uint8_t {
 	FORMAT_PNG8 = 10,
 	FORMAT_PNG24 = 11,
 	FORMAT_PNG32 = 12,
+	// Not in the file: an SFF v1 sprite's PCX pixels, kept packed like the others.
+	FORMAT_PCX = 0xF0,
 };
 
 // The decoders below follow Ikemen-GO's byte for byte, out-of-range reads included: they clamp to the last byte
@@ -224,13 +226,13 @@ std::vector<Argb> Sprite::toArgb(const Palette &pal, bool mask) const
 
 bool Sff::load(const std::string &path, std::string &error, bool character)
 {
-	std::vector<uint8_t> file;
-	if (!readFile(path, file)) {
+	auto file = std::make_shared<std::vector<uint8_t>>();
+	if (!readFile(path, *file)) {
 		error = "can't read " + path;
 		return false;
 	}
-	compat::addSpriteBytes(file.size());
-	return loadBytes(file, path, error, character);
+	compat::addSpriteBytes(file->size());
+	return loadShared(std::move(file), path, error, character);
 }
 
 bool Sff::decode(const Sprite &sprite) const
@@ -265,6 +267,7 @@ bool Sff::decode(const Sprite &sprite) const
 	case FORMAT_PNG8: decoded = decodePng8(packed, packedSize, s, decodeError); break;
 	case FORMAT_PNG24:
 	case FORMAT_PNG32: decoded = decodePngTrueColor(packed, packedSize, s, decodeError); break;
+	case FORMAT_PCX: s.indices = decodePcxRle(data, size, s.width, s.height, s.lineBytes); break;
 	default:
 		decoded = false;
 		decodeError = "unknown format " + std::to_string(sprite.format);
@@ -279,10 +282,10 @@ bool Sff::decode(const Sprite &sprite) const
 
 void Sff::release(const Sprite &sprite) const
 {
-	// Palette sprites are small (a byte a pixel) and get made into several textures (palettes, colour effects, and
-	// again after the texture budget drops them): they stay decoded. Full-colour ones (a screenpack's backgrounds,
-	// four bytes a pixel, hundreds of MB decoded) go back to their packed bytes.
-	if (!sprite.packed || !sprite.isTrueColor())
+	// Every packed sprite goes back to its packed bytes: decoding again for another palette or colour effect is
+	// quick, where keeping them adds up over a fight to most of a character's sprites decoded (tens of MB, and on the
+	// 360 the heap never gives memory back).
+	if (!sprite.packed)
 		return;
 	std::vector<uint8_t>().swap(sprite.indices);
 	std::vector<Argb>().swap(sprite.argb);
@@ -300,14 +303,8 @@ bool Sff::loadSome(const std::string &path, const std::vector<std::pair<uint16_t
 		return false;
 	}
 	if (std::memcmp(header.data(), "ElecbyteSpr\0", 12) != 0 || header[15] != 2) {
-		// Not v2 (or not an SFF): read whole, decoding only the wanted sprites, then trimmed.
-		std::vector<uint32_t> only;
-		for (const auto &[group, number] : keys)
-			only.push_back(key(group, number));
-		onlyKeys_ = &only;
-		const bool loaded = load(path, error, character);
-		onlyKeys_ = nullptr;
-		if (!loaded)
+		// Not v2 (or not an SFF): read whole (kept packed), then trimmed.
+		if (!load(path, error, character))
 			return false;
 		keepOnly(keys);
 		return true;
@@ -359,15 +356,20 @@ bool Sff::loadSome(const std::string &path, const std::vector<std::pair<uint16_t
 			const uint32_t colors = std::min<uint32_t>(size / 4, 256);
 			Palette &pal = palettes_[i];
 			pal.assign(256, 0);
-			for (uint32_t c = 0; c < colors; c++) {
-				uint8_t a = data[c * 4 + 3];
-				if (version[2] == 0)
-					a = c == 0 ? 0 : 255;
-				pal[c] = (Argb)a << 24 | (Argb)data[c * 4] << 16 | (Argb)data[c * 4 + 1] << 8 | data[c * 4 + 2];
+			for (uint32_t c = 0; c < colors; c++)
+				pal[c] = (Argb)data[c * 4 + 3] << 24 | (Argb)data[c * 4] << 16 | (Argb)data[c * 4 + 1] << 8 |
+					data[c * 4 + 2];
+			// Version 2.0.0.0 palettes have no alpha: colour 0 is transparent, the rest opaque. A loop of its own (a
+			// test inside the one above became an mcrf, which Xenia skips).
+			if (version[2] == 0 && colors > 0) {
+				pal[0] &= 0x00FFFFFFu;
+				for (uint32_t c = 1; c < colors; c++)
+					pal[c] |= 0xFF000000u;
 			}
 		}
 		paletteByKey_[key(group, number)] = (int)i;
 	}
+	markBaseCopies();
 	// Sprites: every header (links point back), but only the wanted ones' pixels.
 	std::vector<uint32_t> wanted;
 	for (const auto &[group, number] : keys)
@@ -429,6 +431,13 @@ bool Sff::loadSome(const std::string &path, const std::vector<std::pair<uint16_t
 
 bool Sff::loadBytes(const std::vector<uint8_t> &file, const std::string &path, std::string &error, bool character)
 {
+	return loadShared(std::make_shared<const std::vector<uint8_t>>(file), path, error, character);
+}
+
+bool Sff::loadShared(std::shared_ptr<const std::vector<uint8_t>> shared, const std::string &path, std::string &error,
+	bool character)
+{
+	const std::vector<uint8_t> &file = *shared;
 	sprites_.clear();
 	byKey_.clear();
 	palettes_.clear();
@@ -449,8 +458,12 @@ bool Sff::loadBytes(const std::vector<uint8_t> &file, const std::string &path, s
 	version[2] = r.u8();
 	version[1] = r.u8();
 	version[0] = r.u8();
-	if (version[0] == 1)
-		return loadV1(file, path, error, character);
+	if (version[0] == 1) {
+		if (!loadV1(file, path, error, character))
+			return false;
+		file_ = std::move(shared);
+		return true;
+	}
 	if (version[0] != 2) {
 		error = path + ": SFF version " + std::to_string(version[0]) + " isn't supported";
 		compat::note(compat::Kind::File, "SFF version " + std::to_string(version[0]));
@@ -503,6 +516,7 @@ bool Sff::loadBytes(const std::vector<uint8_t> &file, const std::string &path, s
 		}
 		paletteByKey_[key(group, number)] = (int)i;
 	}
+	markBaseCopies();
 
 	// Sprites: 28-byte headers.
 	sprites_.resize(spriteCount);
@@ -557,7 +571,7 @@ bool Sff::loadBytes(const std::vector<uint8_t> &file, const std::string &path, s
 		if (!byKey_.count(key(s.group, s.number)))
 			byKey_[key(s.group, s.number)] = i;
 	}
-	file_ = std::make_shared<const std::vector<uint8_t>>(file);
+	file_ = std::move(shared);
 	logf("sff: %s: %u sprites, %u palettes, %zu KB", path.c_str(), spriteCount, paletteCount, file.size() >> 10);
 	return true;
 }
@@ -628,6 +642,7 @@ bool Sff::loadV1(const std::vector<uint8_t> &file, const std::string &path, std:
 	}
 	sprites_.resize(spriteCount);
 	int prevPalette = -1;
+	uint16_t prevPaletteGroup = 0; // the group of the last sprite with a palette of its own
 	for (uint32_t i = 0; i < spriteCount; i++) {
 		r.seek(headerOffset);
 		const uint32_t next = r.u32(), size = r.u32();
@@ -649,7 +664,11 @@ bool Sff::loadV1(const std::vector<uint8_t> &file, const std::string &path, std:
 				const Sprite &src = sprites_[link];
 				s.width = src.width;
 				s.height = src.height;
-				s.indices = src.indices;
+				s.packed = src.packed;
+				s.format = src.format;
+				s.packedOffset = src.packedOffset;
+				s.packedSize = src.packedSize;
+				s.lineBytes = src.lineBytes;
 				s.palette = src.palette;
 			}
 		} else {
@@ -670,10 +689,11 @@ bool Sff::loadV1(const std::vector<uint8_t> &file, const std::string &path, std:
 				const size_t dataStart = offset + 128;
 				size_t dataEnd = dataStart, paletteOffset = 0;
 				if (firstSprite) {
-					// A character's first sprite: its palette is the block's last 768 bytes.
+					// A character's first sprite: its palette is the block's last 768 bytes. The pixels are read to the
+					// block's end, as Ikemen does: the decoder stops at the picture's size, and a 0,0 sharing an earlier
+					// palette has pixels right to the end.
 					const size_t blockSize = next > offset ? next - offset : size;
-					if (blockSize >= 768 + 128)
-						dataEnd = offset + blockSize - 768;
+					dataEnd = offset + blockSize;
 					paletteOffset = offset + blockSize - 768;
 				} else {
 					const size_t blockEnd = next > offset ? next : offset + size;
@@ -694,18 +714,33 @@ bool Sff::loadV1(const std::vector<uint8_t> &file, const std::string &path, std:
 				}
 				if (dataEnd < dataStart)
 					dataEnd = dataStart;
-				const bool wanted = !onlyKeys_ ||
-					std::find(onlyKeys_->begin(), onlyKeys_->end(), key(s.group, s.number)) != onlyKeys_->end();
-				const uint8_t *rle = ByteReader(file).at(dataStart, dataEnd - dataStart);
-				if (wanted)
-					s.indices = decodePcxRle(rle, rle ? dataEnd - dataStart : 0, s.width, s.height,
-						encoding == 1 ? bytesPerLine : 0);
+				// Kept packed; decoded when drawn (see Sff::decode).
+				if (dataEnd > file.size())
+					dataEnd = file.size();
+				if (dataEnd < dataStart)
+					dataEnd = dataStart;
+				s.packed = true;
+				s.format = FORMAT_PCX;
+				s.packedOffset = (uint32_t)dataStart;
+				s.packedSize = (uint32_t)(dataEnd - dataStart);
+				s.lineBytes = encoding == 1 ? bytesPerLine : 0;
 				if (shared) {
 					s.palette = prevPalette;
 				} else {
 					s.palette = (int)palettes_.size();
 					palettes_.push_back(readV1Palette(file, paletteOffset));
+					prevPaletteGroup = s.group;
 				}
+				// A character with .act palettes draws 0,0 in the chosen one (palette 0 here), and so the sprites
+				// after it that share its palette (Ikemen's isActPal in Sff loading).
+				if (actPalettes_ && character && s.group == 0 && s.number == 0)
+					s.palette = 0;
+				// Not in Ikemen: fight sprites filed straight after the select portraits (group 9000, each with a
+				// palette of its own) "share" a portrait's palette, so they never took the chosen colours (DC vs
+				// MARVEL's Captain America: his falls, 5000-5120, came out in palette 1 whatever the costume).
+				// Portrait colours are only meant for portraits; these take the chosen palette.
+				else if (actPalettes_ && character && shared && prevPaletteGroup == 9000 && s.group != 9000)
+					s.palette = 0;
 				prevPalette = s.palette;
 			}
 		}
@@ -715,8 +750,31 @@ bool Sff::loadV1(const std::vector<uint8_t> &file, const std::string &path, std:
 			break;
 		headerOffset = next;
 	}
-	logf("sff: %s: SFF v1, %u sprites, %zu palettes", path.c_str(), spriteCount, palettes_.size());
+	// A sprite saved with a palette of its own that's a copy of the shared one is drawn as sharing it (Ikemen's
+	// sffv1BasePal): it takes the chosen palette like the rest, instead of flashing the original colours.
+	markBaseCopies();
+	logf("sff: %s: SFF v1, %u sprites, %zu palettes (%d the shared one or copies)", path.c_str(), spriteCount,
+		palettes_.size(), (int)std::count(baseCopies_.begin(), baseCopies_.end(), 1));
 	return true;
+}
+
+void Sff::markBaseCopies()
+{
+	baseCopies_.assign(palettes_.size(), 0);
+	const int base = v1_ ? (palettes_.empty() ? -1 : 0) : paletteIndex(1, 1);
+	if (base < 0)
+		return;
+	for (size_t i = 0; i < palettes_.size(); i++)
+		baseCopies_[i] = palettes_[i] == palettes_[(size_t)base] ? 1 : 0;
+}
+
+bool Sff::takesChosenPalette(int palette) const
+{
+	if (v1_ && palette == 0)
+		return true;
+	if (!v1_ && paletteIndex(1, 1) < 0)
+		return true;
+	return palette >= 0 && (size_t)palette < baseCopies_.size() && baseCopies_[(size_t)palette] != 0;
 }
 
 int Sff::setPalette(uint16_t group, uint16_t number, const Palette &palette)
@@ -763,10 +821,18 @@ void Sff::keepOnly(const std::vector<std::pair<uint16_t, uint16_t>> &keys)
 		}
 		return remap[(size_t)index];
 	};
+	// An SFF v1's shared palette stays palette 0: the chosen palette replaces it there (basePalette).
+	if (v1_)
+		keepPalette(0);
 	for (auto &[k, index] : paletteByKey_)
 		index = keepPalette(index);
 	for (Sprite &s : sprites_)
 		s.palette = keepPalette(s.palette);
+	std::vector<uint8_t> baseCopies(palettes.size(), 0);
+	for (size_t i = 0; i < remap.size() && i < baseCopies_.size(); i++)
+		if (remap[i] >= 0)
+			baseCopies[(size_t)remap[i]] = baseCopies_[i];
+	baseCopies_ = std::move(baseCopies);
 	palettes_ = std::move(palettes);
 	// A v2 file's kept sprites still point into it: copy theirs out, so the rest of the file can go.
 	if (file_) {

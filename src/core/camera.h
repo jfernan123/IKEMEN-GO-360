@@ -85,6 +85,9 @@ public:
 	// One character's place for the camera (Ikemen's Char.track): its left and right edges and y in game units, and its
 	// x velocity in game units (0 when it can't move this tick).
 	void track(float left, float right, float velocity, float y);
+	// The two halves of track, for a character the camera follows in x or y only (ScreenBound movecamera).
+	void trackX(float left, float right, float velocity);
+	void trackY(float y);
 	// After the characters (Ikemen's camera action, then Update).
 	void action();
 

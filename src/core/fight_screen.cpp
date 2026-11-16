@@ -1074,6 +1074,10 @@ void FightScreen::draw(int32_t layer, const Match &match, const Character &p1, c
 {
 	if (!loaded_)
 		return;
+	// Nothing past the fight screen's own area: Ikemen's window is that area, so a combo count sliding in from
+	// start.x = -150 stays hidden instead of showing in the black bars beside a 4:3 screenpack.
+	platform::setClipArea((int)space_.originX, (int)space_.originY, (int)(space_.width + 0.5f),
+		(int)((float)platform::SCREEN_HEIGHT - 2 * space_.originY + 0.5f));
 	const Character *p[2] = { &p1, &p2 };
 	for (int i = 0; i < 2; i++) {
 		if (partner_[i]) {
@@ -1158,6 +1162,7 @@ void FightScreen::draw(int32_t layer, const Match &match, const Character &p1, c
 	for (int i = 0; i < 2; i++)
 		drawCombo(combo_[i], layer, i);
 	drawRound(layer, match, p1, p2);
+	platform::clearClipArea();
 }
 
 void FightScreen::drawRound(int32_t layer, const Match &match, const Character &p1, const Character &p2)

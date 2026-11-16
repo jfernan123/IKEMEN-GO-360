@@ -10,11 +10,12 @@ FightEffects::FightEffects()
 	clear();
 }
 
-bool FightEffects::load(const std::string &sffPath, const std::string &airPath, std::string &error)
+bool FightEffects::load(const std::string &sffPath, const std::string &airPath, std::string &error, bool simulationOnly)
 {
-	if (!sff_.load(sffPath, error) || !anims_.load(airPath, error))
+	if ((!simulationOnly && !sff_.load(sffPath, error)) || !anims_.load(airPath, error))
 		return false;
-	renderer_ = std::make_unique<SpriteRenderer>(sff_);
+	if (!simulationOnly)
+		renderer_ = std::make_unique<SpriteRenderer>(sff_);
 	return true;
 }
 
@@ -24,6 +25,7 @@ void FightEffects::clear()
 	shakeTime_ = shakeLeft_ = 0;
 	shakeOffsetX_ = shakeOffsetY_ = 0;
 	envColorTime_ = 0;
+	ownerColours_.clear();
 	pauseOwner_ = -1;
 	pauseLeft_ = pauseMoveLeft_ = 0;
 	superPause_ = false;
@@ -100,7 +102,9 @@ bool FightEffects::spawnExplod(const Spawn &spawn)
 	Effect effect;
 	const AnimationTable *animations = spawn.shared ? &anims_ : spawn.animations;
 	effect.renderer = spawn.shared ? renderer_.get() : spawn.renderer;
-	if (!animations || !effect.renderer || spawn.animNo < 0 || !animations->get(spawn.animNo, effect.anim))
+	// No renderer (a fight without graphics, for RL training) still makes the explod: characters test NumExplod and
+	// read explod state, so leaving it out changes how they play. Drawing skips explods without a renderer.
+	if (!animations || spawn.animNo < 0 || !animations->get(spawn.animNo, effect.anim))
 		return false;
 	effect.x = spawn.x;
 	effect.y = spawn.y;
@@ -129,8 +133,24 @@ bool FightEffects::spawnExplod(const Spawn &spawn)
 	effect.trans = spawn.trans;
 	effect.srcAlpha = spawn.srcAlpha;
 	effect.dstAlpha = spawn.dstAlpha;
+	effect.superMoveTime = spawn.superMoveTime;
+	effect.pauseMoveTime = spawn.pauseMoveTime;
+	effect.ownPal = spawn.ownPal;
+	for (int k = 0; k < 3; k++)
+		effect.shadow[k] = spawn.shadow[k];
 	effects_.push_back(effect);
 	return true;
+}
+
+// Ikemen's Explod.pauseStatus: in a SuperPause it stops once its time reaches supermovetime (at once with the
+// default 0; never with -1), in a Pause the same with pausemovetime.
+bool FightEffects::frozen(const Effect &effect) const
+{
+	if (superPaused())
+		return (effect.superMoveTime >= 0 && effect.time >= effect.superMoveTime) || effect.superMoveTime < -2;
+	if (paused())
+		return (effect.pauseMoveTime >= 0 && effect.time >= effect.pauseMoveTime) || effect.pauseMoveTime < -2;
+	return false;
 }
 
 int32_t FightEffects::countExplods(const void *ownerKey, int32_t id) const
@@ -194,7 +214,8 @@ void FightEffects::setExplodBindTime(const void *ownerKey, int32_t id, int32_t t
 void FightEffects::followBinder(const void *bindKey, float x, float y)
 {
 	for (Effect &e : effects_) {
-		if (!e.explod || e.bindKey != bindKey || e.bindTime == 0)
+		// In MUGEN only a moving Explod follows the one it's bound to.
+		if (!e.explod || e.bindKey != bindKey || e.bindTime == 0 || frozen(e))
 			continue;
 		e.x = x + e.bindX;
 		e.y = y + e.bindY;
@@ -210,18 +231,35 @@ void FightEffects::ownerHit(const void *ownerKey)
 		effects_.end());
 }
 
+void FightEffects::setOwnerColour(const void *ownerKey, const SpriteDraw &colour)
+{
+	for (auto &[key, held] : ownerColours_) {
+		if (key == ownerKey) {
+			held = colour;
+			return;
+		}
+	}
+	ownerColours_.emplace_back(ownerKey, colour);
+}
+
 void FightEffects::startEnvColor(int32_t r, int32_t g, int32_t b, int32_t time, bool under)
 {
-	envColor_ = 0xFF000000u | (uint32_t)std::clamp(r, 0, 255) << 16 | (uint32_t)std::clamp(g, 0, 255) << 8 |
-		(uint32_t)std::clamp(b, 0, 255);
+	// The low byte of each value, not a clamp (Ikemen's System.draw): Thanos's hyper picks them with random, up to 999.
+	envColor_ = 0xFF000000u | (uint32_t)(r & 0xFF) << 16 | (uint32_t)(g & 0xFF) << 8 | (uint32_t)(b & 0xFF);
 	envColorTime_ = time;
 	envColorUnder_ = under;
 }
 
-void FightEffects::drawEnvColor(bool under) const
+void FightEffects::tickEnvColor()
 {
-	if (envColorTime_ != 0 && envColorUnder_ == under)
-		platform::fillRect(0, 0, platform::SCREEN_WIDTH, platform::SCREEN_HEIGHT, envColor_);
+	// -1 lasts until replaced.
+	if (envColorTime_ > 0)
+		envColorTime_--;
+}
+
+void FightEffects::drawEnvColor() const
+{
+	platform::fillRect(0, 0, platform::SCREEN_WIDTH, platform::SCREEN_HEIGHT, envColor_);
 }
 
 bool FightEffects::getSharedAnimation(int32_t animNo, Animation &out) const
@@ -264,9 +302,6 @@ void FightEffects::tick()
 	} else {
 		shakeOffsetX_ = shakeOffsetY_ = 0;
 	}
-	// EnvColor counts down (-1 lasts until replaced).
-	if (envColorTime_ > 0)
-		envColorTime_--;
 	// Ikemen checks expiry before advancing an existing Explod. A newly committed one still advances once on its
 	// creation tick, so removetime counts visible frames and the final animation element is not discarded.
 	effects_.erase(std::remove_if(effects_.begin(), effects_.end(),
@@ -275,6 +310,9 @@ void FightEffects::tick()
 				(effect.removeTime <= -2 && effect.anim.loopEnd()));
 		}), effects_.end());
 	for (Effect &effect : effects_) {
+		// Held by a pause: its time stops too, so removetime counts only the ticks it moved.
+		if (frozen(effect))
+			continue;
 		effect.fresh = false;
 		effect.time++;
 		effect.x += effect.velocityX * effect.moveFacing;
@@ -285,17 +323,56 @@ void FightEffects::tick()
 	}
 }
 
-void FightEffects::draw(const View &view, float groundY, int pass)
+void FightEffects::drawShadows(const View &view, float groundY, const GroundShadow &ground)
+{
+	for (const Effect &effect : effects_) {
+		if (!effect.explod || effect.screen || !effect.renderer ||
+			(effect.shadow[0] == 0 && effect.shadow[1] == 0 && effect.shadow[2] == 0))
+			continue;
+		// As a character's shadow (Character::draw): darkened by the stage's intensity, then the colour subtracted.
+		const uint32_t colour = effect.shadow[0] < 0 ? ground.colour
+			: (uint32_t)(effect.shadow[0] & 0xFF) << 16 | (uint32_t)(effect.shadow[1] & 0xFF) << 8 |
+				(uint32_t)(effect.shadow[2] & 0xFF);
+		const float sx = view.screenX(effect.x + ground.offsetX - view.camX);
+		const float sy = view.screenY(groundY + ground.offsetY - view.camY);
+		SpriteDraw how;
+		how.scaleX = effect.scaleX;
+		how.scaleY = -ground.yscale * effect.scaleY * effect.vfacing;
+		if (ground.intensity > 0) {
+			how.shadow = ground.intensity;
+			effect.renderer->drawAnimation(effect.anim, sx, sy, view.drawScaleX(), effect.facing, how);
+		}
+		if (colour != 0) {
+			how.shadow = -1;
+			how.trans = Trans::Sub;
+			how.tint = 0xFF000000u | colour;
+			effect.renderer->drawAnimation(effect.anim, sx, sy, view.drawScaleX(), effect.facing, how);
+		}
+	}
+}
+
+void FightEffects::draw(const View &view, float groundY, int pass, int32_t from, int32_t to)
 {
 	// Screen-space effects don't zoom with the camera (Ikemen's SprData.draw for "screen" sprites).
 	const View flat = view.unzoomed();
-	for (const Effect &effect : effects_) {
-		const int effectPass = effect.layer < 0 ? -1 : effect.layer > 0 ? 1 : effect.priority < 0 ? -1 : 0;
-		if (effectPass != pass || !effect.renderer)
+	// Lowest sprpriority first, as Ikemen's DrawList: a super portrait stays over the band behind it.
+	drawOrder_.clear();
+	for (const Effect &effect : effects_)
+		drawOrder_.push_back(&effect);
+	std::stable_sort(drawOrder_.begin(), drawOrder_.end(),
+		[](const Effect *a, const Effect *b) { return a->priority < b->priority; });
+	for (const Effect *next : drawOrder_) {
+		const Effect &effect = *next;
+		// Ikemen's sprite list: layerno -1 under the stage's layer 0 (-2 here), layer 0 (0, sorted with the fighters by
+		// sprpriority), then layerno 1 (1).
+		const int effectPass = effect.layer < 0 ? -2 : effect.layer > 0 ? 1 : 0;
+		if (effectPass != pass || !effect.renderer || (pass == 0 && (effect.priority < from || effect.priority >= to)))
 			continue;
 		const View &v = effect.screen ? flat : view;
 		const float sx = v.screenX(effect.screen ? effect.x : effect.x - v.camX);
-		const float sy = v.screenY(groundY + effect.y - (effect.screen ? 0 : v.camY));
+		// A screen-space one (postype left / right / front / back) counts y down from the top of the screen, not
+		// from the ground (Ikemen's Explod.setPos leaves their offset y at 0).
+		const float sy = effect.screen ? v.screenY(v.topCut + effect.y) : v.screenY(groundY + effect.y - v.camY);
 		SpriteDraw how;
 		how.scaleX = effect.scaleX;
 		// vfacing -1 draws it upside down about its position.
@@ -303,6 +380,17 @@ void FightEffects::draw(const View &view, float groundY, int pass)
 		how.trans = effect.trans;
 		how.srcAlpha = effect.srcAlpha;
 		how.dstAlpha = effect.dstAlpha;
+		if (effect.explod && !effect.ownPal) {
+			for (const auto &[key, colour] : ownerColours_) {
+				if (key != effect.ownerKey)
+					continue;
+				how.addR = colour.addR, how.addG = colour.addG, how.addB = colour.addB;
+				how.mulR = colour.mulR, how.mulG = colour.mulG, how.mulB = colour.mulB;
+				how.saturation = colour.saturation;
+				how.invert = colour.invert;
+				break;
+			}
+		}
 		allPalFX_.stack(how);
 		effect.renderer->drawAnimation(effect.anim, sx, sy, v.drawScaleX(), effect.facing, how);
 	}

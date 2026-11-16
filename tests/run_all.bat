@@ -46,6 +46,7 @@ call :watch || exit /b 1
 call :keys || exit /b 1
 call :game || exit /b 1
 call :options || exit /b 1
+call :pause || exit /b 1
 call :run buttons 80 --quickstart || exit /b 1
 call :run commands 260 --quickstart || exit /b 1
 call :run states 330 --quickstart || exit /b 1
@@ -108,6 +109,9 @@ findstr /c:"storyboard: data/chars/kfm/intro.def: 5 scenes" tests\out\latest_sto
 findstr /c:"match: round 1" tests\out\latest_storyboard.log >nul || (echo FAIL: the fight did not start after the arcade intro & exit /b 1)
 findstr /c:"options: p1 A = RB" tests\out\latest_keys.log >nul || (echo FAIL: the joystick config did not take RB for A & exit /b 1)
 findstr /c:"Z = Not used" tests\out\keys_config.ini >nul || (echo FAIL: the button RB left did not become Not used & exit /b 1)
+findstr /c:"pause: Command List" tests\out\latest_pause.log >nul || (echo FAIL: the pause menu did not open its command list & exit /b 1)
+findstr /c:"pause: Continue" tests\out\latest_pause.log >nul || (echo FAIL: the pause menu did not continue the fight & exit /b 1)
+findstr /c:"pause: Exit" tests\out\latest_pause.log >nul || (echo FAIL: the pause menu did not exit & exit /b 1)
 findstr /c:"title: OPTIONS" tests\out\latest_options.log >nul || (echo FAIL: OPTIONS did not open from the title & exit /b 1)
 findstr /c:"options: difficulty 7" tests\out\latest_options.log >nul || (echo FAIL: the options screen did not raise Difficulty & exit /b 1)
 findstr /c:"options: roundtime 98" tests\out\latest_options.log >nul || (echo FAIL: the options screen did not lower Time Limit & exit /b 1)
@@ -204,6 +208,12 @@ echo     select screen
 copy /y m360.log tests\out\latest_select.log >nul
 exit /b 0
 
+:pause
+echo     pause menu
+"%EXE%" --title --cpu --input tests\inputs\pause.txt --quit 760 --trace %SHOW% >nul || exit /b 1
+copy /y m360.log tests\out\latest_pause.log >nul
+exit /b 0
+
 :title
 echo     title menu
 "%EXE%" --title --cpu --input tests/inputs/title.txt --quit 600 --trace %SHOW% >nul || exit /b 1
@@ -218,7 +228,7 @@ exit /b 0
 
 :continue
 echo     continue screen
-"%EXE%" --title --wins 1 --p1life 1 --input tests\inputs\continue.txt --quit 4600 --trace %SHOW% >nul || exit /b 1
+"%EXE%" --title --wins 1 --p1life 1 --input tests\inputs\continue.txt --quit 4800 --trace %SHOW% >nul || exit /b 1
 copy /y m360.log tests\out\latest_continue.log >nul
 exit /b 0
 

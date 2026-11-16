@@ -224,7 +224,7 @@ void SelectScreen::drawPortrait(const Entry &entry, int32_t number, float x, flo
 		return;
 	// The chosen palette n replaces palette 1,1 (as Ikemen remaps 1,1 to 1,n); a portrait with a palette of its own
 	// keeps it.
-	const bool remap = palette > 0 && s->palette == entry.portraits->paletteIndex(1, 1);
+	const bool remap = palette > 0 && entry.portraits->takesChosenPalette(s->palette);
 	entry.renderer->setPalette(remap ? entry.portraits->paletteIndex(1, (uint16_t)palette) : -1);
 	// Drawn from its top left corner, whatever its axis.
 	SpriteDraw how;

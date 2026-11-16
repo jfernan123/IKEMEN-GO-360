@@ -15,6 +15,7 @@ struct InputState;
 struct Settings {
 	// [Options]
 	int32_t difficulty;   // Difficulty: the computer's AI level, 1-8
+	int32_t aiStyle;      // AI.Style (mugen360's own): 0 MUGEN's random AI, 1 SmartAi
 	int32_t life;         // Life: % of each character's life, 10-300
 	int32_t time;         // Time: round time in counts, -1 for none
 	int32_t gameSpeed;    // GameSpeed: -9..9 steps of GameSpeedStep frames a second from 60

@@ -22,6 +22,8 @@ struct Projectile {
 	int32_t hitPause = 0;
 	float edgeBound = 40, heightLow = -240, heightHigh = 1;
 	bool removeOnHit = true, shared = false, active = true, removing = false, contact = false;
+	// projshadow r, g, b: a shadow on the ground in that colour (-1: the stage's); 0, 0, 0 none.
+	int32_t shadow[3] = { 0, 0, 0 };
 
 	void advance();
 	bool outside(float cameraX, float halfWidth) const;

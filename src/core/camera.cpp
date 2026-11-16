@@ -75,6 +75,12 @@ void Camera::resetTracking()
 
 void Camera::track(float left, float right, float velocity, float charY)
 {
+	trackX(left, right, velocity);
+	trackY(charY);
+}
+
+void Camera::trackX(float left, float right, float velocity)
+{
 	if (left < leftest_) {
 		leftest_ = left;
 		leftestVel_ = velocity;
@@ -83,6 +89,10 @@ void Camera::track(float left, float right, float velocity, float charY)
 		rightest_ = right;
 		rightestVel_ = velocity;
 	}
+}
+
+void Camera::trackY(float charY)
+{
 	highest_ = std::min(charY, highest_);
 	lowest_ = std::max(charY, lowest_);
 }

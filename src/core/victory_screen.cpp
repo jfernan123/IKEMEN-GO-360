@@ -183,9 +183,9 @@ void VictoryScreen::drawSlot(const Slot &slot, bool loser, int32_t layer)
 			platform::setClip(window.x, window.y, window.width, window.height);
 		SpriteDraw how;
 		slot.face.apply(how, space);
-		const int base = f.sff->paletteIndex(1, 1), chosen = f.sff->paletteIndex(1, (uint16_t)f.palette);
+		const int chosen = f.sff->paletteIndex(1, (uint16_t)f.palette);
 		const Sprite *sprite = f.sff->get((uint16_t)slot.spr[0], (uint16_t)slot.spr[1]);
-		if (slot.applyPal && sprite && sprite->palette == base)
+		if (slot.applyPal && sprite && f.sff->takesChosenPalette(sprite->palette))
 			how.palette = chosen;
 		how.scaleX = slot.face.scaleX * f.resFix * space.scale;
 		how.scaleY = slot.face.scaleY * f.resFix * space.scale;

@@ -65,8 +65,11 @@ class Command {
 public:
 	// Parses "~D, DF, F, x"; problems go to error, the command still built from what parsed.
 	bool parse(const std::string &text, std::string &error);
-	void step(const InputBuffer &buffer);
+	// ai: the computer is playing, and a command it has started never runs out of time (Ikemen's Step).
+	void step(const InputBuffer &buffer, bool ai);
 	void clear(bool resetBuffer);
+	// More than one step, or more than one key in the first: what the computer's cheat may complete for a player.
+	bool longerThanOneButton() const;
 
 	std::string name;
 	int32_t maxtime = 15;
@@ -93,8 +96,8 @@ private:
 class CommandList {
 public:
 	bool load(const std::string &cmdPath, std::string &error);
-	// One frame: the buffer takes the input, then every command steps.
-	void update(const InputState &in, int facing);
+	// One frame: the buffer takes the input, then every command steps. ai: the computer is playing.
+	void update(const InputState &in, int facing, bool ai = false);
 	// Forgets everything held and every command in progress (a new round; Ikemen's BufReset).
 	void reset();
 	// The "command" trigger: whether a command of this name has completed within its buffer time.
@@ -102,11 +105,20 @@ public:
 	// Names of the commands active now, for debugging.
 	std::vector<std::string> activeNames() const;
 	const InputBuffer &buffer() const { return buffer_; }
+	// The computer's cheat (Ikemen's AI cheating): it picks one of nameCount() names at random, in file order, and
+	// cheated() says whether a name is the picked one. For a player only commands longer than one button count;
+	// anyLength (a helper asking) counts every command.
+	size_t nameCount() const { return names_.size(); }
+	bool cheated(const std::string &name, int32_t cheat, bool anyLength) const;
+	// A name's place in that order, -1 if there's no such command; and whether the cheat may complete it for a player.
+	int32_t nameIndex(const std::string &name) const;
+	bool cheatable(int32_t index) const;
 
 private:
 	InputBuffer buffer_;
 	std::vector<Command> commands_;
 	std::map<std::string, std::vector<size_t>> byName_;
+	std::vector<std::string> names_; // each name once, in the order the file first gives it (Ikemen's Names)
 };
 
 } // namespace m360

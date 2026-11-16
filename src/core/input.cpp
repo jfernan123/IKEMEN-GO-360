@@ -489,7 +489,12 @@ bool Command::greaterCheckFail(size_t i, const InputBuffer &buffer) const
 	return false;
 }
 
-void Command::step(const InputBuffer &buffer)
+bool Command::longerThanOneButton() const
+{
+	return steps_.size() > 1 || (!steps_.empty() && steps_[0].keys.size() > 1);
+}
+
+void Command::step(const InputBuffer &buffer, bool ai)
 {
 	if (curbuftime > 0)
 		curbuftime--;
@@ -550,7 +555,8 @@ void Command::step(const InputBuffer &buffer)
 	}
 
 	completeframe = completed_.back();
-	if (!completeframe && curtime_ < maxtime)
+	// The computer ignores the time limit.
+	if (!completeframe && (ai || curtime_ < maxtime))
 		return;
 	// Done, or out of time.
 	clear(false);
@@ -578,6 +584,7 @@ bool CommandList::load(const std::string &cmdPath, std::string &error)
 	}
 	commands_.clear();
 	byName_.clear();
+	names_.clear();
 	int problems = 0;
 	for (const IniSection &s : sections) {
 		if (!text::startsWith(s.lower, "command"))
@@ -601,7 +608,10 @@ bool CommandList::load(const std::string &cmdPath, std::string &error)
 				parseError.c_str());
 			problems++;
 		}
-		byName_[cm.name].push_back(commands_.size());
+		std::vector<size_t> &sameName = byName_[cm.name];
+		if (sameName.empty())
+			names_.push_back(cm.name);
+		sameName.push_back(commands_.size());
 		commands_.push_back(std::move(cm));
 	}
 	logf("cmd: %s: %zu commands, %zu names%s", cmdPath.c_str(), commands_.size(), byName_.size(),
@@ -616,12 +626,12 @@ void CommandList::reset()
 		c.clear(true);
 }
 
-void CommandList::update(const InputState &in, int facing)
+void CommandList::update(const InputState &in, int facing, bool ai)
 {
 	buffer_.update(in, facing);
 	std::vector<std::string> completed;
 	for (Command &c : commands_) {
-		c.step(buffer_);
+		c.step(buffer_, ai);
 		if (c.completeframe)
 			completed.push_back(c.name);
 	}
@@ -645,6 +655,28 @@ bool CommandList::active(const std::string &name) const
 			return true;
 	}
 	return false;
+}
+
+// Ikemen's Char.command, its cheating half: the first command of the name decides whether it's long enough.
+bool CommandList::cheated(const std::string &name, int32_t cheat, bool anyLength) const
+{
+	if (cheat < 0 || (size_t)cheat >= names_.size() || names_[(size_t)cheat] != name)
+		return false;
+	return anyLength || commands_[byName_.at(name).front()].longerThanOneButton();
+}
+
+int32_t CommandList::nameIndex(const std::string &name) const
+{
+	for (size_t i = 0; i < names_.size(); i++)
+		if (names_[i] == name)
+			return (int32_t)i;
+	return -1;
+}
+
+bool CommandList::cheatable(int32_t index) const
+{
+	return index >= 0 && (size_t)index < names_.size() &&
+		commands_[byName_.at(names_[(size_t)index]).front()].longerThanOneButton();
 }
 
 std::vector<std::string> CommandList::activeNames() const

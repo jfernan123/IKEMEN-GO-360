@@ -21,3 +21,14 @@ games/
 # --check reports.
 compat_*.txt
 soak_*.txt
+
+# Local reinforcement-learning environment, generated policies and Python caches.
+/rl/.venv/
+/rl/checkpoints/
+/rl/runs/
+/rl/wins/
+/rl/__pycache__/
+/rl/bughunt/out/
+/rl/clips/
+/rl/wins_*/
+__pycache__/

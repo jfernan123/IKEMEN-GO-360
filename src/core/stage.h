@@ -20,7 +20,8 @@ namespace m360 {
 // controllers, windows, sine motion, 3D models or video.
 class Stage {
 public:
-	bool load(const std::string &defPath, std::string &error);
+	// simulationOnly parses bounds, starts and camera but leaves visual background assets unloaded.
+	bool load(const std::string &defPath, std::string &error, bool simulationOnly = false);
 	// Logs what the stage's .def sets that isn't read yet.
 	static void logUnread(const std::vector<IniSection> &sections, const std::string &defPath);
 	// Moves the backgrounds one tick: velocity and animations.

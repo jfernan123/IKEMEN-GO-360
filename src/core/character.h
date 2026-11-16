@@ -69,7 +69,11 @@ constexpr uint32_t NoWalk = 1, NoAutoTurn = 2, NoStandGuard = 4, NoCrouchGuard =
 				   RoundNotOver = 2048, NoBarDisplay = 4096, NoFallHitFlag = 8192, TimerFreeze = 16384,
 				   NoCornerPush = 32768,
 				   // Global ones (Ikemen's GSF): any fighter asserting them changes the whole fight this tick.
-				   NoBg = 65536, NoFg = 131072, NoKoSnd = 262144;
+				   NoBg = 65536, NoFg = 131072, NoKoSnd = 262144,
+				   // The computer may not cheat commands for this character (Ikemen's ASF_noaicheat).
+				   NoAiCheat = 524288,
+				   // No built-in air jump (Ikemen's ASF_noairjump).
+				   NoAirJump = 1048576;
 }
 
 // A MUGEN character, run by its own state files. Loads its .def, SFF, AIR, CMD and CNS (states and constants) and
@@ -83,7 +87,8 @@ public:
 	Character(const Character &) = delete;
 	Character &operator=(const Character &) = delete;
 	~Character() override;
-	bool load(const std::string &defPath, int paletteNo, std::string &error);
+	// simulationOnly keeps AIR/CMD/CNS gameplay data but skips sprite palettes and sounds for headless RL fights.
+	bool load(const std::string &defPath, int paletteNo, std::string &error, bool simulationOnly = false);
 	// A round begins: at its start position with full life, its fight state cleared, into state 5900 (which goes on
 	// to the intro or to standing). A new match also empties the power gauge.
 	void startRound(float x, float y, int facing, bool newMatch);
@@ -99,17 +104,43 @@ public:
 	bool readyForWinPose() const;
 	bool alive() const { return !ko_; }
 	bool asserts(uint32_t special) const { return (special_ & special) != 0; }
+	// A fight's character from one loaded already (an RL pool loads each character once for many fights): its
+	// states, animations and constants are shared, as a helper shares its root's; its commands are its own copy.
+	void loadFrom(const Character &loaded, int paletteNo);
+	// Restarts the character's own random numbers (the Random trigger, VarRandom, the computer's command cheat), so
+	// a fight reset with the same seed plays out the same way.
+	void seedRandom(uint32_t seed)
+	{
+		random_ = seed ? seed : 12345;
+		cheatRandom_ = seed ^ 0x2545F491u;
+	}
+	// The helpers this character made (each may have its own) and its live projectiles, for the RL observation.
+	const std::vector<std::unique_ptr<Character>> &helpers() const { return helpers_; }
+	// Adds this character's helpers and theirs, oldest first, for the fight's draw order.
+	void collectHelpers(std::vector<Character *> &out) const;
+	const std::vector<Projectile> &projectiles() const { return projectiles_; }
+	bool destroyed() const { return destroyed_; }
 	// [Data] life times the options' Life % (Ikemen's lifeMax with Options.Life).
 	int32_t lifeMax() const { return (int32_t)(constF("data.life", 1000) * lifeScale_); }
 	void setLifeScale(float scale) { lifeScale_ = scale; }
+	float lifeScale() const { return lifeScale_; }
 	int32_t powerMax() const { return (int32_t)constF("data.power", 3000); }
+	// Power belongs to the root player: a helper's hits and PowerAdds fill the same bar (Ikemen's powerOwner).
+	Character &powerOwner() { return root_ ? *root_ : *this; }
+	const Character &powerOwner() const { return root_ ? *root_ : *this; }
 	// Training's default recovery, after this tick's hits have landed.
 	void trainingRestore();
 	// 0 for player 1's side, 1 for player 2's (Win, Lose, TeamSide).
 	int playerNo = 0;
 	// The computer's level (1-8) while it plays this character, 0 for a person (the AILevel trigger).
 	int aiLevel = 0;
+	// What the computer's command cheat may pick this tick: nothing, only the character's AI switches (aiSwitches_),
+	// or any command (MUGEN's AI; SmartAi as it attacks).
+	enum class AiCheat : uint8_t { None, Switches, Any };
+	AiCheat aiCheat = AiCheat::Any;
 	void setOpponent(Character *opponent);
+	// The opponent it faces and targets now (null before the fight is set up).
+	const Character *p2() const { return p2_; }
 	// Simul: the other side's fighters and this one's teammates. P2 is then the nearest enemy still in the fight,
 	// chosen again every tick (chooseP2; Ikemen's p2 / enemyNear).
 	void setTeam(const std::vector<Character *> &enemies, const std::vector<Character *> &partners);
@@ -131,6 +162,8 @@ public:
 
 	// reflection: the stage's reflection intensity (0 none), the character mirrored on the floor.
 	void draw(const View &view, float groundY, const GroundDraw &ground);
+	// This tick's PalFX as draw colours (the character's, and its Explods' without ownpal).
+	SpriteDraw paletteColour() const;
 	// The attack (red) and hurt (blue) boxes the hit detection uses, for the debug view.
 	void drawBoxes(const View &view, float groundY) const;
 
@@ -138,12 +171,17 @@ public:
 	void body(float &left, float &right, float &top) const;
 	// Whether the stage's screen edges hold this character in (ScreenBound can let it out).
 	bool screenBound() const { return screenBound_; }
+	// Whether the camera follows this character's x / y this tick (Ikemen's CSF_movecamera_x / _y; ScreenBound).
+	bool moveCameraX() const { return moveCameraX_; }
+	bool moveCameraY() const { return moveCameraY_; }
 	bool playerPush() const { return playerPush_; }
 	// Whether boxes of a kind (1 attack, 2 hurt) touch the other character's of a kind. Players only push apart where
 	// their hurt boxes touch, as in MUGEN.
 	bool clsnTouch(const Character &other, int myKind, int theirKind) const;
 
 	std::string name;
+	// The [Files] movelist (an Ikemen command list for the pause menu), found as its other files are; "" if none.
+	std::string movelist;
 	CommandList commands;
 	float x = 0, y = 0;
 	float vx = 0, vy = 0;
@@ -295,6 +333,7 @@ public:
 
 private:
 	bool stageVar(const std::string &key, Value &out, std::string &textOut) override;
+	bool hasAnimElem(int32_t elem) override { return elem >= 1 && (size_t)elem <= anim.frames.size(); }
 	bool runTargetController(const StateController &sc);
 	void runTargetControllerOn(const StateController &sc, Character &target);
 
@@ -334,21 +373,32 @@ private:
 	void runModifyExplod(const StateController &sc);
 	bool keyCtrl_ = true;           // a helper reads the root's commands and runs states -1, -2, -3
 	// Takes the loaded files and the values derived from them from another character (a helper's root).
-	void shareLoadedData(Character &from);
+	void shareLoadedData(const Character &from);
 	int palette_ = -1;
+	// The palette number the player picked (1-12), what PalNo reads; palette_ is where it sits in the SFF.
+	int32_t paletteNo_ = 1;
 	bool animShared_ = false;
 	int32_t makeDustSpacing_ = 0;
 	struct PaletteEffect {
 		int32_t time = 0, elapsed = 0, add[3] = { 0, 0, 0 }, sinAdd[3] = { 0, 0, 0 }, cycle = 0;
 		int32_t mul[3] = { 256, 256, 256 };
-		bool enabled = false;
+		// color (256 full colour, 0 grey) and invertall.
+		int32_t colour = 256;
+		bool enabled = false, invert = false;
 	} palfx_;
 	struct AfterImageFrame { Animation anim; float x = 0, y = 0; int facing = 1; };
 	struct AfterImageState {
 		int32_t time = 0, length = 20, timeGap = 1, frameGap = 4, recordGap = 0;
 		int32_t bright[3] = { 30, 30, 30 }, contrast[3] = { 120, 120, 220 }, add[3] = { 10, 10, 25 };
+		// Added once more from the second image on (Ikemen's postbright).
+		int32_t postBright[3] = { 0, 0, 0 };
 		float mul[3] = { .65f, .65f, .75f };
+		// palinvertall and palcolor (256 full colour, 0 grey).
+		bool invert = false;
+		int32_t colour = 256;
 		Trans trans = Trans::Add;
+		// Source and destination alpha out of 255: no trans param draws the copies solid (Ikemen's TT_default).
+		int32_t alpha[2] = { 255, 0 };
 		std::vector<AfterImageFrame> frames;
 	} afterImage_;
 
@@ -368,10 +418,14 @@ private:
 
 	// Reset every frame (actionPrepare).
 	bool posFreeze_ = false, screenBound_ = true, playerPush_ = true;
+	bool moveCameraX_ = true, moveCameraY_ = true;
 	float widthFront_ = 0, widthBack_ = 0;
 	// Turned at the end of actionRun when set by facep2 / Turn with deferral.
 	int pendingFacing_ = 0;
+	// Air jumps made since leaving the ground, and the [Movement] limits on them (airjump.num, airjump.height).
 	int airJumpCount_ = 0;
+	int32_t airJumpNum_ = 0;
+	float airJumpHeight_ = 35;
 
 	// Hits.
 	HitDef hitdef_;
@@ -402,6 +456,7 @@ private:
 	std::vector<Projectile> projectiles_;
 	std::vector<std::unique_ptr<Character>> helpers_;
 	Character *parent_ = nullptr, *root_ = nullptr;
+	bool playerHelper_ = false;             // helpertype = player
 	int32_t helperId_ = 0;
 	bool destroyed_ = false;
 	int32_t projectileContactTime_ = -1, projectileContactId_ = -1;
@@ -448,6 +503,15 @@ private:
 	const FightWorld *world_ = nullptr;
 	uint32_t random_ = 12345;
 	std::map<std::string, int> unsupported_;
+	// The computer's cheat this tick (Ikemen's cpucmd): the index of the command name that counts as done, or -1.
+	// Its own random numbers, so the Random trigger plays out the same with or without the computer.
+	int32_t cpuCommand_ = -1;
+	// The commands its own AI switches on with (by name index): in the states run every tick, commands whose
+	// controllers only set variables and never start a move, as "CPU1" or "AI_1" do (findAiSwitches).
+	std::vector<int32_t> aiSwitches_;
+	void findAiSwitches();
+	uint32_t cheatRandom_ = 0x2545F491;
+	bool cheatLogged_ = false; // the trace shows the cheat once a tick
 };
 
 } // namespace m360

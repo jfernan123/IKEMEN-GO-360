@@ -4,6 +4,7 @@
 #include <cmath>
 #include <set>
 
+#include "core/debug_text.h"
 #include "core/log.h"
 #include "core/text.h"
 
@@ -72,17 +73,20 @@ TitleScreen::Item *findChild(std::vector<TitleScreen::Item> &items, const std::s
 }
 
 // Drops the modes that can't run and the submenus left with nothing but "back".
-void prune(std::vector<TitleScreen::Item> &items, bool top)
+void prune(std::vector<TitleScreen::Item> &items, bool top, bool keepRows)
 {
 	std::vector<TitleScreen::Item> kept;
 	for (TitleScreen::Item &item : items) {
 		if (!item.children.empty()) {
-			prune(item.children, false);
+			prune(item.children, false, keepRows);
 			const bool useful = std::any_of(item.children.begin(), item.children.end(),
 				[](const TitleScreen::Item &child) { return child.name != "back"; });
 			if (useful)
 				kept.push_back(std::move(item));
 		} else if (SUPPORTED.count(item.name) && !(top && item.name == "back")) {
+			kept.push_back(std::move(item));
+		} else if (keepRows && !item.display.empty()) {
+			item.placeholder = true;
 			kept.push_back(std::move(item));
 		}
 	}
@@ -172,6 +176,10 @@ bool TitleScreen::load(Motif &motif, std::string &error)
 		for (const auto &pair : DEFAULT_ITEMS)
 			names.emplace_back(std::string(pair[0]).substr(14), pair[1]);
 	}
+	// "" disables an item (MUGEN).
+	names.erase(std::remove_if(names.begin(), names.end(),
+					[](const auto &n) { return n.second.empty() || n.second == "\"\""; }),
+		names.end());
 	menu_.clear();
 	for (const auto &[path, display] : names) {
 		std::vector<Item> *level = &menu_;
@@ -187,13 +195,69 @@ bool TitleScreen::load(Motif &motif, std::string &error)
 			level = &found->children;
 		}
 	}
-	prune(menu_, true);
+	// The rows mugen360 can't run yet: left out, except in a painted menu (its labels must stay in line).
+	prune(menu_, true, !itemsShowText());
 	if (menu_.empty()) {
 		error = motif.path() + ": the title menu has nothing mugen360 can run";
 		return false;
 	}
 	reset();
 	return true;
+}
+
+void TitleScreen::addItem(const std::string &name, const std::string &display, const std::string &before)
+{
+	auto at = std::find_if(menu_.begin(), menu_.end(), [&](const Item &item) { return item.name == before; });
+	menu_.insert(at, Item{ name, display, {} });
+	reset();
+}
+
+bool TitleScreen::claimPlaceholder(const std::string &name, const std::string &display)
+{
+	for (Item &item : menu_) {
+		if (item.placeholder) {
+			logf("title: %s takes the \"%s\" row", display.c_str(), item.display.c_str());
+			item = Item{ name, display, {} };
+			item.ownLabel = true;
+			reset();
+			return true;
+		}
+	}
+	return false;
+}
+
+void TitleScreen::drawOwnLabels(const ScreenSpace &space) const
+{
+	// Over the painted label of a claimed row: a bar the size of the box cursor (a little wider), in the top menu.
+	if (levels_.size() != 1)
+		return;
+	const Level &level = levels_.back();
+	for (size_t i = 0; i < menu_.size(); i++) {
+		if (!menu_[i].ownLabel)
+			continue;
+		const float x = posX_ + (float)i * spacingX_, y = posY_ + (float)i * spacingY_ - level.currentPos;
+		const float left = space.x(x + (float)boxCoords_[0] - 3), right = space.x(x + (float)boxCoords_[2] + 3);
+		const float top = space.y(y + (float)boxCoords_[1] - 1), bottom = space.y(y + (float)boxCoords_[3] + 2);
+		platform::fillRect(left, top, right - left, bottom - top, 0xFF101010);
+		platform::fillRect(left + 2, top + 2, right - left - 4, bottom - top - 4, 0xFFC81010);
+		const std::string &label = menu_[i].display;
+		const float scale = std::max(1.0f, std::min((bottom - top - 6) / 7.0f, (right - left - 10) / (6.0f * (float)label.size())));
+		const float width = (float)label.size() * 6 * scale;
+		const float tx = right - 6 - width, ty = top + (bottom - top - 7 * scale) / 2;
+		drawText(label.c_str(), tx + scale, ty + scale, scale, 0xFF000000);
+		drawText(label.c_str(), tx, ty, scale, 0xFFFFF0B0);
+	}
+}
+
+bool TitleScreen::itemsShowText() const
+{
+	return motif_ && item_.present(motif_->fonts());
+}
+
+void TitleScreen::addShortcut(const std::string &hint, TitleChoice choice)
+{
+	shortcutHint_ = hint;
+	shortcut_ = choice;
 }
 
 void TitleScreen::reset()
@@ -275,6 +339,10 @@ void TitleScreen::notice(const std::string &text, int32_t ticks)
 void TitleScreen::choose(const Item &item, const std::string &path)
 {
 	logf("title: %s%s", path.c_str(), item.display.c_str());
+	if (item.placeholder) {
+		notice("NOT IN MUGEN360 YET", 90);
+		return;
+	}
 	if (item.name == "exit") {
 		result_ = TitleChoice::Exit;
 		return;
@@ -287,6 +355,7 @@ void TitleScreen::choose(const Item &item, const std::string &path)
 		: item.name == "training"     ? TitleChoice::Training
 		: item.name == "survival"     ? TitleChoice::Survival
 		: item.name == "watch"        ? TitleChoice::Watch
+		: item.name == "neuralvs"     ? TitleChoice::NeuralVs
 		: item.name == "freebattle"   ? TitleChoice::QuickMatch
 										: TitleChoice::Versus;
 	fadeOut_.start(false);
@@ -300,6 +369,7 @@ void TitleScreen::update(const platform::Pad &pad1, const platform::Pad &pad2)
 	const auto done = [](const platform::Pad &p) { return p.a || p.b || p.x || p.y || p.rb || p.rt || p.start; };
 	const bool confirm = pressed(done(pad1) || done(pad2), held_[2]);
 	const bool cancel = pressed(pad1.back || pad2.back, held_[3]);
+	const bool shortcut = pressed(pad1.lb || pad2.lb, held_[4]);
 
 	if (fadeIn_.isActive())
 		fadeIn_.step();
@@ -312,6 +382,12 @@ void TitleScreen::update(const platform::Pad &pad1, const platform::Pad &pad2)
 	}
 	if (noticeTime_ > 0 && --noticeTime_ == 0 && fadeAfterNotice_) {
 		fadeAfterNotice_ = false;
+		fadeOut_.start(false);
+	}
+	if (shortcut && shortcut_ != TitleChoice::None && pending_ == TitleChoice::None && result_ == TitleChoice::None &&
+		!fadeIn_.isActive()) {
+		motif_->play(doneSnd_);
+		pending_ = shortcut_;
 		fadeOut_.start(false);
 	}
 	Level &level = levels_.back();
@@ -373,6 +449,7 @@ void TitleScreen::draw()
 	platform::fillRect(0, 0, platform::SCREEN_WIDTH, platform::SCREEN_HEIGHT, clearColour_);
 	const View view = m.view();
 	bg_.draw(0, view);
+	drawOwnLabels(space);
 
 	// Ikemen's f_menuCommonDraw: the rows in the window, the picked one in the active font, clipped to the window.
 	const Level &level = levels_.back();
@@ -426,7 +503,20 @@ void TitleScreen::draw()
 	}
 	for (const TextLayout *t : { &footerTitle_, &footerInfo_, &footerVersion_ })
 		t->draw(0, 0, t->layout.layer, m.fonts(), space);
-	if (noticeTime_ > 0) {
+	if (!shortcutHint_.empty()) {
+		// mugen360's own hint, in the debug font on a dark band at the top (the menu is usually low).
+		const float scale = 2, width = (float)shortcutHint_.size() * 6 * scale;
+		const float x = ((float)platform::SCREEN_WIDTH - width) / 2, y = 24;
+		platform::fillRect(x - 10, y - 8, width + 20, 7 * scale + 16, 0xC0000000);
+		drawText(shortcutHint_.c_str(), x, y, scale, 0xFFFFD040);
+	}
+	if (noticeTime_ > 0 && !active_.present(m.fonts())) {
+		// The screenpack draws no menu text (its labels are painted): the notice in mugen360's own font.
+		const float scale = 2, width = (float)noticeText_.size() * 6 * scale;
+		const float x = ((float)platform::SCREEN_WIDTH - width) / 2, y = (float)platform::SCREEN_HEIGHT - 120;
+		platform::fillRect(x - 10, y - 8, width + 20, 7 * scale + 16, 0xC0000000);
+		drawText(noticeText_.c_str(), x, y, scale, 0xFFFFFFFF);
+	} else if (noticeTime_ > 0) {
 		TextLayout centred = active_;
 		centred.align = 0;
 		centred.layout.offsetX = centred.layout.offsetY = 0;

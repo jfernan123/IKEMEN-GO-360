@@ -79,6 +79,10 @@ struct HitDef {
 	float fallEnvShakeDir = 0, fallEnvShakeDirAdd = 0, fallEnvShakeDecay = 1;
 	int32_t envShakeTime = 0, envShakeAmpl = -4;
 	float envShakeFreq = 60, envShakePhase = notSetF(), envShakeMul = 1, envShakeDir = 0;
+	// palfx.*: the getter's palette effect on a hit (multiply 255 by default, as Ikemen's HitDef).
+	int32_t palfxTime = 0, palfxCycle = 0, palfxColour = 256;
+	bool palfxInvert = false;
+	int32_t palfxAdd[3] = { 0, 0, 0 }, palfxMul[3] = { 255, 255, 255 }, palfxSinAdd[3] = { 0, 0, 0 };
 	bool downBounce = false;
 	int32_t id = 0, chainid = -1;
 	// 1 hits once and is spent, 0 can hit each target once, -1 is spent (or not yet decided: throws default to 1).

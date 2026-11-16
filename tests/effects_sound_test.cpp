@@ -65,6 +65,10 @@ void m360::platform::drawTexture(Texture *, float, float, float, float, Blend) {
 void m360::platform::fillRect(float, float, float, float, uint32_t) {}
 void m360::platform::setClip(int, int, int, int) {}
 void m360::platform::clearClip() {}
+void m360::platform::setClipArea(int, int, int, int) {}
+void m360::platform::clearClipArea() {}
+bool m360::platform::freeMemory(size_t &) { return false; }
+void m360::platform::freeDestroyedTextures() {}
 bool m360::platform::readWholeFile(const char *path, std::vector<uint8_t> &out)
 {
 	std::FILE *f = std::fopen(path, "rb");
@@ -145,6 +149,25 @@ int run6dTests()
 	effects.tickPause(); effects.tickPause();
 	expect(std::fabs(effects.superBrightness() - .5f) < .001f, "SuperPause carries stage-only brightness after its delay");
 	effects.tickPause();
+	// A SuperPause holds Explods (supermovetime 0) so they outlast it; supermovetime -1 keeps one moving (13).
+	FightEffects::Spawn held = spawn, moving = spawn;
+	held.id = 1;
+	moving.id = 2;
+	moving.superMoveTime = -1;
+	effects.spawnExplod(held);
+	effects.spawnExplod(moving);
+	effects.startPause(1, 5, 0, true, true);
+	for (int i = 0; i < 4; i++) {
+		effects.tick();
+		effects.tickPause();
+	}
+	expect(effects.countExplods(nullptr, 1) == 1 && effects.countExplods(nullptr, 2) == 0,
+		"SuperPause freezes Explods unless supermovetime lets them move");
+	for (int i = 0; i < 5; i++) {
+		effects.tick();
+		effects.tickPause();
+	}
+	expect(effects.countExplods(nullptr, 1) == 0, "a held Explod runs its removetime after the pause");
 	PalFX bgEffect;
 	bgEffect.time = bgEffect.startTime = 2;
 	bgEffect.add[0] = 16;

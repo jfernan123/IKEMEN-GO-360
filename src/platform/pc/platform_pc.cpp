@@ -80,7 +80,8 @@ void open_gamepads()
 
 bool init(bool hidden, const char *logName)
 {
-	log_file = std::fopen(logName, "w");
+	// Protocol workers send diagnostics through stdout and must not overwrite the scripted tests' m360.log.
+	log_file = logName && *logName ? std::fopen(logName, "w") : nullptr;
 	if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_AUDIO)) {
 		logLine(SDL_GetError());
 		return false;
@@ -186,8 +187,6 @@ bool beginFrame(uint32_t clear_argb)
 			return false;
 		if (event.type == SDL_EVENT_GAMEPAD_ADDED)
 			open_gamepads();
-		if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_ESCAPE)
-			return false;
 	}
 	set_color(clear_argb);
 	SDL_SetRenderClipRect(renderer, nullptr);
@@ -275,14 +274,35 @@ void drawTexture(Texture *texture, float x, float y, float width, float height, 
 	drawQuad(texture, corners, blend);
 }
 
+// setClipArea's rectangle; width < 0 when there is none.
+static SDL_Rect clip_area = { 0, 0, -1, -1 };
+
 void setClip(int x, int y, int width, int height)
 {
-	const SDL_Rect r = { x, y, width > 0 ? width : 0, height > 0 ? height : 0 };
+	SDL_Rect r = { x, y, width > 0 ? width : 0, height > 0 ? height : 0 };
+	if (clip_area.w >= 0) {
+		SDL_Rect inside;
+		if (!SDL_GetRectIntersection(&r, &clip_area, &inside))
+			inside = SDL_Rect{ 0, 0, 0, 0 };
+		r = inside;
+	}
 	SDL_SetRenderClipRect(renderer, &r);
 }
 
 void clearClip()
 {
+	SDL_SetRenderClipRect(renderer, clip_area.w >= 0 ? &clip_area : nullptr);
+}
+
+void setClipArea(int x, int y, int width, int height)
+{
+	clip_area = SDL_Rect{ x, y, width > 0 ? width : 0, height > 0 ? height : 0 };
+	SDL_SetRenderClipRect(renderer, &clip_area);
+}
+
+void clearClipArea()
+{
+	clip_area = SDL_Rect{ 0, 0, -1, -1 };
 	SDL_SetRenderClipRect(renderer, nullptr);
 }
 
@@ -313,7 +333,8 @@ Pad pad(int player)
 		p.rt = k[SDL_SCANCODE_L];
 		p.lt = k[SDL_SCANCODE_R];
 		p.start = k[SDL_SCANCODE_RETURN];
-		p.back = k[SDL_SCANCODE_BACKSPACE];
+		// Esc is the pad's Back: out of a fight, out of the select screen, then to the title's Exit.
+		p.back = k[SDL_SCANCODE_ESCAPE] || k[SDL_SCANCODE_BACKSPACE];
 		p.menu = k[SDL_SCANCODE_TAB];
 	}
 	if (player >= 0 && player < 2 && gamepads[player]) {
@@ -352,6 +373,13 @@ Pad pad(int player)
 	}
 	return p;
 }
+
+bool freeMemory(size_t &)
+{
+	return false;
+}
+
+void freeDestroyedTextures() {}
 
 bool readWholeFile(const char *path, std::vector<uint8_t> &out)
 {
