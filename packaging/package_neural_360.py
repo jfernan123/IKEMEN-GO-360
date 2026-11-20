@@ -106,41 +106,7 @@ def main():
     # The policy's character can be an opponent too (the self-play mirror): each folder once.
     characters = list(dict.fromkeys(characters))
     stage = neural["stage"].strip()
-
-    shutil.rmtree(TARGET, ignore_errors=True)
-    TARGET.mkdir(parents=True)
-    # The screenpack and its files, without the intro movie and music.
-    shutil.copytree(GAME / "data", TARGET / "data",
-                    ignore=lambda folder, names: [n for n in names if n.lower() in SKIP_DATA or n.lower().endswith(".mp3")])
-    for folder in ("MVC Lifebars", "font"):
-        shutil.copytree(GAME / folder, TARGET / folder)
-    # The characters, whole folders, under the names they have on disk.
-    lines = []
-    for def_path in characters:
-        source = find(def_path)
-        shutil.copytree(source.parent, TARGET / "chars" / source.parent.name)
-        lines.append(f"{source.parent.name}/{source.name}")
-    # The stage: its .def and the files next to it that it names.
-    stage_def = find(stage)
-    (TARGET / "stages").mkdir()
-    shutil.copy2(stage_def, TARGET / "stages" / stage_def.name)
-    for name in re.findall(r"^\s*(?:spr|sprite|bgmusic)\s*=\s*([^;\r\n]+)", stage_def.read_text(errors="replace"),
-                           re.IGNORECASE | re.MULTILINE):
-        name = name.strip().strip('"')
-        candidate = stage_def.parent / name
-        if name and candidate.exists() and not name.lower().endswith(".mp3"):
-            shutil.copy2(candidate, TARGET / "stages" / candidate.name)
-    # A select.def with just these.
-    (TARGET / "data" / "select.def").write_text(
-        "; VS NEURAL CAP's trimmed roster (package_neural_360.py)\n[Characters]\n"
-        + "".join(f"{line}, stages/{stage_def.name}\n" for line in lines)
-        + f"\n[ExtraStages]\nstages/{stage_def.name}\n\n[Options]\narcade.maxmatches = 6,0,0,0,0,0,0,0,0,0\n"
-          "team.maxmatches = 6,0,0,0,0,0,0,0,0,0\n", encoding="utf-8")
-    # No intro movie (its sprites are left out).
-    system = TARGET / "data" / "system.def"
-    text = system.read_text(encoding="latin-1")
-    text = re.sub(r"^(\s*intro\.storyboard\s*=)[^;\r\n]*", r"\1 ", text, flags=re.IGNORECASE | re.MULTILINE)
-    system.write_text(text, encoding="latin-1")
+    lines, stage_name = trim(TARGET, characters, stage)
     # The package plays this game.
     engine_ini = DIST / "data" / "mugen360.ini"
     text = engine_ini.read_text(encoding="utf-8")
@@ -150,8 +116,49 @@ def main():
     size = sum(f.stat().st_size for f in TARGET.rglob("*") if f.is_file())
     zip_path = HERE / "dist" / "mugen360_neural_360"
     shutil.make_archive(str(zip_path), "zip", HERE / "dist", "mugen360")
-    print(f"{TARGET}: {size / 1e6:.0f} MB, characters: {', '.join(lines)}; stage {stage_def.name}")
+    print(f"{TARGET}: {size / 1e6:.0f} MB, characters: {', '.join(lines)}; stage {stage_name}")
     print(f"{zip_path}.zip: {Path(str(zip_path) + '.zip').stat().st_size / 1e6:.0f} MB (private: the game's art)")
+
+
+def trim(target: Path, characters: list[str], stage: str) -> tuple[list[str], str]:
+    """A copy of GAME with only these characters (.def paths as select.def names them) and one stage, at target: the
+    screenpack, lifebars and fonts without the intro movie and music, and a select.def listing just them. Returns the
+    select.def lines and the stage's file name. Shared with package_web.py."""
+    shutil.rmtree(target, ignore_errors=True)
+    target.mkdir(parents=True)
+    # The screenpack and its files, without the intro movie and music.
+    shutil.copytree(GAME / "data", target / "data",
+                    ignore=lambda folder, names: [n for n in names if n.lower() in SKIP_DATA or n.lower().endswith(".mp3")])
+    for folder in ("MVC Lifebars", "font"):
+        shutil.copytree(GAME / folder, target / folder)
+    # The characters, whole folders, under the names they have on disk.
+    lines = []
+    for def_path in characters:
+        source = find(def_path)
+        shutil.copytree(source.parent, target / "chars" / source.parent.name)
+        lines.append(f"{source.parent.name}/{source.name}")
+    # The stage: its .def and the files next to it that it names.
+    stage_def = find(stage)
+    (target / "stages").mkdir()
+    shutil.copy2(stage_def, target / "stages" / stage_def.name)
+    for name in re.findall(r"^\s*(?:spr|sprite|bgmusic)\s*=\s*([^;\r\n]+)", stage_def.read_text(errors="replace"),
+                           re.IGNORECASE | re.MULTILINE):
+        name = name.strip().strip('"')
+        candidate = stage_def.parent / name
+        if name and candidate.exists() and not name.lower().endswith(".mp3"):
+            shutil.copy2(candidate, target / "stages" / candidate.name)
+    # A select.def with just these.
+    (target / "data" / "select.def").write_text(
+        "; VS NEURAL CAP's trimmed roster (package_neural_360.py)\n[Characters]\n"
+        + "".join(f"{line}, stages/{stage_def.name}\n" for line in lines)
+        + f"\n[ExtraStages]\nstages/{stage_def.name}\n\n[Options]\narcade.maxmatches = 6,0,0,0,0,0,0,0,0,0\n"
+          "team.maxmatches = 6,0,0,0,0,0,0,0,0,0\n", encoding="utf-8")
+    # No intro movie (its sprites are left out).
+    system = target / "data" / "system.def"
+    text = system.read_text(encoding="latin-1")
+    text = re.sub(r"^(\s*intro\.storyboard\s*=)[^;\r\n]*", r"\1 ", text, flags=re.IGNORECASE | re.MULTILINE)
+    system.write_text(text, encoding="latin-1")
+    return lines, stage_def.name
 
 
 if __name__ == "__main__":

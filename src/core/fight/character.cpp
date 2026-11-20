@@ -4,6 +4,7 @@
 #include <cctype>
 #include <climits>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 
 #include "core/game/compat.h"

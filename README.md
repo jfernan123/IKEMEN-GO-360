@@ -29,10 +29,16 @@ usable for games other than the included KFM test setup.
 |---|---|---|
 | Windows debug build | `build_pc.bat` -> `build\pc\mugen360.exe` | `run_pc.bat` |
 | Xbox 360 | `build_360.bat` -> `dist\mugen360\` | `run_xenia.bat`, or copy the folder to a console |
+| Browser (WebAssembly) | `build_web.bat` -> `dist\web\`, then `packaging\package_web.py` packs the game | any static host (Vercel, ...); locally `python -m http.server` in `dist\web` |
 
 The Windows build needs Visual Studio 2022 Build Tools, CMake, Ninja, and SDL3 at `..\tools\sdl3`. The Xbox 360
 build needs WSL Debian with xsdk at `~/xsdk` and its GCC toolchain at `~/xsdk-gcc`. The build creates
 `dist\mugen360\default.xex` and `dist\mugen360_360.zip`.
+
+The browser build needs the Emscripten SDK at `%USERPROFILE%\emsdk` (a path without spaces: under one, its tools
+reach it by two names and wipe each other's cache). It uses the PC platform layer on Emscripten's SDL3 port;
+`data/neural/neural_web.ini` picks the policy and opponents `package_web.py` packs (Vercel's free plan takes
+100 MB a deployment). Paths are matched without regard to case there (`platform::actualPath`), as on Windows.
 
 ## Controls
 
@@ -86,13 +92,14 @@ keyboard or mouse input to the desktop.
 | `tests/` | unit tests (`*_test.cpp`), scripted fights (`inputs/`), fixtures and a test game folder; `run_all.bat` runs it all |
 | `data/` | KFM, his stage, the common states, effects and sounds; `ikemen1/` (Ikemen's screenpack) and `fight.def`; `neural/` (exported policies); `mugen360.ini` (what loads at startup) |
 | `rl/` | reinforcement learning for neural fighters (PC only): see `rl/README.md` |
-| `packaging/` | `package_pc.py` and `package_neural_360.py` zip a game with the engine, for private sharing |
+| `packaging/` | `package_pc.py` and `package_neural_360.py` zip a game with the engine; `package_web.py` packs it for the browser build |
+| `web/` | `index.html`, the browser build's page |
 | `xbox_updater/` | the tool beside a friend's console that installs new GitHub releases |
 | `third_party/` | lodepng, dr_mp3, stb_vorbis, stb_truetype |
 
 The batch files in this folder build and run: `build_pc.bat` (optimized), `build_pc_test.bat` (a debug copy for tests
-while the game is open), `build_rl.bat` (the headless engine for training), `build_360.bat`, `run_pc.bat`,
-`run_xenia.bat` and `publish_360.bat`.
+while the game is open), `build_rl.bat` (the headless engine for training), `build_360.bat`, `build_web.bat`,
+`run_pc.bat`, `run_xenia.bat` and `publish_360.bat`.
 
 MUGEN files are little-endian while Xbox 360 is big-endian. Binary data is read through `core/util/bytes.h`, and runtime
 paths use forward slashes.

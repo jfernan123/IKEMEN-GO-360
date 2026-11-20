@@ -10,7 +10,7 @@
 
 namespace m360 {
 
-#ifndef M360_X360
+#ifdef M360_RL
 int runRlServer(const GameConfig &config, Settings &settings, const std::string &recordDir, bool show, bool trace);
 int runRlPool(const GameConfig &config, Settings &settings, int count, int threads);
 #endif

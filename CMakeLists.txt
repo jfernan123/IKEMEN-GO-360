@@ -1,6 +1,7 @@
 # mugen360: a MUGEN engine for the Xbox 360, ported from Ikemen-GO.
 #   PC (debugging):  build_pc.bat                     -> build/pc/mugen360.exe
 #   Xbox 360:        build_360.bat (WSL + xsdk)       -> build/x360/mugen360.xex
+#   Browser:         build_web.bat (Emscripten)       -> build/web/mugen360.js + .wasm
 cmake_minimum_required(VERSION 3.20)
 project(mugen360 C CXX)
 
@@ -45,12 +46,28 @@ if(XSDK)
 	set_source_files_properties(third_party/lodepng/lodepng.cpp third_party/audio_decoders.c third_party/truetype.c PROPERTIES COMPILE_OPTIONS "-w")
 	add_dependencies(mugen360 build_version)
 	xsdk_add_xex(mugen360)
+elseif(EMSCRIPTEN)
+	# The browser build (build_web.bat): the PC platform layer on Emscripten's SDL3 port, as mugen360.js + .wasm.
+	# Asyncify lets the main loop hand the browser each frame without being rewritten as a callback. The game's
+	# files come in a separate package (game.data, made by packaging/package_web.py), so they change without a rebuild.
+	set(CMAKE_EXECUTABLE_SUFFIX ".js")
+	add_executable(mugen360 ${CORE_SOURCES} src/platform/pc/platform_pc.cpp)
+	target_include_directories(mugen360 PRIVATE src third_party third_party/lodepng)
+	target_compile_options(mugen360 PRIVATE --use-port=sdl3 -O2)
+	target_compile_definitions(mugen360 PRIVATE M360_WEB=1)
+	target_link_options(mugen360 PRIVATE --use-port=sdl3 -O2 -sASYNCIFY -sASYNCIFY_STACK_SIZE=262144
+		-sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=256MB -sMAXIMUM_MEMORY=4GB -sSTACK_SIZE=8MB -sFORCE_FILESYSTEM=1
+		-sENVIRONMENT=web -sEXIT_RUNTIME=0 "-sEXPORTED_RUNTIME_METHODS=['FS']")
+	set_source_files_properties(third_party/lodepng/lodepng.cpp third_party/audio_decoders.c third_party/truetype.c PROPERTIES COMPILE_OPTIONS "-w")
+	add_dependencies(mugen360 build_version)
 else()
 	set(SDL3_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../tools/sdl3/SDL3-3.4.18/cmake" CACHE PATH "SDL3's CMake package")
 	find_package(SDL3 REQUIRED CONFIG)
 	add_executable(mugen360 ${CORE_SOURCES} src/platform/pc/platform_pc.cpp)
 	target_include_directories(mugen360 PRIVATE src third_party third_party/lodepng)
 	target_link_libraries(mugen360 PRIVATE SDL3::SDL3)
+	# The bridge to the reinforcement-learning trainer (src/app/rl_server.cpp) is Windows only.
+	target_compile_definitions(mugen360 PRIVATE M360_RL=1)
 	add_dependencies(mugen360 build_version)
 	if(MSVC)
 		target_compile_options(mugen360 PRIVATE /W4 /utf-8)

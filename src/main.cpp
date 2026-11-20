@@ -8,13 +8,14 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <functional>
 #include <map>
 #include <memory>
 #include <string>
 #include <vector>
-#ifndef M360_X360
+#ifdef M360_RL
 #include <condition_variable>
 #include <cstdio>
 #include <fcntl.h>
@@ -103,7 +104,7 @@ int main(int argc, char **argv)
 	// --p1pal N / --p2pal N: the fighters' palettes in a test run.
 	int32_t p1Pal = 0, p2Pal = 0;
 	bool checkRun = false, soakRun = false;
-#ifndef M360_X360
+#ifdef M360_RL
 	bool rlServer = false;
 	std::string rlRecordDir;
 	int rlPoolCount = 0, rlThreads = (int)std::max(1u, std::thread::hardware_concurrency());
@@ -180,7 +181,7 @@ int main(int argc, char **argv)
 			stageArg = argv[++i];
 		else if (arg == "--game" && i + 1 < argc)
 			config.game = argv[++i];
-#ifndef M360_X360
+#ifdef M360_RL
 		else if (arg == "--rl-server")
 			rlServer = true;
 		else if (arg == "--rl-record" && i + 1 < argc)
@@ -208,12 +209,12 @@ int main(int argc, char **argv)
 		}
 	}
 	const bool testRun = !inputPath.empty() || !shots.empty() || quitFrame != UINT32_MAX || checkRun || soakRun
-#ifndef M360_X360
+#ifdef M360_RL
 		|| rlServer
 #endif
 		;
 	const char *logName = testRun ? "m360.log" : "m360_play.log";
-#ifndef M360_X360
+#ifdef M360_RL
 	if (rlServer)
 		logName = nullptr;
 #endif
@@ -263,7 +264,7 @@ int main(int argc, char **argv)
 	if (!stageArg.empty())
 		config.stage = stageArg;
 	logf("game: p1=%s p2=%s stage=%s", config.player1.c_str(), config.player2.c_str(), config.stage.c_str());
-#ifndef M360_X360
+#ifdef M360_RL
 	if (rlServer) {
 		const int result = rlPoolCount > 0 ? runRlPool(config, settings, rlPoolCount, rlThreads)
 										   : runRlServer(config, settings, rlRecordDir, show, trace);

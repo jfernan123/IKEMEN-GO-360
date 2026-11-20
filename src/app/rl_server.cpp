@@ -2,7 +2,7 @@
 
 #include "app/rl_server.h"
 
-#ifndef M360_X360
+#ifdef M360_RL
 #include <algorithm>
 #include <chrono>
 #include <condition_variable>

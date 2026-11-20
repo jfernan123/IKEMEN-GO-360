@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <climits>
 #include <cmath>
+#include <cstdlib>
 
 #include "core/game/compat.h"
 #include "core/screens/layout.h"

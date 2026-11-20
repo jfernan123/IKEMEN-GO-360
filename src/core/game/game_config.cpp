@@ -1,6 +1,7 @@
 #include "core/game/game_config.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <vector>
 
 #include "core/util/file.h"

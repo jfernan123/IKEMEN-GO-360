@@ -25,7 +25,7 @@ bool isAbsolute(const std::string &path)
 
 bool rawExists(const std::string &path)
 {
-	std::FILE *f = std::fopen(path.c_str(), "rb");
+	std::FILE *f = std::fopen(platform::actualPath(path).c_str(), "rb");
 	if (!f)
 		return false;
 	std::fclose(f);
@@ -166,9 +166,9 @@ bool FileRanges::open(const std::string &path)
 {
 	std::FILE *f = nullptr;
 	if (!root.empty() && !isAbsolute(path))
-		f = std::fopen((root + path).c_str(), "rb");
+		f = std::fopen(platform::actualPath(root + path).c_str(), "rb");
 	if (!f)
-		f = std::fopen(path.c_str(), "rb");
+		f = std::fopen(platform::actualPath(path).c_str(), "rb");
 	if (!f)
 		return false;
 	file_ = f;
