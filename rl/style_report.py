@@ -19,7 +19,7 @@ from torch.distributions import Categorical
 from model import policy_from_checkpoint
 from pool_env import MugenPool
 
-# Places in a fighter's block of the observation (see rlObservation in src/main.cpp).
+# Places in a fighter's block of the observation (see src/core/ai/rl_observation.cpp).
 LIFE, STATE, STATE_TYPE, MOVE_TYPE, GUARDING = 0, 12, 14, 15, 8
 
 

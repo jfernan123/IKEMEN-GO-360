@@ -29,10 +29,16 @@ usable for games other than the included KFM test setup.
 |---|---|---|
 | Windows debug build | `build_pc.bat` -> `build\pc\mugen360.exe` | `run_pc.bat` |
 | Xbox 360 | `build_360.bat` -> `dist\mugen360\` | `run_xenia.bat`, or copy the folder to a console |
+| Browser (WebAssembly) | `build_web.bat` -> `dist\web\`, then `packaging\package_web.py` packs the game | any static host (Vercel, ...); locally `python -m http.server` in `dist\web` |
 
 The Windows build needs Visual Studio 2022 Build Tools, CMake, Ninja, and SDL3 at `..\tools\sdl3`. The Xbox 360
 build needs WSL Debian with xsdk at `~/xsdk` and its GCC toolchain at `~/xsdk-gcc`. The build creates
 `dist\mugen360\default.xex` and `dist\mugen360_360.zip`.
+
+The browser build needs the Emscripten SDK at `%USERPROFILE%\emsdk` (a path without spaces: under one, its tools
+reach it by two names and wipe each other's cache). It uses the PC platform layer on Emscripten's SDL3 port;
+`data/neural/neural_web.ini` picks the policy and opponents `package_web.py` packs (Vercel's free plan takes
+100 MB a deployment). Paths are matched without regard to case there (`platform::actualPath`), as on Windows.
 
 ## Controls
 
@@ -69,18 +75,33 @@ keyboard or mouse input to the desktop.
 
 ## Project layout
 
-- `src/core/` contains platform-independent engine code translated from Ikemen-GO.
-- `src/platform/platform.h` defines the platform boundary.
-- `src/platform/pc/` implements Windows video, input, and audio with SDL3.
-- `src/platform/x360/` implements the same interface with xsdk.
-- `data/` contains the current KFM character, stage, common states, effects, and sounds.
-- `data/mugen360.ini` chooses the two character definitions and stage loaded at startup.
-- `tests/` contains unit tests and scripted fight regressions.
-- `data/ikemen1/` is Ikemen's default screenpack (system.def), `data/fight.def` its fight screen; songs go in
-  `data/ikemen1/sound/` (none ship with Ikemen).
-- `third_party/` contains lodepng, dr_mp3 and stb_vorbis.
+| Path | What |
+|---|---|
+| `src/main.cpp` | The entry point: command line, settings, and the screens one frame at a time. |
+| `src/app/` | What runs the engine: the fight (`stage_demo.h`, StageDemo), shared fight assets, test input scripts, the debug viewers, `--soak`, and the RL bridge (`rl_server`, PC only). |
+| `src/core/` | The engine, translated from Ikemen-GO, with no platform code. By folder: |
+| `src/core/fight/` | characters and their state machine (`character`), hits, projectiles, effects, rounds (`match`), camera, stages and backgrounds |
+| `src/core/script/` | CNS/CMD state loading, the trigger expression language, input buffers and command matching |
+| `src/core/formats/` | MUGEN file formats: SFF sprites, AIR animations, SND sounds, fonts |
+| `src/core/screens/` | screenpacks (`motif`, `layout`) and every screen: title, select, VS, fight screen, options, pause, victory, continue, storyboards |
+| `src/core/game/` | game folders and select.def (`game_config`), arcade routes, settings, music, the compatibility report |
+| `src/core/ai/` | MUGEN's random AI, SmartAI, the neural policy and the observation it sees |
+| `src/core/render/` | the sprite renderer and the debug font |
+| `src/core/util/` | files, INI, text, logging, the byte reader, the build version |
+| `src/platform/` | `platform.h`, the platform boundary; `pc/` implements it with SDL3, `x360/` with xsdk |
+| `tests/` | unit tests (`*_test.cpp`), scripted fights (`inputs/`), fixtures and a test game folder; `run_all.bat` runs it all |
+| `data/` | KFM, his stage, the common states, effects and sounds; `ikemen1/` (Ikemen's screenpack) and `fight.def`; `neural/` (exported policies); `mugen360.ini` (what loads at startup) |
+| `rl/` | reinforcement learning for neural fighters (PC only): see `rl/README.md` |
+| `packaging/` | `package_pc.py` and `package_neural_360.py` zip a game with the engine; `package_web.py` packs it for the browser build |
+| `web/` | `index.html`, the browser build's page |
+| `xbox_updater/` | the tool beside a friend's console that installs new GitHub releases |
+| `third_party/` | lodepng, dr_mp3, stb_vorbis, stb_truetype |
 
-MUGEN files are little-endian while Xbox 360 is big-endian. Binary data is read through `core/bytes.h`, and runtime
+The batch files in this folder build and run: `build_pc.bat` (optimized), `build_pc_test.bat` (a debug copy for tests
+while the game is open), `build_rl.bat` (the headless engine for training), `build_360.bat`, `build_web.bat`,
+`run_pc.bat`, `run_xenia.bat` and `publish_360.bat`.
+
+MUGEN files are little-endian while Xbox 360 is big-endian. Binary data is read through `core/util/bytes.h`, and runtime
 paths use forward slashes.
 
 ## Milestones
@@ -117,11 +138,11 @@ paths use forward slashes.
      ChangeAnim2 plays the attacker's actions); juggle points; AssertSpecial (walk, turn, guard, visibility flags);
      DefenceMulSet; players push only where hurt boxes touch. `tests/inputs/guard.txt` (with `--input2
      tests/inputs/guard_p2.txt` for player 2), `falls.txt` and `specials.txt` (the throw).
-   - 6c life and rounds (done): the round in Ikemen's order and timings (`core/match`): state 5900, intros
+   - 6c life and rounds (done): the round in Ikemen's order and timings (`core/fight/match`): state 5900, intros
      (AssertSpecial Intro holds the round), "Round N" / "Fight", the 99-second clock, KO (5030, KO slowdown), double
      KO and time over (decided on life), win / lose / draw poses (180 / 170 / 175), best of three, then a new match;
      RoundState, RoundNo, RoundsExisted, Win, Lose, DrawGame, MatchOver, Alive. Power from hits (getpower /
-     givepower and MUGEN's defaults). A plain fight screen (`core/hud`): lifebars with a red damage trail, power
+     givepower and MUGEN's defaults). A plain fight screen (`core/screens/hud`): lifebars with a red damage trail, power
      gauges with levels, the clock, round wins, announcements. `tests/inputs/match.txt` plays a whole match,
      `timeover.txt` a time over; the other scripts take `--quickstart` to skip the intros.
    - 6d effects and sound (done for KFM)
@@ -186,13 +207,13 @@ paths use forward slashes.
 
 8. Screenpack, menus and music (done): the fight screen, title menu, select and VS screens from a MUGEN /
    Ikemen screenpack, Ikemen's default "ikemen1" skin (`data/fight.def`, `data/ikemen1/system.def`).
-   - 8a foundations (done): MUGEN bitmap fonts (`core/font`: FNT v1 .fnt files and FNT v2 .def + .sff, colour banks,
+   - 8a foundations (done): MUGEN bitmap fonts (`core/formats/font`: FNT v1 .fnt files and FNT v2 .def + .sff, colour banks,
      alignment; TrueType fonts are refused), backgrounds as a reusable `BgDef` read by section prefix ("BG" for
-     stages, "TitleBG" / "SelectBG" / "VersusBG" for screenpacks), and the screenpack layout keys (`core/layout`:
+     stages, "TitleBG" / "SelectBG" / "VersusBG" for screenpacks), and the screenpack layout keys (`core/screens/layout`:
      .spr / .anim / .font / .text with .offset, .facing, .scale, .layerno). Sound files are kept as they are and each
      sound decodes the first time it plays, so the 6 MB fight.snd doesn't become tens of MB. The ikemen1 screenpack
      files and the MUGEN fonts are in `data/`. `tests/screenpack_test.cpp` loads them.
-   - 8b fight screen (done): `core/fight_screen` draws Ikemen's fight screen from `fight.def` (`[Game] fight` in
+   - 8b fight screen (done): `core/screens/fight_screen` draws Ikemen's fight screen from `fight.def` (`[Game] fight` in
      `data/mugen360.ini`): slanted lifebars whose red part waits out the combo then drains, power bars with the level
      number and level-up sounds, portraits (9000,0 in the character's palette), names, the clock, win icons, the combo
      counter sliding in with hits / damage / percent, and the round calls ("Round N", "Fight", KO, double KO, time
@@ -202,8 +223,8 @@ paths use forward slashes.
      "Fight", 300 ticks of ending) and waits for the calls as Ikemen's does. Without a fight.def the plain HUD and
      default timings remain. Not yet: team modes, guard / stun bars, red life, [Action] messages, perfect / clutch
      wins, the vs-CPU win and lose calls.
-   - 8c title screen (done): `core/motif` loads a screenpack's system.def (`[Game] motif` in `data/mugen360.ini`), and
-     `core/title_screen` draws Ikemen's title from `[Title Info]` and TitleBG: the background (with sin.x / sin.y
+   - 8c title screen (done): `core/screens/motif` loads a screenpack's system.def (`[Game] motif` in `data/mugen360.ini`), and
+     `core/screens/title_screen` draws Ikemen's title from `[Title Info]` and TitleBG: the background (with sin.x / sin.y
      motion, now in `BgDef`), the menu built from the `menu.itemname.` keys in file order (`IniSection::keys`), its
      scrolling window and tween, active-item font, move / done / cancel sounds, fades and the footer; fonts can be
      named by file. Modes that can't run yet are left out of the menu; a submenu left with one mode runs it directly
@@ -211,7 +232,7 @@ paths use forward slashes.
      quick match and training are a versus match against the computer until stages 10 and 11, options shows a notice.
      Back leaves a fight for the select screen and the select screen for the title. `--title` runs it in a test
      (`tests/inputs/title.txt`). Not yet: the logo storyboard, demo and attract modes, the info box, music.
-   - 8d select screen (done): `core/select_screen` (`MotifSelect`) is Ikemen's select screen from `[Select Info]` and
+   - 8d select screen (done): `core/screens/select_screen` (`MotifSelect`) is Ikemen's select screen from `[Select Info]` and
      SelectBG (start.lua): the grid with ikemen1's per-row overrides (spacing, offset, scale, 3D tilt), each side's
      eased cursor, the big portraits (the character's stance animation and 9000,1 turned in perspective, then its
      181 "done" animation), names, the mode's title, the Color palette menu (next / previous / "?" random), the stage
@@ -222,14 +243,14 @@ paths use forward slashes.
      is made (ikemen1's system.sff was 426 MB decoded, more than the console has), and all textures together stay
      under a 224 MB budget, the least recently drawn freed first (the 360 frees them a few frames later, once no draw
      in flight uses them). Not yet: team modes, the select timer.
-   - 8e VS screen (done): `core/versus_screen` (`VersusScreen`) is Ikemen's VS screen from `[VS Screen]` and
+   - 8e VS screen (done): `core/screens/versus_screen` (`VersusScreen`) is Ikemen's VS screen from `[VS Screen]` and
      VersusBG (start.lua's f_selectVersus): both characters' portraits (ikemen1: their stance animation in the chosen
      palette, centred by `padding` and clipped to their windows), the names, the stage's portrait in its frame and
      "Next Stage: ...", Arcade's "Match 1", between VersusBG's layers, with its fades. It lasts `time` (390 ticks in
      ikemen1) after fading in; an attack button or Start cuts it short (a computer's pad doesn't). The select screen
      hands it the picks after its own fade out, replacing the plain VS text. Not yet: team order select, the timer,
      background loading, face2.
-   - 8f music (done): `core/music` is Ikemen's Bgm: one song at a time, MP3 (dr_mp3), Ogg Vorbis (stb_vorbis) or WAV,
+   - 8f music (done): `core/game/music` is Ikemen's Bgm: one song at a time, MP3 (dr_mp3), Ogg Vorbis (stb_vorbis) or WAV,
      decoded about 85 ms at a time into a one-second queue each platform mixes under the sounds
      (`platform::queueMusic`), so a song never sits decoded in memory. It's resampled to 48 kHz, played at Ikemen's
      music volume (2 ^ (-5 + 75 * 0.06 * volume / 100)) and loops between its loop points. The screenpack's `[Music]`
@@ -256,7 +277,7 @@ paths use forward slashes.
      yet ("not read yet: ..."). The select screen reads a stage's portraitscale from
      [StageInfo], as Ikemen does. Not included: the 3D stages (glTF models) and interactivestage's attached
      character (a ZSS script).
-   - 9b camera (done): `core/camera` is now a translation of Ikemen's fighting camera (camera.go Reset / Init /
+   - 9b camera (done): `core/fight/camera` is now a translation of Ikemen's fighting camera (camera.go Reset / Init /
      action / reduceZoomSpeed / keepScreenEdge / boundY, without the Z axis or autozoom) instead of the simplified
      one: the edges ease toward keeping both players inside the tension margins, the camera zooms between the
      stage's zoomout and zoomin (startzoom, zoomindelay, zoominspeed, zoomoutspeed), follows the highest player by
@@ -331,7 +352,7 @@ paths use forward slashes.
    - Not included in stage 10: Tag teams (an Ikemen system), more than two members a side, the smarter AI option.
 
 11. Options and saving (done): Ikemen's options and config.ini.
-   - 11a settings (done): `core/settings` holds the options mugen360 uses, with Ikemen's defaults and ranges
+   - 11a settings (done): `core/game/settings` holds the options mugen360 uses, with Ikemen's defaults and ranges
      (defaultConfig.ini, config.go): Difficulty (the computer's AI level; 5, where mugen360 used 8 before), Life %,
      Time (counts, -1 none, drawn as "o"), GameSpeed, Match.Wins, Match.MaxDrawGames, Simul.Match.Wins, Master / Wav
      / BGM volume, and each player's button mapping ([Joystick_Pn]). They load from and save to `save/config.ini`
@@ -339,7 +360,7 @@ paths use forward slashes.
      Ikemen applies them: rounds to win and draws replace fight.def's match.wins ("Replaced by ingame options"), the
      clock is Time x framespercount, life is scaled, game speed changes ticks a second, volumes scale music and
      sounds, the pads go through the mapping. Test runs keep the defaults whatever is saved.
-   - 11b options screen (done): the title's OPTIONS opens Ikemen's options screen (`core/options_screen`, from
+   - 11b options screen (done): the title's OPTIONS opens Ikemen's options screen (`core/screens/options_screen`, from
      [Option Info] and OptionBG; options.lua's menu and handlers, main.lua's f_menuCommonDraw): Game Settings
      (Difficulty, Time Limit, Life, Game Speed, Rounds to Win, Max Draw Games, Simul Settings), Audio Settings
      (Master / BGM / SFX volume, applied at once), Input Settings (Default), Default Values, Save and Return, Return
@@ -362,14 +383,14 @@ paths use forward slashes.
      else `data/system.def`), its [Files] select and fight looked up from the motif's folder, the game and `data/`,
      then select.def's [Characters] (stage .defs, includestage, slot = { a | b }, exclude = 1, randomselect) and
      [ExtraStages], with the characters' stages after the extra ones. Files are found with Ikemen's SearchFile
-     (`core/file`'s `searchFile`: "kfm" is chars/kfm/kfm.def or data/chars/...), and the folder is the file root:
+     (`core/util/file`'s `searchFile`: "kfm" is chars/kfm/kfm.def or data/chars/...), and the folder is the file root:
      the game's files first, mugen360's own (fonts, common1.cns) for anything it lacks. A folder that can't be read
      falls back to mugen360's content. `tests/game` is a small game folder using the bundled characters.
      Not yet: dummyslot / skipslot / blank cells, per-character music and arcade order, mugen.cfg's other options.
    - 13b compatibility report (done): `mugen360 --check [folder]` loads a game's screenpack, fight screen, every
      character and every stage without playing, and writes `compat_<game>.txt`: what loads (or why not), packed
      sprite sizes, and the features mugen360 lacks, ranked by how many characters / stages use them. The loaders
-     note into `core/compat`: unknown controller types and triggers, expressions that don't parse, SFF versions,
+     note into `core/game/compat`: unknown controller types and triggers, expressions that don't parse, SFF versions,
      stage keys and background types / trans / BGCtrl types not read yet; controllers that run as no-ops note
      themselves when they run. A character's files are now found as Ikemen's char.go finds them (next to the .def,
      the game's root, data/). `tests/game/chars/oddkfm` is KFM's files plus a state with an unknown controller and
@@ -398,15 +419,15 @@ paths use forward slashes.
    - 13e the game's screens (done):
      - A startup loading screen is presented before an external game's large screenpack and sprite files load, so
        a console or Xenia gives immediate visual confirmation that `default.xex` started.
-     - Storyboards (`core/storyboard`, Ikemen's storyboard.go): scenes with clear colour, background, layers
+     - Storyboards (`core/screens/storyboard`, Ikemen's storyboard.go): scenes with clear colour, background, layers
        (animations, sprites, typed text), sounds, music, fades, end time, jump; clearcolor / layerall.pos carried
        over. The screenpack's logo and intro play before the title; a character's arcade intro before its first
        match and its ending after its last, then [End Credits], then the title. Start skips a scene; a button or
        Back cancels. Test runs skip them unless `--storyboards`.
-     - Victory screen (`core/victory_screen`, MotifVictory): VictoryBG, winner and loser portraits, the winner's
+     - Victory screen (`core/screens/victory_screen`, MotifVictory): VictoryBG, winner and loser portraits, the winner's
        name and its victory quote ([Quotes] victoryN, the VictoryQuote controller) typed and wrapped. After a decided
        match in Arcade, Versus, Quick Match and Watch.
-     - Continue screen (`core/continue_screen`, MotifContinue): MUGEN's legacy yes / no and Ikemen's countdown, over
+     - Continue screen (`core/screens/continue_screen`, MotifContinue): MUGEN's legacy yes / no and Ikemen's countdown, over
        the lost arcade fight's last frame. Yes replays the match; no plays [Game Over Screen]'s storyboard, then the
        title. Not yet: the characters' continue poses.
      - Select timer (timer.count / framespercount / displaytime): when it runs out, what's under the cursor is
@@ -425,7 +446,7 @@ paths use forward slashes.
      unless supermovetime / pausemovetime (Ikemen's pauseStatus), Explod vel, ownpal (an Explod takes its owner's
      PalFX, `FightEffects::setOwnerColour`), Explod shadow and projshadow, AfterImage palpostbright. Character PalFX is
      rounded to steps of 8, as the stage's, so a flash doesn't make new textures every tick.
-   - Pause menu (`core/pause_menu`, Ikemen's menu.lua): Back in a fight opens it over the frozen fight, from the
+   - Pause menu (`core/screens/pause_menu`, Ikemen's menu.lua): Back in a fight opens it over the frozen fight, from the
      screenpack's [Pause Menu] (in its localcoord) or Ikemen's defaults (320x240): Continue, Command List (the
      character's [Files] movelist with Ikemen's glyphs from `data/glyphs.sff`), Character Change, Exit; hidebars.
      Not yet: Button Config, the training pause menu, [PauseBgDef]. Test: `tests/inputs/pause.txt` (script key `m` is
@@ -438,11 +459,10 @@ paths use forward slashes.
      default.log gets "memory:" lines. DC vs MARVEL's peak memory over five fights went from 332 MB to 197 MB on PC.
      Textures on the 360 share 1 MB blocks in 4 KB pages instead of a 64 KB page each (`platform_x360` texture
      blocks), the first step of milestone 12.
-   - A PC-only reinforcement-learning pipeline lives in `rl/`. The hidden `--rl-server` interface advances fights
-     through normal controller inputs and exposes both players' state and current collision boxes. Recurrent PPO
-     trains one character-conditioned policy over random DC vs MARVEL roster matchups, first against SmartAI and
-     later against a pool of frozen policy snapshots. See `rl/README.md`; generated environments and weights stay
-     outside git.
+   - A PC-only reinforcement-learning pipeline lives in `rl/`. `--rl-pool N` runs N headless fights in one process
+     (`src/app/rl_server.cpp`), played through normal controller inputs. Recurrent PPO trains a policy per
+     character, with self-play leagues, life curricula and specialists distilled into one network; exported policies
+     play in the game's VS NEURAL CAP mode. See `rl/README.md`; generated environments and weights stay outside git.
 
 ## Asset notice
 

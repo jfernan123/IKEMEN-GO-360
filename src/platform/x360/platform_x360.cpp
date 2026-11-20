@@ -677,6 +677,12 @@ bool readWholeFile(const char *path, std::vector<uint8_t> &out)
 	return done == (size_t)info.st_size;
 }
 
+// The 360's file systems (FATX, the USB drive's FAT) ignore case already.
+std::string actualPath(const std::string &path)
+{
+	return path;
+}
+
 bool writeWholeFile(const char *path, const std::string &data)
 {
 	const int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);

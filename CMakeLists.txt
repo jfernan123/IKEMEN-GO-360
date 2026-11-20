@@ -1,58 +1,28 @@
 # mugen360: a MUGEN engine for the Xbox 360, ported from Ikemen-GO.
 #   PC (debugging):  build_pc.bat                     -> build/pc/mugen360.exe
 #   Xbox 360:        build_360.bat (WSL + xsdk)       -> build/x360/mugen360.xex
+#   Browser:         build_web.bat (Emscripten)       -> build/web/mugen360.js + .wasm
 cmake_minimum_required(VERSION 3.20)
 project(mugen360 C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# The engine's core, by folder (src/core/<folder>/): no platform code, shared by the game and the unit tests.
+set(ENGINE_SOURCES
+	src/core/ai/ai.cpp src/core/ai/neural_policy.cpp src/core/ai/rl_observation.cpp src/core/ai/smart_ai.cpp
+	src/core/fight/bgdef.cpp src/core/fight/camera.cpp src/core/fight/character.cpp src/core/fight/effects.cpp src/core/fight/hitdef.cpp src/core/fight/match.cpp src/core/fight/projectile.cpp src/core/fight/stage.cpp
+	src/core/formats/air.cpp src/core/formats/font.cpp src/core/formats/sff.cpp src/core/formats/sound.cpp
+	src/core/game/compat.cpp src/core/game/game_config.cpp src/core/game/game_flow.cpp src/core/game/music.cpp src/core/game/settings.cpp
+	src/core/render/debug_text.cpp src/core/render/sprite_renderer.cpp
+	src/core/screens/continue_screen.cpp src/core/screens/fight_screen.cpp src/core/screens/hud.cpp src/core/screens/layout.cpp src/core/screens/motif.cpp src/core/screens/neural_select.cpp src/core/screens/options_screen.cpp src/core/screens/pause_menu.cpp src/core/screens/select.cpp src/core/screens/select_screen.cpp src/core/screens/storyboard.cpp src/core/screens/title_screen.cpp src/core/screens/versus_screen.cpp src/core/screens/victory_screen.cpp
+	src/core/script/expr.cpp src/core/script/input.cpp src/core/script/states.cpp
+	src/core/util/file.cpp src/core/util/ini.cpp src/core/util/log.cpp src/core/util/text.cpp
+)
+
 set(CORE_SOURCES
-	src/main.cpp
-	src/core/ai.cpp
-	src/core/smart_ai.cpp
-	src/core/air.cpp
-	src/core/bgdef.cpp
-	src/core/camera.cpp
-	src/core/character.cpp
-	src/core/debug_text.cpp
-	src/core/effects.cpp
-	src/core/expr.cpp
-	src/core/fight_screen.cpp
-	src/core/compat.cpp
-	src/core/continue_screen.cpp
-	src/core/file.cpp
-	src/core/font.cpp
-	src/core/game_flow.cpp
-	src/core/game_config.cpp
-	src/core/hitdef.cpp
-	src/core/hud.cpp
-	src/core/ini.cpp
-	src/core/input.cpp
-	src/core/layout.cpp
-	src/core/log.cpp
-	src/core/match.cpp
-	src/core/motif.cpp
-	src/core/options_screen.cpp
-	src/core/music.cpp
-	src/core/pause_menu.cpp
-	src/core/select.cpp
-	src/core/select_screen.cpp
-	src/core/settings.cpp
-	src/core/projectile.cpp
-	src/core/rl_observation.cpp
-	src/core/neural_policy.cpp
-	src/core/neural_select.cpp
-	src/core/sff.cpp
-	src/core/sound.cpp
-	src/core/sprite_renderer.cpp
-	src/core/stage.cpp
-	src/core/storyboard.cpp
-	src/core/states.cpp
-	src/core/text.cpp
-	src/core/title_screen.cpp
-	src/core/versus_screen.cpp
-	src/core/victory_screen.cpp
+	src/main.cpp src/app/rl_server.cpp src/app/soak.cpp
+	${ENGINE_SOURCES}
 	third_party/lodepng/lodepng.cpp
 	third_party/audio_decoders.c
 	third_party/truetype.c
@@ -76,12 +46,28 @@ if(XSDK)
 	set_source_files_properties(third_party/lodepng/lodepng.cpp third_party/audio_decoders.c third_party/truetype.c PROPERTIES COMPILE_OPTIONS "-w")
 	add_dependencies(mugen360 build_version)
 	xsdk_add_xex(mugen360)
+elseif(EMSCRIPTEN)
+	# The browser build (build_web.bat): the PC platform layer on Emscripten's SDL3 port, as mugen360.js + .wasm.
+	# Asyncify lets the main loop hand the browser each frame without being rewritten as a callback. The game's
+	# files come in a separate package (game.data, made by packaging/package_web.py), so they change without a rebuild.
+	set(CMAKE_EXECUTABLE_SUFFIX ".js")
+	add_executable(mugen360 ${CORE_SOURCES} src/platform/pc/platform_pc.cpp)
+	target_include_directories(mugen360 PRIVATE src third_party third_party/lodepng)
+	target_compile_options(mugen360 PRIVATE --use-port=sdl3 -O2)
+	target_compile_definitions(mugen360 PRIVATE M360_WEB=1)
+	target_link_options(mugen360 PRIVATE --use-port=sdl3 -O2 -sASYNCIFY -sASYNCIFY_STACK_SIZE=262144
+		-sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=256MB -sMAXIMUM_MEMORY=4GB -sSTACK_SIZE=8MB -sFORCE_FILESYSTEM=1
+		-sENVIRONMENT=web -sEXIT_RUNTIME=0 "-sEXPORTED_RUNTIME_METHODS=['FS']")
+	set_source_files_properties(third_party/lodepng/lodepng.cpp third_party/audio_decoders.c third_party/truetype.c PROPERTIES COMPILE_OPTIONS "-w")
+	add_dependencies(mugen360 build_version)
 else()
 	set(SDL3_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../tools/sdl3/SDL3-3.4.18/cmake" CACHE PATH "SDL3's CMake package")
 	find_package(SDL3 REQUIRED CONFIG)
 	add_executable(mugen360 ${CORE_SOURCES} src/platform/pc/platform_pc.cpp)
 	target_include_directories(mugen360 PRIVATE src third_party third_party/lodepng)
 	target_link_libraries(mugen360 PRIVATE SDL3::SDL3)
+	# The bridge to the reinforcement-learning trainer (src/app/rl_server.cpp) is Windows only.
+	target_compile_definitions(mugen360 PRIVATE M360_RL=1)
 	add_dependencies(mugen360 build_version)
 	if(MSVC)
 		target_compile_options(mugen360 PRIVATE /W4 /utf-8)
@@ -92,11 +78,10 @@ else()
 		COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:SDL3::SDL3> $<TARGET_FILE_DIR:mugen360>)
 
 	# Unit tests for the engine's core, no platform: build\pc\mugen360_tests.exe, run from this folder.
-	add_executable(mugen360_tests tests/expr_test.cpp tests/states_test.cpp tests/effects_sound_test.cpp tests/combat_test.cpp tests/game_flow_test.cpp
-		tests/legacy_test.cpp tests/music_test.cpp tests/screenpack_test.cpp tests/stage_test.cpp tests/settings_test.cpp tests/game_test.cpp tests/neural_test.cpp
-		src/core/expr.cpp src/core/air.cpp src/core/bgdef.cpp src/core/camera.cpp src/core/character.cpp src/core/fight_screen.cpp src/core/match.cpp src/core/motif.cpp src/core/music.cpp src/core/options_screen.cpp src/core/select_screen.cpp src/core/settings.cpp src/core/title_screen.cpp src/core/versus_screen.cpp src/core/victory_screen.cpp src/core/effects.cpp src/core/compat.cpp src/core/continue_screen.cpp src/core/file.cpp src/core/font.cpp src/core/game_flow.cpp src/core/game_config.cpp src/core/hitdef.cpp src/core/ini.cpp src/core/input.cpp src/core/layout.cpp src/core/log.cpp src/core/sff.cpp src/core/sound.cpp src/core/stage.cpp src/core/storyboard.cpp
-		src/core/debug_text.cpp src/core/neural_policy.cpp src/core/projectile.cpp src/core/sprite_renderer.cpp src/core/states.cpp src/core/text.cpp third_party/lodepng/lodepng.cpp
-		third_party/audio_decoders.c third_party/truetype.c)
+	add_executable(mugen360_tests
+		tests/combat_test.cpp tests/effects_sound_test.cpp tests/expr_test.cpp tests/game_flow_test.cpp tests/game_test.cpp tests/legacy_test.cpp
+		tests/music_test.cpp tests/neural_test.cpp tests/screenpack_test.cpp tests/settings_test.cpp tests/stage_test.cpp tests/states_test.cpp
+		${ENGINE_SOURCES} third_party/lodepng/lodepng.cpp third_party/audio_decoders.c third_party/truetype.c)
 	target_include_directories(mugen360_tests PRIVATE src third_party third_party/lodepng)
 	if(MSVC)
 		target_compile_options(mugen360_tests PRIVATE /W4 /utf-8)

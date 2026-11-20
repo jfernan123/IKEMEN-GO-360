@@ -1,9 +1,21 @@
 // The PC platform: SDL3's renderer in a 1280x720 window, keyboard and gamepads, logging to the console and m360.log.
+// The browser build (M360_WEB, Emscripten) uses it too: the window is the page's canvas, and each frame hands control
+// back to the browser (Asyncify) instead of sleeping.
 
 #include <SDL3/SDL.h>
 
 #include <cstdio>
+#ifdef _WIN32
 #include <direct.h>
+#else
+#include <dirent.h>
+#include <map>
+#include <strings.h>
+#include <sys/stat.h>
+#endif
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 #include <algorithm>
 #include <string>
 #include <vector>
@@ -86,7 +98,12 @@ bool init(bool hidden, const char *logName)
 		logLine(SDL_GetError());
 		return false;
 	}
+#ifdef __EMSCRIPTEN__
+	// The canvas keeps 1280x720 pixels; the page scales it to fit (web/index.html).
+	const SDL_WindowFlags flags = 0;
+#else
 	const SDL_WindowFlags flags = hidden ? SDL_WINDOW_HIDDEN : SDL_WINDOW_RESIZABLE;
+#endif
 	if (!SDL_CreateWindowAndRenderer("mugen360", SCREEN_WIDTH, SCREEN_HEIGHT, flags, &window, &renderer)) {
 		logLine(SDL_GetError());
 		return false;
@@ -221,10 +238,18 @@ void endFrame()
 	const Uint64 frame_ns = 1000000000ull / 60;
 	next_frame_ns += frame_ns;
 	const Uint64 now = SDL_GetTicksNS();
+#ifdef __EMSCRIPTEN__
+	// The browser shows the frame and handles input only once the page gets control back: always yield, even when
+	// behind (Asyncify unwinds the game loop here and resumes it after the wait).
+	if (now - next_frame_ns > 100000000ull && now > next_frame_ns)
+		next_frame_ns = now;
+	emscripten_sleep(now < next_frame_ns ? (unsigned)((next_frame_ns - now) / 1000000) : 0);
+#else
 	if (now < next_frame_ns)
 		SDL_DelayNS(next_frame_ns - now);
 	else if (now - next_frame_ns > 100000000ull)
 		next_frame_ns = now;
+#endif
 }
 
 Texture *createTexture(int width, int height, const uint32_t *argb)
@@ -381,9 +406,55 @@ bool freeMemory(size_t &)
 
 void freeDestroyedTextures() {}
 
+#ifdef _WIN32
+std::string actualPath(const std::string &path)
+{
+	return path;
+}
+#else
+std::string actualPath(const std::string &path)
+{
+	struct stat info;
+	if (path.empty() || stat(path.c_str(), &info) == 0)
+		return path;
+	// Each folder's names, listed once: the browser's files never change under the game (save/ is written by name).
+	static std::map<std::string, std::vector<std::string>> listings;
+	std::string found = path[0] == '/' ? "/" : "";
+	size_t start = found.size();
+	while (start <= path.size()) {
+		size_t end = path.find_first_of("/\\", start);
+		if (end == std::string::npos)
+			end = path.size();
+		const std::string part = path.substr(start, end - start);
+		start = end + 1;
+		if (part.empty() || part == ".")
+			continue;
+		const std::string folder = found.empty() ? "." : found;
+		auto listing = listings.find(folder);
+		if (listing == listings.end()) {
+			std::vector<std::string> names;
+			if (DIR *d = opendir(folder.c_str())) {
+				while (dirent *e = readdir(d))
+					names.push_back(e->d_name);
+				closedir(d);
+			}
+			listing = listings.emplace(folder, std::move(names)).first;
+		}
+		const auto match = std::find_if(listing->second.begin(), listing->second.end(),
+			[&part](const std::string &name) { return strcasecmp(name.c_str(), part.c_str()) == 0; });
+		if (match == listing->second.end())
+			return path;
+		found += *match;
+		if (start <= path.size())
+			found += '/';
+	}
+	return found;
+}
+#endif
+
 bool readWholeFile(const char *path, std::vector<uint8_t> &out)
 {
-	std::FILE *f = std::fopen(path, "rb");
+	std::FILE *f = std::fopen(actualPath(path).c_str(), "rb");
 	if (!f)
 		return false;
 	std::fseek(f, 0, SEEK_END);
@@ -400,8 +471,13 @@ bool writeWholeFile(const char *path, const std::string &data)
 {
 	// The folder first, as Ikemen makes save/ when it's missing.
 	const std::string folder = std::string(path).substr(0, std::string(path).find_last_of('/') + 1);
-	if (!folder.empty())
+	if (!folder.empty()) {
+#ifdef _WIN32
 		_mkdir(folder.c_str());
+#else
+		mkdir(folder.c_str(), 0755);
+#endif
+	}
 	std::FILE *f = std::fopen(path, "wb");
 	if (!f)
 		return false;

@@ -92,6 +92,10 @@ bool readWholeFile(const char *path, std::vector<uint8_t> &out);
 // Writes a whole file, replacing it, in a folder that exists (the settings in save/; the 360's package ships the
 // folder, as xsdk has no mkdir).
 bool writeWholeFile(const char *path, const std::string &data);
+// The path as the file is named on disk. MUGEN games are made on Windows, where "Gotham.def" opens "gotham.def": on
+// Windows and the 360 (case-insensitive file systems) this is the path itself; elsewhere (the browser build) each part
+// is matched without regard to case. A path that matches nothing comes back as it was.
+std::string actualPath(const std::string &path);
 
 // Writes a line to the platform's log.
 void logLine(const char *line);

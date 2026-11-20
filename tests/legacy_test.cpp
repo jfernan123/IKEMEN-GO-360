@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-#include "core/sff.h"
+#include "core/formats/sff.h"
 
 using namespace m360;
 

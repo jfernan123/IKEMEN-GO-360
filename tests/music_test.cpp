@@ -7,9 +7,9 @@
 #include <string>
 #include <vector>
 
-#include "core/file.h"
-#include "core/motif.h"
-#include "core/music.h"
+#include "core/util/file.h"
+#include "core/screens/motif.h"
+#include "core/game/music.h"
 
 using namespace m360;
 

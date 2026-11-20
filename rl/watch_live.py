@@ -21,7 +21,7 @@ from mugen_env import MugenEnv
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--game", default="DC vs MARVEL 2025")
-    parser.add_argument("--exe", default="build/pc_test/mugen360.exe", help="a build with the RL server's --show")
+    parser.add_argument("--exe", default="build/pc/mugen360.exe", help="a build with the RL server's --show")
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--p1", required=True)
     parser.add_argument("--p2", required=True)

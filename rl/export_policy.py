@@ -1,4 +1,4 @@
-"""Writes a trained policy for the game's neural CPU (core/neural_policy.cpp): the network's weights without PyTorch.
+"""Writes a trained policy for the game's neural CPU (core/ai/neural_policy.cpp): the network's weights without PyTorch.
 
 Format, little-endian: "M3NN", u32 version (1), u32 observation size, u32 hidden size, u32 skills, the roster
 (u32 count, then each character's .def path as u16 length + bytes, in the checkpoint's id order), then the tensors

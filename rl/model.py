@@ -99,7 +99,7 @@ def add_skills(model: dict, skills: int) -> dict:
 
 def add_buttons(model: dict, size: str, buttons: int, old_scale: float = 0.3) -> dict:
     """A checkpoint with the original eight button choices (none, x, y, z, a, b, c, start), given the presses of two
-    or more attack buttons as choices 8 on (src/core/rl_observation: rlButtonMask). Each new choice's output starts
+    or more attack buttons as choices 8 on (src/core/ai/rl_observation: rlButtonMask). Each new choice's output starts
     as the average of its buttons' outputs, lowered so that all of them together get about old_scale of the
     probability: the policy plays as before, and a combination its single buttons favour is tried most."""
     key = "button.weight" if size == "small" else "button.2.weight"
@@ -117,6 +117,25 @@ def add_buttons(model: dict, size: str, buttons: int, old_scale: float = 0.3) ->
     model = dict(model)
     model[key] = torch.cat((weight, torch.stack(rows)))
     model[key.replace("weight", "bias")] = torch.cat((bias, torch.stack(biases) + offset))
+    return model
+
+
+def widen_observation(model, old_size, new_size):
+    """An older checkpoint's weights for a larger observation. Both layouts are [fighter][fighter][5 shared values], and
+    the newer one only adds values at the end of each fighter's block (its helpers and projectiles), so every old input
+    keeps its weights and each added input starts at zero: the widened network plays exactly like the old one until
+    training teaches it to use them."""
+    old_fighter, new_fighter = (old_size - 5) // 2, (new_size - 5) // 2
+    if new_fighter < old_fighter or old_size - 2 * old_fighter != 5 or new_size - 2 * new_fighter != 5:
+        raise ValueError(f"can't widen a {old_size}-value observation to {new_size}")
+    weight = model["encoder.0.weight"]
+    widened = weight.new_zeros((weight.shape[0], weight.shape[1] - old_size + new_size))
+    for side in range(2):
+        widened[:, side * new_fighter:side * new_fighter + old_fighter] =             weight[:, side * old_fighter:(side + 1) * old_fighter]
+    widened[:, 2 * new_fighter:new_size] = weight[:, 2 * old_fighter:old_size]
+    widened[:, new_size:] = weight[:, old_size:]  # the two character embeddings
+    model = dict(model)
+    model["encoder.0.weight"] = widened
     return model
 
 

@@ -4,6 +4,10 @@ Everything done to train mugen360's neural fighters, in order, from the first pi
 says what changed, why, and what came of it. **Add to this file after every training step** (new run, setting change,
 result, bug that affects training).
 
+Since the cleanup after PR #34 (2026-11-16), the launchers still in use are in `rl\scripts\`, scan results in
+`rl\reports\`, and every run uses `build\rl` (from `build_rl.bat`). The other launchers and `train_ppo.py` named below
+were removed; git history has them.
+
 Times are local (Toronto). Run ids are the TensorBoard folders in `rl/runs/`, named by start time. "Decisions" are
 policy steps: one decision = one direction + one button held for 3 engine ticks (1/20 s), so a 99 s match is up to
 about 2,000 decisions. Win rates are over the last 200 matches against that opponent unless a test is named.
@@ -32,7 +36,7 @@ The method: `rl/PIPELINE.md`. This file is the diary.
 
 ## The current setup
 
-### What the policy sees (217 numbers, `src/core/rl_observation.cpp`)
+### What the policy sees (217 numbers, `src/core/ai/rl_observation.cpp`)
 
 For each fighter, itself first and then the opponent (106 each):
 
@@ -98,7 +102,7 @@ current policy; otherwise a frozen snapshot picked by PFSP, weight (1 − win ra
 to come up most. A snapshot joins every 300 updates (~10M decisions); 16 are kept, snapshot 0 (the start) always.
 Only player 1 learns.
 
-### In the game (`src/core/neural_policy.cpp`)
+### In the game (`src/core/ai/neural_policy.cpp`)
 
 `rl/export_policy.py` writes the network to `.m3nn` (no PyTorch needed); the C++ copy runs on the CPU (PC and 360),
 reads the same observation code as training and **samples** its moves like training (so it varies). It always plays
@@ -654,7 +658,7 @@ TensorBoard `rl/runs/cap_mirror/`.
 
 
 **Setup fixes applied (2026-10-30, 12:05 AM).** The user said "change them". Stopped cap_mirror at 414M (log: as P1/P2 86%/74%, dealt/taken 0.92/0.45, SmartAI checks Thanos 0%, Venom 5%, Doom 42%, Darkseid 19%, Nightwing 41%); backup `cap_mirror_414M.pt`. Changes:
-1. Engine (`src/core/rl_observation.*`): `rlObservation(..., mirror)` reflects a view left to right (x, vx, facing, box left/right, objects, dx). The pool and the single-fight server give player 2 the mirrored view (`main.cpp` rlObservation(demo, side)), so P2's view at the start equals P1's (checked with a scratch script: all values within 0.02). The game's neural Cap plays P1, unchanged.
+1. Engine (`src/core/ai/rl_observation.*`): `rlObservation(..., mirror)` reflects a view left to right (x, vx, facing, box left/right, objects, dx). The pool and the single-fight server give player 2 the mirrored view (`main.cpp` rlObservation(demo, side)), so P2's view at the start equals P1's (checked with a scratch script: all values within 0.02). The game's neural Cap plays P1, unchanged.
 2. Engine (`StageDemo::trainingOver`): a training match also ends on a drawn round (`Match::draws() > 0`): done, winner -1, reward 0. Checked: 4 idle fights end at decision 1983 with winner -1 (before: round 2 with life refilled, never done).
 3. Trainer: `--time-over game|loss|draw` (default game). With `loss`, a match whose previous view had the clock at 0 (observation -3) gives outcome -1 to the learner whoever led on life, so only a KO earns +1. New `rollout/time_over_100` TensorBoard scalar and `timeover=` in the status line. `--lr-max` (default 3e-3).
 4. Recipe (`train_cap_mirror.bat`): `--gamma 0.9995`, `--time-over loss`, `--league 384` (128 of the 512 fights are the 5 SmartAI opponents again, learner as P1), `--lr-max 1e-3`, no fixed `--threads` (each pool gets threads in proportion to its fights), `--steps 600000000`. Step penalty 0.0005 kept; skills 8 kept (dropping them means surgery on the checkpoint; harmless).
@@ -863,3 +867,6 @@ Open: Thanos flickers black during his dash. Anim 3150/3151 alternates every 2 t
 
 
 **Ivy final clips (2026-11-02, morning)** (`rl/clips/ivy_final/`, final 14.7M checkpoint, SmartAI Cap at full life, `--exe build/rl_fix/mugen360.exe`): seed 91 won with 79.6% life (665 decisions), seed 92 won with 54.6% (623), seed 93 won with 83.5% (388). A first try with record_clip's default exe, `build/pc_test` (built 2026-10-28, older than rl_fix), lost seed 91 (Cap kept 88%); deleted. Record clips with the training build: pc_test predates the rl_fix fixes.
+
+
+**Queue restarted, merge of everyone set up (2026-11-16, 11:29 AM).** The queue had stopped on 2026-11-05 at 5:38 AM when the PC was shut down (System log event 1074, a power off on the user's account), not a crash. By then 30 Cap specialists were finished (21 at 95% twice in a row, 6 at the 200M limit: Cap 100%, Thanos 89%, Starfire 88%, Agent Venom 85%, Galactus 80%, Luthor 63%; Darkseid, Doomsday and Superman stopped by hand for the first merge) and 3 were cut off: Batman Legends (163M, 72%), Silver Banshee (97M, 83%), Catwoman (8.6M, 64%). `scratch_queue.py` now resumes cut-off runs (a checkpoint whose log has neither "stopping at" nor 200M steps) and resumed all three from their checkpoints; 118 characters wait. When the last finishes, the queue runs `pick_teachers.py --all --copies 3` (writes `rl/merge_teachers_all.txt` with each teacher's 256-match win rate) and then `rl/scripts/train_cap_merge_all.bat`: a fresh student, the six-merge recipe, but `--active 16 --rotate-every 50`: 16 opponents at a time (32 fights each) since ~150 pools wouldn't fit in 32 GB; at each rotation up to 8 stay (the ones furthest below their teacher, at most 3 rotations in a row) and the ones waiting longest come in. 1.5B decisions (about 2 days). Tested on 4 teachers, 2 at a time, and its resume.

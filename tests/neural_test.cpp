@@ -1,4 +1,4 @@
-// The neural CPU's network (core/neural_policy) against PyTorch: the exported policy must give the same scores as the
+// The neural CPU's network (core/ai/neural_policy) against PyTorch: the exported policy must give the same scores as the
 // trained one on the same inputs, over two steps so the GRU's memory is checked too.
 // tests/fixtures/neural/reference.txt comes from rl/export_policy.py --reference.
 
@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-#include "core/neural_policy.h"
+#include "core/ai/neural_policy.h"
 
 using namespace m360;
 

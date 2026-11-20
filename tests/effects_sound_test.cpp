@@ -3,8 +3,8 @@
 #include <cstdint>
 #include <vector>
 
-#include "core/sound.h"
-#include "core/effects.h"
+#include "core/formats/sound.h"
+#include "core/fight/effects.h"
 #include "platform/platform.h"
 
 using namespace m360;
@@ -68,6 +68,7 @@ void m360::platform::clearClip() {}
 void m360::platform::setClipArea(int, int, int, int) {}
 void m360::platform::clearClipArea() {}
 bool m360::platform::freeMemory(size_t &) { return false; }
+std::string m360::platform::actualPath(const std::string &path) { return path; }
 void m360::platform::freeDestroyedTextures() {}
 bool m360::platform::readWholeFile(const char *path, std::vector<uint8_t> &out)
 {
