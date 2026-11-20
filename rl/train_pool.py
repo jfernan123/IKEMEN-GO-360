@@ -38,7 +38,8 @@ shared without one process holding both learners.
 
 Each pool gets simulation threads in proportion to its fights.
 
-Same network, sequence (BPTT) update, adaptive learning rate, TensorBoard tags and checkpoint format as train_ppo.py.
+Checkpoints hold the network (rl/model.py), optimizer and counters; record_clip.py, eval_pool.py and
+export_policy.py read them.
 """
 
 from __future__ import annotations
@@ -56,10 +57,10 @@ from torch.distributions import Categorical
 from torch.utils.tensorboard import SummaryWriter
 
 from eval_pool import play
-from model import Policy, add_buttons, add_skills, layer_activations, policy_from_checkpoint, redo
+from model import (Policy, add_buttons, add_skills, layer_activations, policy_from_checkpoint, redo,
+                   widen_observation)
 from pool_env import MugenPool
 from roster import discover
-from train_ppo import widen_observation
 
 
 def teacher_kl(teacher_d, teacher_b, student_d, student_b):
@@ -99,7 +100,7 @@ def main():
     parser.add_argument("--game", required=True)
     parser.add_argument("--exe", default="build/rl/mugen360.exe")
     parser.add_argument("--p1", required=True, help="the policy's character")
-    parser.add_argument("--p2", required=True, help="SmartAI's character, or several, comma-separated")
+    parser.add_argument("--p2", required=True, help="SmartAI's character, or several, comma-separated; \"teachers\": every opponent in --teachers")
     parser.add_argument("--weights", help="starting share of fights per opponent, comma-separated (default even)")
     parser.add_argument("--stage", default="stages/gotham.def")
     parser.add_argument("--fights", type=int, default=512, help="fights in all")
@@ -127,6 +128,12 @@ def main():
     parser.add_argument("--reweight-every", type=int, default=0,
                         help="updates between moving fights toward the opponents won least against (0: never)")
     parser.add_argument("--min-share", type=float, default=0.08, help="least share of fights any opponent keeps")
+    parser.add_argument("--active", type=int, default=0,
+                        help="opponents fought at once; the others wait their turn (0: all at once). For a merge of "
+                             "many teachers, which can't all have pools of their own")
+    parser.add_argument("--rotate-every", type=int, default=50,
+                        help="updates between rotations of the active opponents (with --active): the ones the student "
+                             "trails its teacher most against stay, up to half, and the ones waiting longest come in")
     parser.add_argument("--anchor", help="a frozen checkpoint whose moves the learner is kept near")
     parser.add_argument("--anchor-opponents", default="", help="opponents whose fights get the anchor term")
     parser.add_argument("--anchor-coef", type=float, default=0.5)
@@ -198,7 +205,15 @@ def main():
                           else "cpu")
     roster = discover(args.game)
     ids = {path: i for i, path in enumerate(roster.characters)}
-    opponents = [o.strip() for o in args.p2.split(",") if o.strip()]
+    if args.p2 == "teachers":
+        # Every opponent that has a teacher in --teachers, in the file's order (too many for a command line).
+        if not args.teachers:
+            raise ValueError("--p2 teachers needs --teachers")
+        opponents = [line.split("#")[0].split("|")[0].strip()
+                     for line in Path(args.teachers).read_text(encoding="utf-8").splitlines()]
+        opponents = [o for o in opponents if o and o != "*"]
+    else:
+        opponents = [o.strip() for o in args.p2.split(",") if o.strip()]
     for name in [args.p1] + opponents + ([args.rival] if args.rival else []):
         if name not in ids:
             raise ValueError(f"{name} is not in this game's roster")
@@ -207,7 +222,7 @@ def main():
         raise ValueError("--rival needs --rival-checkpoint")
     anchored = {o.strip() for o in args.anchor_opponents.split(",") if o.strip()}
     # Each opponent's teacher checkpoint and stage, from --teachers.
-    teacher_paths, arenas = {}, {}
+    teacher_paths, arenas, given_score = {}, {}, {}
     if args.teachers:
         lines = [[part.strip() for part in line.split("#")[0].split("|")]
                  for line in Path(args.teachers).read_text(encoding="utf-8").splitlines()]
@@ -219,12 +234,22 @@ def main():
             teacher_paths[opponent] = parts[1]
             if len(parts) > 2 and parts[2]:
                 arenas[opponent] = parts[2]
+            # The teacher's win rate as rl/pick_teachers.py measured it, so it needn't be measured again.
+            if parts[0] == opponent and len(parts) > 3 and parts[3]:
+                given_score[opponent] = float(parts[3])
+    # With --active, only some opponents have pools at a time (active), and they take turns (rotation, below).
+    rotating = bool(args.active) and len(opponents) > args.active
+    active = list(opponents[:args.active]) if rotating else list(opponents)
+    last_active: dict[str, int] = {}  # update when each opponent last left the active ones
+    kept_for: dict[str, int] = {}  # rotations in a row each opponent has stayed
     # A single opponent still runs in several pools so play and the network overlap.
-    pool_opponents = opponents if len(opponents) > 1 else opponents * max(1, args.pools)
+    pool_opponents = list(active) if len(opponents) > 1 else opponents * max(1, args.pools)
     weights = [float(w) for w in args.weights.split(",")] if args.weights else [1.0] * len(opponents)
     if len(weights) != len(opponents):
         raise ValueError("--weights needs one value per opponent")
-    pool_weights = weights if len(opponents) > 1 else [1.0] * len(pool_opponents)
+    if rotating and args.weights:
+        raise ValueError("--weights doesn't go with --active")
+    pool_weights = [1.0] * len(pool_opponents) if rotating else weights if len(opponents) > 1 else [1.0] * len(pool_opponents)
     league_fights = max(0, min(args.league, args.fights - rival_fights))
     smart_fights = args.fights - league_fights - rival_fights
     if smart_fights == 0:
@@ -350,6 +375,15 @@ def main():
         for o, results in resume.get("opponent_wins", {}).items():
             if o in opponent_wins:
                 opponent_wins[o].extend(results)
+        if rotating:
+            last_active.update(resume.get("last_active", {}))
+            kept_for.update(resume.get("kept_for", {}))
+            saved_active = [o for o in resume.get("active", []) if o in opponents][:args.active]
+            if saved_active and saved_active != active:
+                saved_active += [o for o in opponents if o not in saved_active][:args.active - len(saved_active)]
+                active[:] = saved_active
+                pool_opponents[:] = active
+                build(counts)
         print(f"resumed {checkpoint} at {total:,} decisions")
     elif args.init_from:
         start = torch.load(args.init_from, map_location=device, weights_only=False)
@@ -400,13 +434,27 @@ def main():
                 parameter.requires_grad_(False)
         teacher_of[opponent] = teacher_nets[path]
         teacher_weight.setdefault(opponent, 1.0)
-        if opponent not in teacher_score:
+
+    def measure_teacher(opponent: str):
+        """The win rate the student has to come close to: given by --teachers, else measured once, the first time
+        the opponent is fought (with --active, most wait their turn)."""
+        if opponent in teacher_score or opponent not in teacher_of:
+            return
+        if opponent in given_score:
+            teacher_score[opponent] = given_score[opponent]
+        else:
             with MugenPool(args.exe, args.game, args.p1, opponent, arenas.get(opponent, args.stage),
                            args.teacher_matches, os.cpu_count() or 8, args.frame_skip) as pool:
                 result = play(pool, teacher_of[opponent], device, ids[args.p1], ids[opponent], args.seed, 2500, rng)
             teacher_score[opponent] = float(np.mean(result == 0))
-        print(f"teacher for {Path(opponent).stem}: {path}, wins {teacher_score[opponent]:.0%}, "
+        print(f"teacher for {Path(opponent).stem}: {teacher_paths[opponent]}, wins {teacher_score[opponent]:.0%}, "
               f"pull {teacher_weight[opponent]:.2f}", flush=True)
+
+    for opponent in active:
+        measure_teacher(opponent)
+    if teacher_of and rotating:
+        print(f"{len(teacher_of)} teachers; {len(active)} opponents at a time, rotating every {args.rotate_every} updates",
+              flush=True)
     fight_pull = torch.zeros(args.fights, device=device)
 
     # The league: frozen snapshots of the policy in <checkpoint>_league/, each with the learner's recent results
@@ -909,8 +957,8 @@ def main():
 
             win_by_opponent = {o: float(np.mean(r)) if r else 0.0 for o, r in opponent_wins.items()}
             # A teacher's pull fades while the student is close to the teacher's win rate, and returns if it slips.
-            for opponent in teacher_of:
-                if len(opponent_wins[opponent]) >= 100:
+            for opponent in active if rotating else teacher_of:
+                if opponent in teacher_of and opponent in teacher_score and len(opponent_wins[opponent]) >= 100:
                     close = win_by_opponent[opponent] >= teacher_score[opponent] - args.teacher_margin
                     change = args.teacher_fade if close else 1.0 / args.teacher_fade
                     teacher_weight[opponent] = float(np.clip(teacher_weight[opponent] * change, args.teacher_floor, 1.0))
@@ -923,6 +971,7 @@ def main():
                         "skills": skills, "style_window": args.style_window,
                         "curriculum_stage": stage, "stage_wins": list(stage_wins),
                         "teacher_weight": teacher_weight, "teacher_score": teacher_score,
+                        "active": list(active), "last_active": last_active, "kept_for": kept_for,
                         "league_wins": {s["path"].name: list(s["wins"]) for s in snapshots},
                         "rival_wins": {s["path"].name: list(s["wins"]) for s in rival_snapshots},
                         **({"discriminator": discriminator.state_dict(), "disc_optimizer": disc_optimizer.state_dict()}
@@ -937,7 +986,9 @@ def main():
             # opponent, in a pool of its own with every core; the training pools wait meanwhile. Not counted in speed.
             if args.check_every and updates % args.check_every == 0:
                 mark = time.time()
-                for opponent in opponents:
+                if rotating:
+                    last_check.clear()  # the active opponents only, each in turn
+                for opponent in active if rotating else opponents:
                     with MugenPool(args.exe, args.game, args.p1, opponent, arenas.get(opponent, args.stage), args.check_matches,
                                    os.cpu_count() or 8, args.frame_skip) as pool:
                         result = play(pool, policy, device, ids[args.p1], ids[opponent], args.seed + updates, 2500, rng)
@@ -987,7 +1038,8 @@ def main():
                 writer.add_scalar("curriculum/opponent_life", curriculum[stage], total)
                 writer.add_scalar("curriculum/win_rate_at_this_step", float(np.mean(stage_wins)) if stage_wins else 0.0,
                                   total)
-            for opponent in teacher_of:
+            taught = [o for o in teacher_of if teacher_gap[o]]  # the ones fought this update
+            for opponent in taught:
                 writer.add_scalar(f"teachers/{Path(opponent).stem}_pull", teacher_weight[opponent], total)
                 writer.add_scalar(f"teachers/{Path(opponent).stem}_kl", np.mean(teacher_gap[opponent]), total)
             for k, results in side_wins.items():
@@ -1015,7 +1067,7 @@ def main():
                   f"{float(np.mean(taken_window)) if taken_window else 0:.2f} "
                   f"timeover={float(np.mean(time_over_window)) if time_over_window else 0:.0%} {speed:,.0f} decisions/s "
                   f"kl={update_kl:.4f} lr={optimizer.param_groups[0]['lr']:.2e} | "
-                  + " ".join(f"{Path(o).stem}={w:.0%}" for o, w in win_by_opponent.items())
+                  + " ".join(f"{Path(o).stem}={w:.0%}" for o, w in win_by_opponent.items() if not rotating or o in active)
                   + (f" | league {len(snapshots)} snaps, vs oldest "
                      f"{float(np.mean(snapshots[0]['wins'])) if snapshots[0]['wins'] else 0:.0%}" if snapshots else "")
                   + (f" | as P1/P2 {float(np.mean(side_wins[0])) if side_wins[0] else 0:.0%}/"
@@ -1024,7 +1076,7 @@ def main():
                      if rival_fights else "")
                   + (" | last check " + " ".join(f"{Path(o).stem}={w:.0%}" for o, w in last_check.items())
                      if last_check and not smart_fights else "")
-                  + (" | pull/kl " + " ".join(f"{Path(o).stem}={teacher_weight[o]:.2f}/{np.mean(teacher_gap[o]):.2f}" for o in teacher_of) if teacher_of else "")
+                  + (" | pull/kl " + " ".join(f"{Path(o).stem}={teacher_weight[o]:.2f}/{np.mean(teacher_gap[o]):.2f}" for o in taught) if taught else "")
                   + (f" | style acc={diversity['accuracy']:.0%}" if skills else "")
                   + (f" | opponent life {curriculum[stage]:.0%}: won {float(np.mean(stage_wins)) if stage_wins else 0:.0%}"
                      f" of {len(stage_wins)}" if curriculum else "")
@@ -1070,26 +1122,54 @@ def main():
                     print(f"rival: {len(rival_snapshots)} snapshots", flush=True)
 
             # Move fights toward the opponents won least against; a pool restarts its fights when its size changes.
-            if smart_fights and len(opponents) > 1 and args.reweight_every and updates % args.reweight_every == 0 \
-                    and all(len(r) >= 50 for r in opponent_wins.values()):
+            rebuilt = ""
+            if smart_fights and len(opponents) > 1 and args.reweight_every and not rotating \
+                    and updates % args.reweight_every == 0 and all(len(r) >= 50 for r in opponent_wins.values()):
                 need = [1.0 - win_by_opponent[o] + 0.05 for o in opponents]
                 new_counts = split(smart_fights, need, minimum)
                 if max(abs(a - b) for a, b in zip(new_counts, counts)) >= 8:
                     counts = new_counts
                     build(counts)
-                    hidden = policy.initial_hidden(fights, device)
-                    anchor_hidden = anchor.initial_hidden(fights, device) if anchor else None
-                    teacher_hidden.zero_()
-                    for state in league_state.values():
-                        state["hidden"].zero_()
-                    if skills:
-                        skill_ids = torch.as_tensor(rng.integers(0, skills, fights), device=device)
-                        style_average.zero_()
-                        style_seen.zero_()
-                    episode_return[:] = 0
-                    episode_length[:] = 0
-                    print("reweighted: " + ", ".join(f"{Path(o).stem} {c}" for o, c in zip(opponents, counts)),
-                          flush=True)
+                    rebuilt = "reweighted: " + ", ".join(f"{Path(o).stem} {c}" for o, c in zip(opponents, counts))
+            # Rotation: up to half the active opponents stay, the ones the student trails its teacher most against
+            # (and not more than 3 rotations in a row, so no one holds a place for good); the opponents waiting longest
+            # take the other places, so every teacher keeps coming back.
+            if rotating and updates % args.rotate_every == 0:
+                def behind(o):
+                    if len(opponent_wins[o]) < 50:
+                        return 1.0
+                    return teacher_score.get(o, 1.0) - win_by_opponent[o]
+                stay = [o for o in sorted(active, key=behind, reverse=True)
+                        if behind(o) > args.teacher_margin and kept_for.get(o, 0) < 3][:args.active // 2]
+                for o in active:
+                    if o in stay:
+                        kept_for[o] = kept_for.get(o, 0) + 1
+                    else:
+                        kept_for[o] = 0
+                        last_active[o] = updates
+                waiting = sorted((o for o in opponents if o not in stay and o not in active),
+                                 key=lambda o: (last_active.get(o, -1), opponents.index(o)))
+                waiting += [o for o in active if o not in stay]  # if fewer wait than there are places
+                active[:] = stay + waiting[:args.active - len(stay)]
+                pool_opponents[:] = active
+                for o in active:
+                    measure_teacher(o)
+                build(counts)
+                rebuilt = (f"rotated ({len(stay)} stay): " + ", ".join(Path(o).stem for o in active))
+            if rebuilt:
+                # New pools start new matches: every fight's memory and running totals start again.
+                hidden = policy.initial_hidden(fights, device)
+                anchor_hidden = anchor.initial_hidden(fights, device) if anchor else None
+                teacher_hidden.zero_()
+                for state in league_state.values():
+                    state["hidden"].zero_()
+                if skills:
+                    skill_ids = torch.as_tensor(rng.integers(0, skills, fights), device=device)
+                    style_average.zero_()
+                    style_seen.zero_()
+                episode_return[:] = 0
+                episode_length[:] = 0
+                print(rebuilt, flush=True)
     finally:
         for group in groups:
             group["pool"].close()

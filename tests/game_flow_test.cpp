@@ -1,9 +1,9 @@
 #include <algorithm>
 #include <cstdio>
 
-#include "core/character.h"
-#include "core/game_flow.h"
-#include "core/match.h"
+#include "core/fight/character.h"
+#include "core/game/game_flow.h"
+#include "core/fight/match.h"
 
 using namespace m360;
 

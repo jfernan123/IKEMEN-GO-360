@@ -1,5 +1,5 @@
 """Record one policy-vs-SmartAI (or policy-vs-policy) match to an MP4 through the RL server itself (--rl-record), so the clip is exactly
-the match the policy played. Needs a build with --rl-record (build_pc_test.bat) and imageio-ffmpeg."""
+the match the policy played. Needs a build with --rl-record (build_pc.bat) and imageio-ffmpeg."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from mugen_env import MugenEnv
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--game", default="DC vs MARVEL 2025")
-    parser.add_argument("--exe", default="build/pc_test/mugen360.exe")
+    parser.add_argument("--exe", default="build/pc/mugen360.exe")
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--p1", required=True, help="the policy's character")
     parser.add_argument("--p2", required=True, help="the opponent's character")

@@ -1,4 +1,4 @@
-// Tests for the expression language (core/expr): run build\pc\mugen360_tests.exe from the mugen360 folder.
+// Tests for the expression language (core/script/expr): run build\pc\mugen360_tests.exe from the mugen360 folder.
 // Checks operators and MUGEN's special forms against a fake character, then parses every trigger in Kung Fu Man's
 // files and common1.cns and lists any that don't parse.
 
@@ -8,9 +8,9 @@
 #include <string>
 #include <vector>
 
-#include "core/expr.h"
-#include "core/file.h"
-#include "core/text.h"
+#include "core/script/expr.h"
+#include "core/util/file.h"
+#include "core/util/text.h"
 #include "platform/platform.h"
 
 using namespace m360;

@@ -9,7 +9,7 @@ every opponent. Today each stage below is run by hand. The aim is to join them i
 
 ## The user's plan (2026-10-31, not started)
 
-1. Find the 5 toughest AI opponents in the game and rank them. Done: `rl/toughest_scan.md` (Thanos, doomsdayCG, GALACTUS, Superman, Darkseid; boss characters may need a look first).
+1. Find the 5 toughest AI opponents in the game and rank them. Done: `rl/reports/toughest_scan.md` (Thanos, doomsdayCG, GALACTUS, Superman, Darkseid; boss characters may need a look first).
 2. Train a separate Cap specialist against each of the 5, one policy per opponent, each from scratch (the user's
    choice, 2026-10-31).
 3. Train a sixth specialist from scratch against stock Cap. The general teacher for everyone else in the merge is the
@@ -18,9 +18,11 @@ every opponent. Today each stage below is run by hand. The aim is to join them i
 
 ## The stages
 
+The launchers are in `rl\scripts\` (see `rl/README.md`).
+
 | # | Stage | Launcher | Status |
 |---|---|---|---|
-| 1 | General policy from scratch | `train_cap_scratch.bat` | done for Cap, 600M; a 65-button rerun (`train_cap_scratch65.bat`) was stopped at about 22M |
+| 1 | General policy from scratch | `train_cap_scratch.bat` | done for Cap, 600M; a 65-button rerun was stopped at about 22M |
 | 2 | Specialist for each opponent it can't beat | `train_cap_specialist.bat`, queue `train_scratch_all.bat` | running from scratch, 3 at a time |
 | 3 | Merge the policies into one (distillation) | not built | planned |
 | 4 | Fine-tune the merged policy against everyone | not built | planned |
@@ -123,8 +125,8 @@ a collapse. A clip shows it faster than the graphs.
 - `rl/eval_pool.py`, 64 matches per opponent, with Cap as P1 only. P2 isn't tested yet.
 - Evaluate against every opponent, not only the one a run trains on.
 - `rl/record_clip.py` for clips, with `--p2-life` for a handicap level. One clip is one sample; use several seeds.
-- Copy a live checkpoint before reading it (`cap_thanos_clip.pt`), and never run `build\rl_new` builds during training:
-  the exe is locked. `build\rl_next` is the spare.
+- Copy a live checkpoint before reading it (`cap_thanos_clip.pt`), and never rebuild `build\rl` (`build_rl.bat`) during training:
+  the exe is locked.
 
 ## Known gaps
 

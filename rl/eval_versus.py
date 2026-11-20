@@ -5,7 +5,7 @@ Each policy plays player 1 for half of the matches, from the same seeds, so the 
 fight gets a random skill for each side (as in training); each fight's first match counts, and one still running
 after --max-decisions is decided on remaining life, like a time over.
 
-    rl\\.venv\\Scripts\\python.exe rl\\eval_versus.py --exe build\\rl_new\\mugen360.exe --a rl\\checkpoints\\league_cap_shared.pt ^
+    rl\\.venv\\Scripts\\python.exe rl\\eval_versus.py --exe build\\rl\\mugen360.exe --a rl\\checkpoints\\league_cap_shared.pt ^
         --b rl\\checkpoints\\league_cap_268M.pt --p1 chars/captainamerica/captainamerica.def --matches 256
 """
 

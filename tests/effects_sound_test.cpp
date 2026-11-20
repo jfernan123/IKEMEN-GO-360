@@ -3,8 +3,8 @@
 #include <cstdint>
 #include <vector>
 
-#include "core/sound.h"
-#include "core/effects.h"
+#include "core/formats/sound.h"
+#include "core/fight/effects.h"
 #include "platform/platform.h"
 
 using namespace m360;

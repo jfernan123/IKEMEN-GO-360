@@ -4,11 +4,11 @@
 #include <cstdio>
 #include <string>
 
-#include "core/compat.h"
-#include "core/expr.h"
-#include "core/file.h"
-#include "core/game_config.h"
-#include "core/states.h"
+#include "core/game/compat.h"
+#include "core/script/expr.h"
+#include "core/util/file.h"
+#include "core/game/game_config.h"
+#include "core/script/states.h"
 
 using namespace m360;
 
