@@ -18,7 +18,7 @@ from pathlib import Path
 
 AT_ONCE = 3
 THREADS = 3  # per pool, two pools a specialist: 18 threads over the 16 the CPU has
-WAIT_FOR = {"cap_merged", "cap_merged_all"}  # merges take the whole machine, so nothing new starts while one runs
+WAIT_FOR = {"cap_merged", "cap_merged_52", "cap_merged_all"}  # merges take the whole machine, so nothing new starts while one runs
 MIN_FREE_GB = 30  # nothing new starts below this; the runs going carry on
 ROOT = Path(__file__).resolve().parent.parent
 LOG = ROOT / "rl" / "checkpoints" / "scratch_queue.log"
@@ -76,7 +76,7 @@ def main():
     for name, opponent in everyone():
         if not (ROOT / "rl" / "checkpoints" / f"scratch_vs_{name}.pt").is_file():
             waiting.append((name, opponent))
-        elif name not in running and not finished(name):
+        elif f"scratch_vs_{name}" not in running and not finished(name):  # running holds checkpoint names
             waiting.insert(0, (name, opponent))  # the cut-off runs first
             resume.add(name)
     note(f"running {sorted(running)}, resuming {sorted(resume)}, waiting {[name for name, _ in waiting]}")

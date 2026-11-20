@@ -1,0 +1,54 @@
+# opponent | checkpoint | stage. The 52 Cap specialists that reached 95% twice in a row (their last checkpoint is
+# their peak), toughest first. Each teacher's win rate is measured when the merge first fights it.
+chars/redskull/redskull.def | rl/checkpoints/scratch_vs_redskull.pt | stages/gotham.def
+chars/batgirl_m/batgirl_m.def | rl/checkpoints/scratch_vs_batgirl_m.pt | stages/gotham.def
+chars/THEflash/THEflash.def | rl/checkpoints/scratch_vs_theflash.pt | stages/gotham.def
+chars/punisherv2/punisherv2.def | rl/checkpoints/scratch_vs_punisherv2.pt | stages/gotham.def
+chars/thing/thing.def | rl/checkpoints/scratch_vs_thing.pt | stages/gotham.def
+chars/Joker/Joker.def | rl/checkpoints/scratch_vs_joker.pt | stages/gotham.def
+chars/firestorm update/firestorm update.def | rl/checkpoints/scratch_vs_firestormupdate.pt | stages/gotham.def
+chars/zatanna/zatanna.def | rl/checkpoints/scratch_vs_zatanna.pt | stages/gotham.def
+chars/invisiblewoman/invisiblewoman.def | rl/checkpoints/scratch_vs_invisiblewoman.pt | stages/gotham.def
+chars/blackheart/blackheart.def | rl/checkpoints/scratch_vs_blackheart.pt | stages/gotham.def
+chars/arrow/arrow.def | rl/checkpoints/scratch_vs_arrow.pt | stages/gotham.def
+chars/lobo/lobo.def | rl/checkpoints/scratch_vs_lobo.pt | stages/gotham.def
+chars/mongul/mongul.def | rl/checkpoints/scratch_vs_mongul.pt | stages/gotham.def
+chars/BRAINIAC/BRAINIAC.def | rl/checkpoints/scratch_vs_brainiac.pt | stages/gotham.def
+chars/blackadam/blackadam.def | rl/checkpoints/scratch_vs_blackadam.pt | stages/gotham.def
+chars/plastic/plastic.def | rl/checkpoints/scratch_vs_plastic.pt | stages/gotham.def
+chars/electro_recharged/electro_recharged.def | rl/checkpoints/scratch_vs_electro_recharged.pt | stages/gotham.def
+chars/Bane/Bane.def | rl/checkpoints/scratch_vs_bane.pt | stages/gotham.def
+chars/superboy/superboy.def | rl/checkpoints/scratch_vs_superboy.pt | stages/gotham.def
+chars/silverbanshee/silverbanshee.def | rl/checkpoints/scratch_vs_silverbanshee.pt | stages/gotham.def
+chars/Metamorpho updated/Metamorpho updated.def | rl/checkpoints/scratch_vs_metamorphoupdated.pt | stages/gotham.def
+chars/harleyquinn_new/harleyquinn_new.def | rl/checkpoints/scratch_vs_harleyquinn_new.pt | stages/gotham.def
+chars/catwoman/catwoman.def | rl/checkpoints/scratch_vs_catwoman.pt | stages/gotham.def
+chars/gorillagrodd/gorillagrodd.def | rl/checkpoints/scratch_vs_gorillagrodd.pt | stages/gotham.def
+chars/vision1/vision1.def | rl/checkpoints/scratch_vs_vision1.pt | stages/gotham.def
+chars/cyborg/cyborg.def | rl/checkpoints/scratch_vs_cyborg.pt | stages/gotham.def
+chars/trigon/trigon.def | rl/checkpoints/scratch_vs_trigon.pt | stages/gotham.def
+chars/groot/groot.def | rl/checkpoints/scratch_vs_groot.pt | stages/gotham.def
+chars/sentinel/sentinel.def | rl/checkpoints/scratch_vs_sentinel.pt | stages/gotham.def
+chars/despero/despero.def | rl/checkpoints/scratch_vs_despero.pt | stages/gotham.def
+chars/captainatom_updated/captainatom_updated.def | rl/checkpoints/scratch_vs_captainatom_updated.pt | stages/gotham.def
+chars/avalanche/avalanche.def | rl/checkpoints/scratch_vs_avalanche.pt | stages/gotham.def
+chars/majorforce/majorforce.def | rl/checkpoints/scratch_vs_majorforce.pt | stages/gotham.def
+chars/ronan/ronan.def | rl/checkpoints/scratch_vs_ronan.pt | stages/gotham.def
+chars/hawkman/hawkman.def | rl/checkpoints/scratch_vs_hawkman.pt | stages/gotham.def
+chars/blackmask/blackmask.def | rl/checkpoints/scratch_vs_blackmask.pt | stages/gotham.def
+chars/Katana/Katana.def | rl/checkpoints/scratch_vs_katana.pt | stages/gotham.def
+chars/BatmanNew/BatmanNew.def | rl/checkpoints/scratch_vs_batmannew.pt | stages/gotham.def
+chars/ultron/ultron.def | rl/checkpoints/scratch_vs_ultron.pt | stages/gotham.def
+chars/amazo/amazo.def | rl/checkpoints/scratch_vs_amazo.pt | stages/gotham.def
+chars/mvd-cheetah/mvd-cheetah.def | rl/checkpoints/scratch_vs_mvdcheetah.pt | stages/gotham.def
+chars/ghostrider/ghostrider.def | rl/checkpoints/scratch_vs_ghostrider.pt | stages/gotham.def
+chars/bluebeetle/bluebeetle.def | rl/checkpoints/scratch_vs_bluebeetle.pt | stages/gotham.def
+chars/General Zod/General Zod.def | rl/checkpoints/scratch_vs_generalzod.pt | stages/gotham.def
+chars/supergirl/supergirl.def | rl/checkpoints/scratch_vs_supergirl.pt | stages/gotham.def
+chars/NON/NON.def | rl/checkpoints/scratch_vs_non.pt | stages/gotham.def
+chars/aquaman2/aquaman2.def | rl/checkpoints/scratch_vs_aquaman2.pt | stages/gotham.def
+chars/professor zoom/professor zoom.def | rl/checkpoints/scratch_vs_professorzoom.pt | stages/gotham.def
+chars/Etrigan/Etrigan.def | rl/checkpoints/scratch_vs_etrigan.pt | stages/gotham.def
+chars/SURTUR/SURTUR.def | rl/checkpoints/scratch_vs_surtur.pt | stages/gotham.def
+chars/!ILU-KILLER_CROC/!ILU-KILLER_CROC.def | rl/checkpoints/scratch_vs_ilukiller_croc.pt | stages/gotham.def
+chars/clayface/clayface.def | rl/checkpoints/scratch_vs_clayface.pt | stages/gotham.def
